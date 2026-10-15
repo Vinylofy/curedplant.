@@ -19,6 +19,8 @@ def command_for(worker: str, limit: int) -> list[str]:
         "platenzaak": common + ["scripts.scrapers.usf.jobs.detail_platenzaak", "--limit", str(limit)],
         "soundshaarlem": common + ["scripts.scrapers.usf.jobs.detail_soundshaarlem", "--limit", str(limit)],
         "soundsvenlo": common + ["scripts.scrapers.usf.jobs.detail_soundsvenlo", "--limit", str(limit)],
+        "fiftiesstore": common + ["scripts.scrapers.usf.jobs.detail_fiftiesstore", "--limit", str(limit)],
+        "musiconvinyl": common + ["scripts.scrapers.usf.jobs.enrich_musiconvinyl_details", "--limit", str(limit)],
         "atthemovies": common + ["scripts.scrapers.atthemovies", "--max-pages", "1", "--detail-limit", str(limit), "--output", "output/atthemovies"],
         "bestkeptrecords": common + ["scripts.scrapers.bestkeptrecords", "--max-pages", "1", "--detail-limit", str(limit), "--output-dir", "output/bestkeptrecords"],
         "blackvinyl": common + ["scripts.scrapers.blackvinyl", "--detail-mode", "all", "--output", "output/blackvinyl.csv"],
