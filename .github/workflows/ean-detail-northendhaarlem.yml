@@ -1,8 +1,6 @@
 name: "Curedplant | EAN/detail | North End Haarlem"
 
 on:
-  schedule:
-    - cron: "23 4 * * *"
   workflow_dispatch:
     inputs:
       limit:

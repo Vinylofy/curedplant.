@@ -1,8 +1,6 @@
 name: "Curedplant | EAN/detail | Everything Jazz"
 
 on:
-  schedule:
-    - cron: "23 4 * * *"
   workflow_dispatch:
     inputs:
       limit:
