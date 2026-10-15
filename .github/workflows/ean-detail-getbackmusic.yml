@@ -1,0 +1,24 @@
+name: "Curedplant | EAN/detail | Getbackmusic"
+
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Detail records for this worker"
+        required: true
+        default: "25"
+        type: string
+      write:
+        description: "Write to database where supported"
+        required: true
+        default: false
+        type: boolean
+
+jobs:
+  worker:
+    uses: ./.github/workflows/_ean-detail-worker.yml
+    with:
+      worker: getbackmusic
+      limit: ${{ inputs.limit }}
+      write: ${{ inputs.write }}
+    secrets: inherit
