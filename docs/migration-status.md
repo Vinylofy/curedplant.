@@ -8,11 +8,12 @@ Actions lanes are intentionally separate:
 
 | lane | workflow | purpose | default |
 |---|---|---|---|
-| catalog price | `curedplant-catalog-price.yml` | listing/catalog prices | dry-run |
-| EAN/detail | `curedplant-ean-detail.yml` | detail pages and EAN enrichment | dry-run |
+| catalog price | `price-<shop>.yml` | listing/catalog prices | dry-run |
+| EAN/detail | `ean-detail-<shop>.yml` | detail pages and EAN enrichment | dry-run |
 
-Each workflow has a manual worker selector and a scheduled worker matrix. The
-database write flag is explicit; schedules are configured to write because
+Each scraper has one price Action and one EAN/detail Action. Each has its own
+manual run and schedule, so a slow or broken scraper does not block another.
+The database write flag is explicit; schedules are configured to write because
 these are the production Ubuntu replacements, while manual runs default to a
 dry-run for verification.
 
