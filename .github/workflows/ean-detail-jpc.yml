@@ -1,0 +1,26 @@
+name: "Curedplant | EAN/detail | JPC"
+
+on:
+  schedule:
+    - cron: "23 4 * * *"
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Detail records for this worker"
+        required: true
+        default: "25"
+        type: string
+      write:
+        description: "Write to database"
+        required: true
+        default: false
+        type: boolean
+
+jobs:
+  worker:
+    uses: ./.github/workflows/_ean-detail-worker.yml
+    with:
+      worker: jpc
+      limit: ${{ github.event_name == 'schedule' && '25' || inputs.limit }}
+      write: ${{ github.event_name == 'schedule' || inputs.write }}
+    secrets: inherit

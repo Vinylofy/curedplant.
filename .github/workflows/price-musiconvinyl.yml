@@ -1,0 +1,26 @@
+name: "Curedplant | Price | Music On Vinyl"
+
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Pages/products for this worker"
+        required: true
+        default: "1"
+        type: string
+      write:
+        description: "Write to database"
+        required: true
+        default: false
+        type: boolean
+
+jobs:
+  worker:
+    uses: ./.github/workflows/_catalog-price-worker.yml
+    with:
+      worker: musiconvinyl
+      limit: ${{ github.event_name == 'schedule' && '1' || inputs.limit }}
+      write: ${{ github.event_name == 'schedule' || inputs.write }}
+    secrets: inherit
