@@ -1,0 +1,197 @@
+name: "[Windows][Self-hosted] North End Haarlem"
+
+on:
+  schedule:
+    - cron: "35 3 * * *"
+
+  workflow_dispatch:
+    inputs:
+      category_limit:
+        description: "Aantal categorie-seeds; 0 = alle seeds"
+        required: true
+        default: "0"
+        type: string
+      max_pages_per_category:
+        description: "Aantal pagina's per categorie; 0 = tot stopconditie"
+        required: true
+        default: "0"
+        type: string
+      run_detail:
+        description: "Ook detailverrijking + stage + promote draaien"
+        required: true
+        default: false
+        type: boolean
+      detail_limit:
+        description: "Maximaal aantal detailpagina's"
+        required: true
+        default: "500"
+        type: string
+      stage_limit:
+        description: "Maximaal aantal staged records"
+        required: true
+        default: "500"
+        type: string
+      promote_limit:
+        description: "Maximaal aantal promote records"
+        required: true
+        default: "500"
+        type: string
+      fast_price_sync:
+        description: "Snelle price-only bulk sync gebruiken voor bestaande offers"
+        required: true
+        default: true
+        type: boolean
+      write:
+        description: "Werkelijke databasewrites uitvoeren"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: usf-northendhaarlem-production
+  cancel-in-progress: false
+
+jobs:
+  run:
+    name: Run North End Haarlem pipeline on Windows
+    runs-on: [self-hosted, Windows, X64, vinylofy-windows]
+    timeout-minutes: 120
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      PYTHONUNBUFFERED: "1"
+      PIP_NO_CACHE_DIR: "1"
+
+    steps:
+      - name: Verify runner
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        env:
+          RUNNER_NAME: ${{ runner.name }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:RUNNER_NAME -ne 'vinylofy-windows-01') { throw "Unexpected runner: $env:RUNNER_NAME" }
+          Write-Host "Runner: $env:RUNNER_NAME"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: northendhaarlem
+          persist-credentials: false
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.12.15"
+          python-version: "3.11"
+          working-directory: ${{ github.workspace }}/northendhaarlem
+          enable-cache: false
+        env:
+          UV_CACHE_DIR: ${{ runner.temp }}/northendhaarlem-uv-cache
+
+      - name: Check and install persistent dependencies
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        working-directory: northendhaarlem
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:LOCALAPPDATA) { throw 'LOCALAPPDATA is required.' }
+          $root = Join-Path $env:LOCALAPPDATA 'Vinylofy'
+          $env:UV_PYTHON_INSTALL_DIR = Join-Path $root 'northendhaarlem-python'
+          $venv = Join-Path $root 'northendhaarlem-venv'
+          $python = Join-Path $venv 'Scripts/python.exe'
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+          if (-not (Test-Path -LiteralPath $python)) {
+            Write-Host "Creating persistent North End Haarlem environment: $venv"
+            uv venv --no-project --seed --managed-python --python 3.11 $venv
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } else { Write-Host "Reusing persistent North End Haarlem environment: $venv" }
+          & $python --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $packages = @(
+            @{ Import = 'requests'; Spec = 'requests' },
+            @{ Import = 'bs4'; Spec = 'beautifulsoup4' },
+            @{ Import = 'psycopg'; Spec = 'psycopg[binary]' },
+            @{ Import = 'dotenv'; Spec = 'python-dotenv' }
+          )
+          foreach ($package in $packages) {
+            & $python -c "import importlib.util,sys; sys.exit(0 if importlib.util.find_spec('$($package.Import)') else 1)"
+            if ($LASTEXITCODE -ne 0) {
+              Write-Host "Installing missing package: $($package.Spec)"
+              & $python -m pip install $package.Spec
+              if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            } else { Write-Host "Package already available: $($package.Spec)" }
+          }
+          $modules = @(
+            'scripts/scrapers/usf/jobs/refresh_northendhaarlem_listing_prices.py',
+            'scripts/scrapers/usf/jobs/detail_northendhaarlem.py',
+            'scripts/scrapers/usf/jobs/stage_northendhaarlem.py',
+            'scripts/scrapers/usf/jobs/promote_northendhaarlem.py',
+            'scripts/scrapers/usf/jobs/run_northendhaarlem_pipeline.py'
+          )
+          & $python -m py_compile @modules
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          foreach ($module in @('refresh_northendhaarlem_listing_prices', 'detail_northendhaarlem', 'stage_northendhaarlem', 'promote_northendhaarlem', 'run_northendhaarlem_pipeline')) {
+            & $python -m "scripts.scrapers.usf.jobs.$module" --help *> $null
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+
+      - name: Validate configuration
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:DATABASE_URL) { throw 'GitHub secret DATABASE_URL ontbreekt.' }
+          Write-Host '[CONFIG] DATABASE_URL is ingesteld.'
+
+      - name: Run North End Haarlem pipeline
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        working-directory: northendhaarlem
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          CATEGORY_LIMIT_INPUT: ${{ inputs.category_limit }}
+          MAX_PAGES_INPUT: ${{ inputs.max_pages_per_category }}
+          RUN_DETAIL_INPUT: ${{ inputs.run_detail }}
+          DETAIL_LIMIT_INPUT: ${{ inputs.detail_limit }}
+          STAGE_LIMIT_INPUT: ${{ inputs.stage_limit }}
+          PROMOTE_LIMIT_INPUT: ${{ inputs.promote_limit }}
+          FAST_PRICE_SYNC_INPUT: ${{ inputs.fast_price_sync }}
+          WRITE_INPUT: ${{ inputs.write }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path 'output/usf-northendhaarlem' | Out-Null
+          $python = Join-Path $env:LOCALAPPDATA 'Vinylofy/northendhaarlem-venv/Scripts/python.exe'
+          if ($env:EVENT_NAME -eq 'schedule') {
+            $categoryLimit = '0'; $maxPages = '0'; $detailLimit = '1000'; $stageLimit = '1000'; $promoteLimit = '1000'; $fastPriceSync = 'true'; $write = 'true'
+            $day = [int]([DateTime]::UtcNow.DayOfWeek)
+            $runDetail = if ($day -eq 1 -or $day -eq 4) { 'true' } else { 'false' }
+          } else {
+            $categoryLimit = if ($env:CATEGORY_LIMIT_INPUT) { $env:CATEGORY_LIMIT_INPUT } else { '0' }; $maxPages = if ($env:MAX_PAGES_INPUT) { $env:MAX_PAGES_INPUT } else { '0' }; $runDetail = if ($env:RUN_DETAIL_INPUT) { $env:RUN_DETAIL_INPUT } else { 'false' }; $detailLimit = if ($env:DETAIL_LIMIT_INPUT) { $env:DETAIL_LIMIT_INPUT } else { '500' }; $stageLimit = if ($env:STAGE_LIMIT_INPUT) { $env:STAGE_LIMIT_INPUT } else { '500' }; $promoteLimit = if ($env:PROMOTE_LIMIT_INPUT) { $env:PROMOTE_LIMIT_INPUT } else { '500' }; $fastPriceSync = if ($env:FAST_PRICE_SYNC_INPUT) { $env:FAST_PRICE_SYNC_INPUT } else { 'true' }; $write = if ($env:WRITE_INPUT) { $env:WRITE_INPUT } else { 'false' }
+          }
+          $args = @('-u', '-m', 'scripts.scrapers.usf.jobs.run_northendhaarlem_pipeline', '--category-limit', $categoryLimit, '--max-pages-per-category', $maxPages, '--detail-limit', $detailLimit, '--stage-limit', $stageLimit, '--promote-limit', $promoteLimit, '--detail-rescrape-days', '14')
+          if ($fastPriceSync -eq 'true') { $args += '--fast-price-sync' }
+          if ($runDetail -eq 'true') { $args += '--run-detail' }
+          if ($write -eq 'true') { $args += '--write' }
+          Write-Host "settings: category_limit=$categoryLimit max_pages_per_category=$maxPages run_detail=$runDetail detail_limit=$detailLimit stage_limit=$stageLimit promote_limit=$promoteLimit fast_price_sync=$fastPriceSync write=$write"
+          & $python @args 2>&1 | Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP 'northendhaarlem-pipeline.log')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload North End logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: usf-northendhaarlem-windows-${{ github.run_id }}
+          path: |
+            ${{ github.workspace }}/northendhaarlem/output/usf-northendhaarlem/**
+            ${{ runner.temp }}/northendhaarlem-pipeline.log
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Clean run-specific uv cache
+        if: always()
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $cache = Join-Path $env:RUNNER_TEMP 'northendhaarlem-uv-cache'
+          if (Test-Path -LiteralPath $cache) { Remove-Item -LiteralPath $cache -Recurse -Force }

@@ -1,0 +1,124 @@
+name: "[Windows][Self-hosted] Vinyl Freaks"
+
+on:
+  schedule:
+    - cron: "35 6,18 * * *"
+      timezone: "Europe/Amsterdam"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Listing refresh, detail enrichment, or both"
+        type: choice
+        default: "both"
+        options: ["listing", "detail", "both"]
+      max_pages:
+        description: "Listing pages; 0 follows the category to its stop condition"
+        type: choice
+        default: "1"
+        options: ["1", "2", "3", "0"]
+      detail_limit:
+        description: "Maximum unresolved detail pages; known valid EANs are reused"
+        type: choice
+        default: "5"
+        options: ["0", "5", "10", "25", "50", "100"]
+      write:
+        description: "Import accepted barcode-gated records; false performs a dry-run"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vinylofy-vinylfreaks-windows
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: [self-hosted, Windows, X64, vinylofy-windows]
+    timeout-minutes: 90
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      RUN_MODE: ${{ inputs.mode }}
+      MAX_PAGES: ${{ inputs.max_pages }}
+      DETAIL_LIMIT: ${{ inputs.detail_limit }}
+      WRITE_RECORDS: ${{ inputs.write }}
+    steps:
+      - name: Configure production schedule
+        if: github.event_name == 'schedule'
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        run: |
+          "RUN_MODE=both" >> $env:GITHUB_ENV
+          "MAX_PAGES=0" >> $env:GITHUB_ENV
+          "DETAIL_LIMIT=100" >> $env:GITHUB_ENV
+          "WRITE_RECORDS=true" >> $env:GITHUB_ENV
+      - name: Verify runner
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:RUNNER_NAME -ne 'vinylofy-windows-01') { throw "Unexpected runner: $env:RUNNER_NAME" }
+      - uses: actions/checkout@v4
+        with:
+          path: vinylfreaks
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
+        with:
+          version: "0.12.15"
+          enable-cache: false
+        env:
+          UV_CACHE_DIR: ${{ runner.temp }}/vinylfreaks-uv-cache
+      - name: Prepare Python and verify installed Edge
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        working-directory: vinylfreaks
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:LOCALAPPDATA) { throw 'LOCALAPPDATA is required.' }
+          $taskRoot = Join-Path $env:LOCALAPPDATA 'Vinylofy'
+          $env:UV_PYTHON_INSTALL_DIR = Join-Path $taskRoot 'vinylfreaks-python'
+          $venv = Join-Path $taskRoot 'vinylfreaks-venv'
+          if (-not (Test-Path -LiteralPath (Join-Path $venv 'Scripts/python.exe'))) {
+            uv venv --no-project --seed --managed-python --python 3.11 $venv
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          $python = Join-Path $venv 'Scripts/python.exe'
+          uv pip install --python $python requests beautifulsoup4 'psycopg[binary]' python-dotenv playwright
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $edge = Join-Path ${env:ProgramFiles(x86)} 'Microsoft/Edge/Application/msedge.exe'
+          $edge64 = Join-Path $env:ProgramFiles 'Microsoft/Edge/Application/msedge.exe'
+          if (-not ((Test-Path -LiteralPath $edge) -or (Test-Path -LiteralPath $edge64))) { throw 'Install Microsoft Edge on the Windows runner before running this workflow.' }
+          & $python -m unittest tests.test_vinylfreaks_scraper -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Scrape and import with persistent enrichment
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        working-directory: vinylfreaks
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $python = Join-Path $env:LOCALAPPDATA 'Vinylofy/vinylfreaks-venv/Scripts/python.exe'
+          $checkpoint = Join-Path $env:LOCALAPPDATA 'Vinylofy/vinylfreaks-checkpoint'
+          $outputDir = Join-Path $env:RUNNER_TEMP "vinylfreaks-$env:GITHUB_RUN_ID"
+          New-Item -ItemType Directory -Force -Path $outputDir, $checkpoint | Out-Null
+          $stateFiles = @('vinylfreaks_listings.csv', 'vinylfreaks_master.csv', 'vinylfreaks_detail_cache.csv')
+          foreach ($name in $stateFiles) {
+            $saved = Join-Path $checkpoint $name
+            if (Test-Path -LiteralPath $saved) { Copy-Item -LiteralPath $saved -Destination (Join-Path $outputDir $name) -Force }
+          }
+          & $python -u -m scripts.scrapers.vinylfreaks --transport browser --browser-channel msedge --mode $env:RUN_MODE --max-pages $env:MAX_PAGES --detail-limit $env:DETAIL_LIMIT --delay-seconds 2 --output-dir $outputDir
+          $scrapeExit = $LASTEXITCODE
+          foreach ($name in $stateFiles) {
+            $runFile = Join-Path $outputDir $name
+            if (Test-Path -LiteralPath $runFile) { Copy-Item -LiteralPath $runFile -Destination (Join-Path $checkpoint $name) -Force }
+          }
+          if ($scrapeExit -ne 0) { exit $scrapeExit }
+          $importArgs = @('-u', '-m', 'scripts.importers.import_vinylfreaks', (Join-Path $outputDir 'vinylfreaks_master.csv'), '--rejects', (Join-Path $outputDir 'rejects.csv'), '--summary', (Join-Path $outputDir 'import_summary.json'))
+          if ($env:WRITE_RECORDS -eq 'true') {
+            if (-not $env:DATABASE_URL) { throw 'DATABASE_URL is required for a write-run.' }
+          } else { $importArgs += '--dry-run' }
+          & $python @importArgs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Upload run artifacts
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: vinylfreaks-${{ github.run_id }}
+          path: ${{ runner.temp }}/vinylfreaks-${{ github.run_id }}
+          if-no-files-found: warn

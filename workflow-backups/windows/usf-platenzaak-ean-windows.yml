@@ -1,0 +1,133 @@
+name: "[Windows][Self-hosted] Platenzaak - EAN"
+
+on:
+  schedule:
+    # Detailrequests bewust beperkt: Platenzaak rate-limit detailpagina's.
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      detail_limit:
+        description: "Maximaal aantal detailpagina's"
+        required: true
+        default: "5"
+        type: string
+      delay_seconds:
+        description: "Pauze tussen detailpagina's"
+        required: true
+        default: "60"
+        type: string
+      write:
+        description: "EAN-statussen en raw snapshots schrijven"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vinylofy-platenzaak-ean
+  cancel-in-progress: false
+
+jobs:
+  run:
+    name: Run Platenzaak EAN enrichment on Windows
+    runs-on: [self-hosted, Windows, X64, vinylofy-windows]
+    timeout-minutes: 120
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      PIP_NO_CACHE_DIR: "1"
+    steps:
+      - name: Verify runner
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        env:
+          RUNNER_NAME: ${{ runner.name }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:RUNNER_NAME -ne 'vinylofy-windows-01') { throw "Unexpected runner: $env:RUNNER_NAME" }
+          Write-Host "Runner: $env:RUNNER_NAME"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: platenzaak
+          persist-credentials: false
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.12.15"
+          working-directory: ${{ github.workspace }}/platenzaak
+          enable-cache: false
+        env:
+          UV_CACHE_DIR: ${{ runner.temp }}/platenzaak-ean-uv-cache
+
+      - name: Check and install persistent dependencies
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        working-directory: platenzaak
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:LOCALAPPDATA) { throw 'LOCALAPPDATA is required.' }
+          $root = Join-Path $env:LOCALAPPDATA 'Vinylofy'
+          $env:UV_PYTHON_INSTALL_DIR = Join-Path $root 'platenzaak-python'
+          $venv = Join-Path $root 'platenzaak-venv'
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+          if (-not (Test-Path -LiteralPath (Join-Path $venv 'Scripts/python.exe'))) {
+            uv venv --no-project --seed --managed-python --python 3.11 $venv
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          $python = Join-Path $venv 'Scripts/python.exe'
+          $packages = @(
+            @{ Name = 'requests'; Import = 'requests' },
+            @{ Name = 'beautifulsoup4'; Import = 'bs4' },
+            @{ Name = 'psycopg[binary]'; Import = 'psycopg' },
+            @{ Name = 'python-dotenv'; Import = 'dotenv' }
+          )
+          $missing = @()
+          foreach ($package in $packages) {
+            $previous = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+            & $python -c "import $($package.Import)" 2>$null
+            $code = $LASTEXITCODE; $ErrorActionPreference = $previous
+            if ($code -ne 0) { $missing += $package.Name }
+          }
+          if ($missing.Count -gt 0) {
+            & $python -m pip install @missing
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          & $python -m py_compile scripts/scrapers/legacy/platenzaak_legacy.py scripts/scrapers/usf/jobs/detail_platenzaak.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Validate configuration
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:DATABASE_URL) { throw 'GitHub secret DATABASE_URL ontbreekt.' }
+
+      - name: Run Platenzaak EAN enrichment
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        working-directory: platenzaak
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          LIMIT_INPUT: ${{ inputs.detail_limit }}
+          DELAY_INPUT: ${{ inputs.delay_seconds }}
+          WRITE_INPUT: ${{ inputs.write }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:EVENT_NAME -eq 'schedule') {
+            $limit = '5'; $delay = '60'; $write = 'true'
+          } else {
+            $limit = $env:LIMIT_INPUT; $delay = $env:DELAY_INPUT; $write = $env:WRITE_INPUT
+          }
+          $python = Join-Path $env:LOCALAPPDATA 'Vinylofy/platenzaak-venv/Scripts/python.exe'
+          $args = @('-u', '-m', 'scripts.scrapers.usf.jobs.detail_platenzaak', '--limit', $limit, '--delay-seconds', $delay)
+          if ($write -eq 'true') { $args += '--write' }
+          Write-Host "EAN RUN: $python $($args -join ' ')"
+          & $python @args
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Clean run-specific uv cache
+        if: always()
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        run: |
+          $cache = Join-Path $env:RUNNER_TEMP 'platenzaak-ean-uv-cache'
+          if (Test-Path -LiteralPath $cache) { Remove-Item -LiteralPath $cache -Recurse -Force }

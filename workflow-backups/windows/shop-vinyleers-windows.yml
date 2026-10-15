@@ -1,0 +1,107 @@
+name: "[Windows][Self-hosted] Vinyleers Shop"
+
+on:
+  schedule:
+    - cron: "30 5 * * *"
+      timezone: "Europe/Amsterdam"
+  workflow_dispatch:
+    inputs:
+      max_pages:
+        description: "Listingpagina's; 0 = volledige nieuwe LP-catalogus"
+        required: true
+        default: "1"
+        type: choice
+        options: ["1", "3", "5", "0"]
+      detail_limit:
+        description: "Detailpagina's per run; maximum 500"
+        required: true
+        default: "5"
+        type: choice
+        options: ["0", "5", "25", "100", "500"]
+      delay_seconds:
+        description: "Pauze tussen publieke requests"
+        required: true
+        default: "1.0"
+        type: string
+      write:
+        description: "Nieuwe, EAN-gevalideerde records naar de database schrijven"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vinyleers-windows
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate Vinyleers scraper on Windows
+    runs-on: [self-hosted, Windows, X64, vinylofy-windows]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
+        with: {version: "0.12.15"}
+      - name: Validate Python and tests
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $venv = Join-Path $env:RUNNER_TEMP 'vinyleers-venv'
+          if (Test-Path $venv) { Remove-Item $venv -Recurse -Force }
+          uv venv --no-project --seed --managed-python --python 3.11 $venv
+          $python = Join-Path $venv 'Scripts/python.exe'
+          & $python -m pip install requests beautifulsoup4 psycopg[binary] python-dotenv
+          & $python -m py_compile scripts/scrapers/vinyleers.py scripts/importers/import_vinyleers.py
+          & $python -m unittest tests.test_vinyleers_scraper tests.test_vinyleers_importer -v
+
+  run:
+    name: Run Vinyleers listing and five-sample detail pilot on Windows
+    needs: validate
+    runs-on: [self-hosted, Windows, X64, vinylofy-windows]
+    timeout-minutes: 120
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
+        with: {version: "0.12.15"}
+      - name: Setup dependencies and run pilot
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $venv = Join-Path $env:RUNNER_TEMP 'vinyleers-venv'
+          uv venv --no-project --seed --managed-python --python 3.11 $venv
+          $python = Join-Path $venv 'Scripts/python.exe'
+          & $python -m pip install requests beautifulsoup4 psycopg[binary] python-dotenv
+          $output = Join-Path $env:RUNNER_TEMP 'vinyleers'
+          $checkpoint = Join-Path $env:LOCALAPPDATA 'Vinylofy\vinyleers-checkpoint\vinyleers_detail_state.json'
+          New-Item -ItemType Directory -Force -Path $output, (Split-Path $checkpoint) | Out-Null
+          if (Test-Path $checkpoint) { Copy-Item $checkpoint (Join-Path $output 'vinyleers_detail_state.json') -Force }
+          if ($env:GITHUB_EVENT_NAME -eq 'schedule') {
+            $pages = '0'; $details = '500'; $delay = '1.0'; $write = 'true'
+          } else {
+            $pages = '${{ inputs.max_pages }}'; $details = '${{ inputs.detail_limit }}'; $delay = '${{ inputs.delay_seconds }}'; $write = '${{ inputs.write }}'
+          }
+          Write-Host "max_pages=$pages detail_limit=$details delay=$delay write=$write"
+          & $python -u scripts/scrapers/vinyleers.py --max-pages $pages --detail-limit $details --delay-seconds $delay --output-dir $output --detail-state-file (Join-Path $output 'vinyleers_detail_state.json')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $summary = Get-Content (Join-Path $output 'summary.json') | ConvertFrom-Json
+          if ($summary.sample_checks.Count -gt 5) { throw 'More than five sample checks were emitted.' }
+          if ($write -eq 'true' -and -not $env:DATABASE_URL) { throw 'DATABASE_URL secret ontbreekt voor een write-run.' }
+          $args = @('-u','-m','scripts.importers.import_vinyleers',(Join-Path $output 'vinyleers_products.csv'),'--rejects',(Join-Path $output 'rejects.csv'),'--summary',(Join-Path $output 'import_summary.json'))
+          if ($write -ne 'true') { $args += '--dry-run' }
+          & $python @args
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item (Join-Path $output 'vinyleers_detail_state.json') $checkpoint -Force
+      - name: Upload Vinyleers pilot artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vinyleers-windows-${{ github.run_id }}
+          path: ${{ runner.temp }}/vinyleers
+          if-no-files-found: warn

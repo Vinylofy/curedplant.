@@ -1,0 +1,150 @@
+name: "[Windows][Self-hosted] Rockin Out Records"
+
+on:
+  schedule:
+    - cron: "30 3 * * *"
+      timezone: "Europe/Amsterdam"
+  workflow_dispatch:
+    inputs:
+      max_pages:
+        description: "Maximum category pages; 0 = volledige catalogus tot stopconditie"
+        required: true
+        default: "0"
+        type: choice
+        options: ["0", "1", "2", "3", "5"]
+      detail_limit:
+        description: "Maximum detail pages for EAN enrichment"
+        required: true
+        default: "100"
+        type: choice
+        options: ["0", "2", "5", "10", "100", "250"]
+      delay_seconds:
+        description: "Delay between public requests"
+        required: true
+        default: "1.0"
+        type: string
+      write:
+        description: "Accepted EAN-gated records naar de database schrijven; standaard dry-run"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rockinoutrecords-windows-pilot
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate Rockin Out scraper on Windows
+    runs-on: [self-hosted, Windows, X64, vinylofy-windows]
+    timeout-minutes: 20
+    steps:
+      - name: Verify runner
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:RUNNER_NAME -ne 'vinylofy-windows-01') { throw "Unexpected runner: $env:RUNNER_NAME" }
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Setup uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.12.15"
+      - name: Install pilot dependencies
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        run: |
+          $venv = Join-Path $env:RUNNER_TEMP 'rockinoutrecords-venv'
+          if (Test-Path -LiteralPath $venv) { Remove-Item -LiteralPath $venv -Recurse -Force }
+          uv venv --no-project --seed --managed-python --python 3.11 $venv
+          $python = Join-Path $venv 'Scripts/python.exe'
+          & $python -m pip install requests beautifulsoup4
+      - name: Run focused tests
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        run: |
+          $venv = Join-Path $env:RUNNER_TEMP 'rockinoutrecords-venv'
+          if (-not (Test-Path -LiteralPath $venv)) { uv venv --no-project --seed --managed-python --python 3.11 $venv }
+          $python = Join-Path $venv 'Scripts/python.exe'
+          & $python -m pip install requests beautifulsoup4 psycopg[binary] python-dotenv
+          & $python -m unittest tests.test_rockinoutrecords_scraper -v
+          & $python -m unittest tests.test_rockinoutrecords_importer -v
+
+  pilot:
+    name: Run Rockin Out listing/detail pilot on Windows
+    needs: validate
+    runs-on: [self-hosted, Windows, X64, vinylofy-windows]
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - name: Verify runner
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:RUNNER_NAME -ne 'vinylofy-windows-01') { throw "Unexpected runner: $env:RUNNER_NAME" }
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Setup uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.12.15"
+      - name: Install pilot dependencies
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        run: |
+          $venv = Join-Path $env:RUNNER_TEMP 'rockinoutrecords-venv'
+          if (Test-Path -LiteralPath $venv) { Remove-Item -LiteralPath $venv -Recurse -Force }
+          uv venv --no-project --seed --managed-python --python 3.11 $venv
+          $python = Join-Path $venv 'Scripts/python.exe'
+          & $python -m pip install requests beautifulsoup4 psycopg[binary] python-dotenv
+      - name: Run bounded public pilot
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        run: |
+          $python = Join-Path $env:RUNNER_TEMP 'rockinoutrecords-venv\Scripts\python.exe'
+          $outputDir = Join-Path $env:RUNNER_TEMP 'rockinoutrecords'
+          $checkpointDir = Join-Path $env:LOCALAPPDATA 'Vinylofy\rockinoutrecords-checkpoint'
+          $checkpointFile = Join-Path $checkpointDir 'rockinoutrecords_detail_state.json'
+          New-Item -ItemType Directory -Force -Path $outputDir, $checkpointDir | Out-Null
+          if (Test-Path -LiteralPath $checkpointFile) {
+            Copy-Item -LiteralPath $checkpointFile -Destination (Join-Path $outputDir 'rockinoutrecords_detail_state.json') -Force
+            Write-Host "Restored detail checkpoint: $checkpointFile"
+          }
+          if ($env:GITHUB_EVENT_NAME -eq 'schedule') {
+            $maxPages = '0'; $detailLimit = '100'; $delay = '1.0'; $write = 'true'
+          } else {
+            $maxPages = '${{ inputs.max_pages }}'; $detailLimit = '${{ inputs.detail_limit }}'; $delay = '${{ inputs.delay_seconds }}'; $write = '${{ inputs.write }}'
+          }
+          Write-Host "max_pages=$maxPages detail_limit=$detailLimit delay=$delay write=$write"
+          & $python -u scripts/scrapers/rockinoutrecords.py `
+            --max-pages $maxPages `
+            --detail-limit $detailLimit `
+            --delay-seconds $delay `
+            --output-dir $outputDir `
+            --detail-state-file (Join-Path $outputDir 'rockinoutrecords_detail_state.json')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $summary = Get-Content (Join-Path $outputDir 'summary.json') | ConvertFrom-Json
+          if ($summary.detail_attempted -gt 250) {
+            throw "Detail rotation exceeded the limit: $($summary.detail_attempted)."
+          }
+          if ($write -eq 'true' -and -not $env:DATABASE_URL) { throw 'DATABASE_URL secret ontbreekt voor een write-run.' }
+          $importerArgs = @('-u', '-m', 'scripts.importers.import_rockinoutrecords', (Join-Path $outputDir 'rockinoutrecords_products.csv'), '--rejects', (Join-Path $outputDir 'rejects.csv'), '--summary', (Join-Path $outputDir 'import_summary.json'))
+          if ($write -ne 'true') { $importerArgs += '--dry-run' }
+          & $python @importerArgs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $stateSource = Join-Path $outputDir 'rockinoutrecords_detail_state.json'
+          if (Test-Path -LiteralPath $stateSource) {
+            Copy-Item -LiteralPath $stateSource -Destination $checkpointFile -Force
+            Write-Host "Saved detail checkpoint: $checkpointFile"
+          }
+      - name: Upload pilot artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rockinoutrecords-windows-pilot-${{ github.run_id }}
+          path: ${{ runner.temp }}/rockinoutrecords
+          if-no-files-found: warn

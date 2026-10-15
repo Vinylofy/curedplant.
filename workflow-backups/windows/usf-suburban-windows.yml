@@ -1,0 +1,174 @@
+name: "[Windows][Self-hosted] Suburban"
+
+on:
+  schedule:
+    # Dagelijkse listing/detail/import-run; UTC.
+    - cron: "20 14 * * *"
+
+  workflow_dispatch:
+    inputs:
+      max_pages:
+        description: "Aantal listingpagina's; 0 = doorgaan tot geen nieuwe URL's"
+        required: true
+        default: "2"
+        type: string
+      detail_limit:
+        description: "Maximaal aantal detailpagina's"
+        required: true
+        default: "5"
+        type: string
+      write:
+        description: "Voer de database-import en listing price sync uit"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vinylofy-suburban
+  cancel-in-progress: false
+
+jobs:
+  run:
+    name: Run Suburban listing-first pipeline on Windows
+    runs-on: [self-hosted, Windows, X64, vinylofy-windows]
+    timeout-minutes: 120
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      PIP_NO_CACHE_DIR: "1"
+
+    steps:
+      - name: Verify runner
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        env:
+          RUNNER_NAME: ${{ runner.name }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:RUNNER_NAME -ne 'vinylofy-windows-01') { throw "Unexpected runner: $env:RUNNER_NAME" }
+          Write-Host "Runner: $env:RUNNER_NAME"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: suburban
+          persist-credentials: false
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.12.15"
+          python-version: "3.11"
+          working-directory: ${{ github.workspace }}/suburban
+          enable-cache: false
+        env:
+          UV_CACHE_DIR: ${{ runner.temp }}/suburban-uv-cache
+
+      - name: Check and install persistent dependencies
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        working-directory: suburban
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:LOCALAPPDATA) { throw 'LOCALAPPDATA is required.' }
+          $root = Join-Path $env:LOCALAPPDATA 'Vinylofy'
+          $env:UV_PYTHON_INSTALL_DIR = Join-Path $root 'suburban-python'
+          $venv = Join-Path $root 'suburban-venv'
+          $python = Join-Path $venv 'Scripts/python.exe'
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+          if (-not (Test-Path -LiteralPath $python)) {
+            Write-Host "Creating persistent Suburban environment: $venv"
+            uv venv --no-project --seed --managed-python --python 3.11 $venv
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } else { Write-Host "Reusing persistent Suburban environment: $venv" }
+          & $python --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $packages = @(
+            @{ Import = 'requests'; Spec = 'requests' },
+            @{ Import = 'bs4'; Spec = 'beautifulsoup4' },
+            @{ Import = 'psycopg'; Spec = 'psycopg[binary]' },
+            @{ Import = 'dotenv'; Spec = 'python-dotenv' }
+          )
+          foreach ($package in $packages) {
+            & $python -c "import importlib.util,sys; sys.exit(0 if importlib.util.find_spec('$($package.Import)') else 1)"
+            if ($LASTEXITCODE -ne 0) {
+              Write-Host "Installing missing package: $($package.Spec)"
+              & $python -m pip install $package.Spec
+              if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            } else { Write-Host "Package already available: $($package.Spec)" }
+          }
+          $modules = @(
+            'scripts/scrapers/suburban.py',
+            'scripts/scrapers/usf/jobs/refresh_suburban_listing_prices.py',
+            'scripts/importers/import_suburban.py'
+          )
+          & $python -m py_compile @modules
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $python -m unittest tests.test_suburban_scraper tests.test_suburban_importer
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Validate configuration
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:DATABASE_URL) { throw 'GitHub secret DATABASE_URL ontbreekt.' }
+          Write-Host '[CONFIG] DATABASE_URL is ingesteld.'
+
+      - name: Run Suburban listing-first pipeline
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        working-directory: suburban
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          MAX_PAGES_INPUT: ${{ inputs.max_pages }}
+          DETAIL_LIMIT_INPUT: ${{ inputs.detail_limit }}
+          WRITE_INPUT: ${{ inputs.write }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path 'suburban-output', 'output' | Out-Null
+          $python = Join-Path $env:LOCALAPPDATA 'Vinylofy/suburban-venv/Scripts/python.exe'
+          if ($env:EVENT_NAME -eq 'schedule') {
+            $maxPages = '0'; $detailLimit = '500'; $write = 'true'
+          } else {
+            $maxPages = if ($env:MAX_PAGES_INPUT) { $env:MAX_PAGES_INPUT } else { '2' }
+            $detailLimit = if ($env:DETAIL_LIMIT_INPUT) { $env:DETAIL_LIMIT_INPUT } else { '5' }
+            $write = if ($env:WRITE_INPUT) { $env:WRITE_INPUT } else { 'false' }
+          }
+          $outputDir = Join-Path (Get-Location) 'suburban-output'
+          $args = @('-m', 'scripts.scrapers.suburban', '--mode', 'both', '--max-pages', $maxPages, '--detail-limit', $detailLimit, '--output-dir', $outputDir)
+          Write-Host "settings: max_pages=$maxPages detail_limit=$detailLimit write=$write"
+          & $python @args 2>&1 | Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP 'suburban-scraper.log')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($write -eq 'true') {
+            $refreshArgs = @('-m', 'scripts.scrapers.usf.jobs.refresh_suburban_listing_prices', '--max-pages', $maxPages)
+            & $python @refreshArgs 2>&1 | Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP 'suburban-price-refresh.log')
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          $master = Join-Path $outputDir 'suburban_master.csv'
+          if ($write -eq 'true') {
+            $importArgs = @('-m', 'scripts.importers.import_suburban', $master, '--rejects', 'output/suburban_rejects.csv', '--summary', 'output/suburban_import_summary.json')
+          } else {
+            $importArgs = @('-m', 'scripts.importers.import_suburban', $master, '--dry-run', '--rejects', 'output/suburban_rejects.csv', '--summary', 'output/suburban_import_summary.json')
+          }
+          & $python @importArgs 2>&1 | Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP 'suburban-import.log')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload Suburban output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: suburban-pipeline-windows-${{ github.run_id }}
+          path: |
+            ${{ github.workspace }}/suburban/suburban-output/*.csv
+            ${{ github.workspace }}/suburban/output/suburban_*.csv
+            ${{ github.workspace }}/suburban/output/suburban_*.json
+            ${{ runner.temp }}/suburban-*.log
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Clean run-specific uv cache
+        if: always()
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $cache = Join-Path $env:RUNNER_TEMP 'suburban-uv-cache'
+          if (Test-Path -LiteralPath $cache) { Remove-Item -LiteralPath $cache -Recurse -Force }

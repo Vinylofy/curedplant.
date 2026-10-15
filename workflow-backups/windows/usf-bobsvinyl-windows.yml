@@ -1,0 +1,132 @@
+name: "[Windows][Self-hosted] Bob's Vinyl - Prices"
+
+on:
+  schedule:
+    - cron: "35 10 * * *"
+  workflow_dispatch:
+    inputs:
+      max_pages:
+        description: "Aantal listingpagina's; 0 = volledige catalogus"
+        required: true
+        default: "2"
+        type: string
+      delay_seconds:
+        description: "Pauze tussen listingpagina's"
+        required: true
+        default: "10"
+        type: string
+      write:
+        description: "Prijs- en registry-writes uitvoeren"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vinylofy-bobsvinyl-prices
+  cancel-in-progress: false
+
+jobs:
+  run:
+    name: Run Bob's Vinyl price refresh on Windows
+    runs-on: [self-hosted, Windows, X64, vinylofy-windows]
+    timeout-minutes: 180
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      PIP_NO_CACHE_DIR: "1"
+    steps:
+      - name: Verify runner
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        env:
+          RUNNER_NAME: ${{ runner.name }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:RUNNER_NAME -ne 'vinylofy-windows-01') { throw "Unexpected runner: $env:RUNNER_NAME" }
+          Write-Host "Runner: $env:RUNNER_NAME"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: bobsvinyl
+          persist-credentials: false
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.12.15"
+          working-directory: ${{ github.workspace }}/bobsvinyl
+          enable-cache: false
+        env:
+          UV_CACHE_DIR: ${{ runner.temp }}/bobsvinyl-prices-uv-cache
+
+      - name: Check and install persistent dependencies
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        working-directory: bobsvinyl
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:LOCALAPPDATA) { throw 'LOCALAPPDATA is required.' }
+          $root = Join-Path $env:LOCALAPPDATA 'Vinylofy'
+          $env:UV_PYTHON_INSTALL_DIR = Join-Path $root 'bobsvinyl-python'
+          $venv = Join-Path $root 'bobsvinyl-venv'
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+          if (-not (Test-Path -LiteralPath (Join-Path $venv 'Scripts/python.exe'))) {
+            uv venv --no-project --seed --managed-python --python 3.11 $venv
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          $python = Join-Path $venv 'Scripts/python.exe'
+          $packages = @(
+            @{ Name = 'requests'; Import = 'requests' },
+            @{ Name = 'beautifulsoup4'; Import = 'bs4' },
+            @{ Name = 'psycopg[binary]'; Import = 'psycopg' },
+            @{ Name = 'python-dotenv'; Import = 'dotenv' }
+          )
+          $missing = @()
+          foreach ($package in $packages) {
+            $previous = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+            & $python -c "import $($package.Import)" 2>$null
+            $code = $LASTEXITCODE; $ErrorActionPreference = $previous
+            if ($code -ne 0) { $missing += $package.Name }
+          }
+          if ($missing.Count -gt 0) {
+            & $python -m pip install @missing
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          & $python -m py_compile scripts/scrapers/bobsvinyl.py scripts/scrapers/usf/jobs/discover_bobsvinyl.py scripts/scrapers/usf/jobs/refresh_bobsvinyl_listing_prices.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Validate configuration
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:DATABASE_URL) { throw 'GitHub secret DATABASE_URL ontbreekt.' }
+
+      - name: Run Bob's Vinyl price refresh
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        working-directory: bobsvinyl
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          MAX_PAGES_INPUT: ${{ inputs.max_pages }}
+          DELAY_INPUT: ${{ inputs.delay_seconds }}
+          WRITE_INPUT: ${{ inputs.write }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:EVENT_NAME -eq 'schedule') {
+            $maxPages = '0'; $delay = '10'; $write = 'true'
+          } else {
+            $maxPages = $env:MAX_PAGES_INPUT; $delay = $env:DELAY_INPUT; $write = $env:WRITE_INPUT
+          }
+          $python = Join-Path $env:LOCALAPPDATA 'Vinylofy/bobsvinyl-venv/Scripts/python.exe'
+          $args = @('-u', '-m', 'scripts.scrapers.usf.jobs.refresh_bobsvinyl_listing_prices', '--start-page', '1', '--max-pages', $maxPages, '--delay-seconds', $delay)
+          if ($write -eq 'true') { $args += '--write' }
+          Write-Host "PRICE RUN: $python $($args -join ' ')"
+          & $python @args
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Clean run-specific uv cache
+        if: always()
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        run: |
+          $cache = Join-Path $env:RUNNER_TEMP 'bobsvinyl-prices-uv-cache'
+          if (Test-Path -LiteralPath $cache) { Remove-Item -LiteralPath $cache -Recurse -Force }

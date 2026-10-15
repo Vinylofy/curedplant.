@@ -1,0 +1,119 @@
+name: "[Windows][Self-hosted] Best Kept Records Shop"
+
+on:
+  schedule:
+    - cron: "30 3 * * *"
+      timezone: "Europe/Amsterdam"
+    - cron: "30 9 * * *"
+      timezone: "Europe/Amsterdam"
+    - cron: "30 15 * * *"
+      timezone: "Europe/Amsterdam"
+    - cron: "30 21 * * *"
+      timezone: "Europe/Amsterdam"
+  workflow_dispatch:
+    inputs:
+      max_pages:
+        description: "Listingpagina's; 0 = volledige catalogus (1539+ pagina's)"
+        required: true
+        default: "2"
+        type: string
+      detail_limit:
+        description: "Detailpagina's per run; maximum 250"
+        required: true
+        default: "10"
+        type: string
+      write:
+        description: "EAN-gated records naar de database schrijven"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bestkeptrecords-windows
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate Best Kept Records scraper on Windows
+    runs-on: [self-hosted, Windows, X64, vinylofy-windows]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
+        with: {version: "0.12.15"}
+      - name: Validate Python and tests
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $venv = Join-Path $env:RUNNER_TEMP 'bestkeptrecords-venv'
+          if (Test-Path $venv) { Remove-Item $venv -Recurse -Force }
+          uv venv --no-project --seed --managed-python --python 3.11 $venv
+          $python = Join-Path $venv 'Scripts/python.exe'
+          & $python -m pip install requests beautifulsoup4 psycopg[binary] python-dotenv
+          & $python -m py_compile scripts/scrapers/bestkeptrecords.py scripts/importers/import_bestkeptrecords.py
+          & $python -m unittest tests.test_bestkeptrecords_scraper tests.test_bestkeptrecords_importer
+
+  run:
+    name: Run Best Kept Records listing and detail batch
+    needs: validate
+    runs-on: [self-hosted, Windows, X64, vinylofy-windows]
+    timeout-minutes: 240
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
+        with: {version: "0.12.15"}
+      - name: Setup dependencies and run
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_SCHEDULE: ${{ github.event.schedule }}
+          MAX_PAGES: ${{ inputs.max_pages }}
+          DETAIL_LIMIT: ${{ inputs.detail_limit }}
+          WRITE_INPUT: ${{ inputs.write }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:EVENT_NAME -eq 'schedule' -and [DateTime]::UtcNow -ge [DateTime]::Parse('2026-11-02T00:00:00Z')) {
+            Write-Host 'Temporary four-times-daily Best Kept Records schedule ended on 2026-11-02.'
+            exit 0
+          }
+          $venv = Join-Path $env:RUNNER_TEMP 'bestkeptrecords-venv'
+          if (Test-Path $venv) { Remove-Item $venv -Recurse -Force }
+          uv venv --no-project --seed --managed-python --python 3.11 $venv
+          $python = Join-Path $venv 'Scripts/python.exe'
+          & $python -m pip install requests beautifulsoup4 psycopg[binary] python-dotenv
+          $output = Join-Path $env:RUNNER_TEMP 'bestkeptrecords'
+          $checkpoint = Join-Path $env:LOCALAPPDATA 'Vinylofy\bestkeptrecords-checkpoint\bestkeptrecords_detail_state.json'
+          New-Item -ItemType Directory -Force -Path $output, (Split-Path $checkpoint) | Out-Null
+          if (Test-Path $checkpoint) { Copy-Item $checkpoint (Join-Path $output 'bestkeptrecords_detail_state.json') -Force }
+          if ($env:EVENT_NAME -eq 'schedule') {
+            $pages = '0'; $details = '250'; $write = 'true'
+            $skipPrices = if ($env:EVENT_SCHEDULE -eq '30 3 * * *') { 'false' } else { 'true' }
+          } else {
+            $pages = if ($env:MAX_PAGES) { $env:MAX_PAGES } else { '2' }
+            $details = if ($env:DETAIL_LIMIT) { $env:DETAIL_LIMIT } else { '10' }
+            $write = if ($env:WRITE_INPUT) { $env:WRITE_INPUT } else { 'false' }
+            $skipPrices = 'false'
+          }
+          & $python scripts/scrapers/bestkeptrecords.py --max-pages $pages --detail-limit $details --listing-workers 4 --output-dir $output --detail-state-file (Join-Path $output 'bestkeptrecords_detail_state.json')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if ($write -eq 'true' -and -not $env:DATABASE_URL) { throw 'DATABASE_URL ontbreekt voor write-run.' }
+          $args = @('-u','-m','scripts.importers.import_bestkeptrecords',(Join-Path $output 'bestkeptrecords_products.csv'),'--rejects',(Join-Path $output 'rejects.csv'),'--summary',(Join-Path $output 'import_summary.json'))
+          if ($write -ne 'true') { $args += '--dry-run' }
+          if ($skipPrices -eq 'true') { $args += '--skip-prices' }
+          & $python @args
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item (Join-Path $output 'bestkeptrecords_detail_state.json') $checkpoint -Force
+      - name: Upload output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bestkeptrecords-windows-${{ github.run_id }}
+          path: ${{ runner.temp }}/bestkeptrecords
+          if-no-files-found: warn

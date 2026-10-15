@@ -1,0 +1,165 @@
+name: "[Windows][Self-hosted] Variaworld"
+
+on:
+  schedule:
+    - cron: "20 5 * * *"
+    - cron: "20 6 * * 2,5"
+  workflow_dispatch:
+    inputs:
+      listing_max_pages:
+        description: "Aantal listingpagina's per seed; 0 = tot stopconditie"
+        required: true
+        default: "0"
+        type: string
+      price_only:
+        description: "Alleen listing refresh + fast price sync"
+        required: true
+        default: true
+        type: boolean
+      detail_limit:
+        description: "Maximaal aantal detailpagina's"
+        required: true
+        default: "500"
+        type: string
+      write:
+        description: "Werkelijke databasewrites uitvoeren"
+        required: true
+        default: true
+        type: boolean
+
+concurrency:
+  group: usf-variaworld-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    name: Run Variaworld USF
+    runs-on: [self-hosted, Windows, X64, vinylofy-windows]
+    timeout-minutes: 180
+
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      PIP_NO_CACHE_DIR: "1"
+
+    steps:
+      - name: Verify runner
+        # The runner blocks generated .ps1 files under its default execution policy.
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        env:
+          RUNNER_NAME: ${{ runner.name }}
+        run: |
+          if ($env:RUNNER_NAME -ne 'vinylofy-windows-01') {
+            throw "Unexpected runner: $env:RUNNER_NAME"
+          }
+          Write-Host "Runner: $env:RUNNER_NAME"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: variaworld
+          persist-credentials: false
+
+      - name: Setup uv and Python 3.11
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.12.15"
+          python-version: "3.11"
+          working-directory: ${{ github.workspace }}/variaworld
+          enable-cache: false
+        env:
+          UV_CACHE_DIR: ${{ runner.temp }}/variaworld-uv-cache
+
+      - name: Install dependencies
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        working-directory: variaworld
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # uv creates a Windows junction for its managed Python; the E: runner temp drive rejected it.
+          # Keep one pinned Python 3.11 install in the service account's local application data.
+          if (-not $env:LOCALAPPDATA) { throw 'LOCALAPPDATA is required for managed Python.' }
+          $env:UV_PYTHON_INSTALL_DIR = Join-Path $env:LOCALAPPDATA 'Vinylofy\variaworld-python'
+          $venv = Join-Path $env:RUNNER_TEMP 'variaworld-venv'
+          if (Test-Path -LiteralPath $venv) {
+            Remove-Item -LiteralPath $venv -Recurse -Force
+          }
+          uv venv --no-project --seed --managed-python --python 3.11 $venv
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $python = Join-Path $venv 'Scripts/python.exe'
+          & $python --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $python -m pip install --upgrade pip
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (Test-Path -LiteralPath requirements.txt) {
+            & $python -m pip install -r requirements.txt
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          if (Test-Path -LiteralPath requirements-scrapers.txt) {
+            & $python -m pip install -r requirements-scrapers.txt
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          & $python -m pip install requests beautifulsoup4 'psycopg[binary]' python-dotenv
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run pipeline
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        working-directory: variaworld
+        env:
+          LISTING_MAX_PAGES_INPUT: ${{ inputs.listing_max_pages }}
+          PRICE_ONLY_INPUT: ${{ inputs.price_only }}
+          DETAIL_LIMIT_INPUT: ${{ inputs.detail_limit }}
+          WRITE_INPUT: ${{ inputs.write }}
+          VARIAWORLD_SCHEDULE: ${{ github.event.schedule }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') {
+            $listingMaxPages = $env:LISTING_MAX_PAGES_INPUT
+            $priceOnly = $env:PRICE_ONLY_INPUT
+            $detailLimit = $env:DETAIL_LIMIT_INPUT
+            $write = $env:WRITE_INPUT
+          } elseif ($env:VARIAWORLD_SCHEDULE -eq '50 2 * * 2,5') {
+            $listingMaxPages = '0'
+            $priceOnly = 'false'
+            $detailLimit = '500'
+            $write = 'true'
+          } else {
+            $listingMaxPages = '0'
+            $priceOnly = 'true'
+            $detailLimit = '0'
+            $write = 'true'
+          }
+          $python = Join-Path $env:RUNNER_TEMP 'variaworld-venv/Scripts/python.exe'
+          $pipelineArgs = @(
+            '-u', '-m', 'scripts.scrapers.usf.jobs.run_variaworld_pipeline',
+            '--listing-start-page', '1',
+            '--listing-max-pages', $listingMaxPages,
+            '--listing-sleep', '0.30',
+            '--fast-price-sync',
+            '--detail-limit', $detailLimit,
+            '--stage-limit', $detailLimit,
+            '--promote-limit', $detailLimit,
+            '--quarantine-limit', $detailLimit
+          )
+          if ($write -eq 'true') {
+            $pipelineArgs += '--write'
+          }
+          if ($priceOnly -eq 'true') {
+            $pipelineArgs += @('--skip-detail', '--skip-stage', '--skip-promote', '--skip-quarantine')
+          }
+          Write-Host "$python $($pipelineArgs -join ' ')"
+          & $python @pipelineArgs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Clean temporary Python environment
+        if: always()
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($name in @('variaworld-venv', 'variaworld-uv-cache')) {
+            $path = Join-Path $env:RUNNER_TEMP $name
+            if (Test-Path -LiteralPath $path) {
+              Remove-Item -LiteralPath $path -Recurse -Force
+            }
+          }

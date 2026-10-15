@@ -1,0 +1,326 @@
+name: "[Windows][Self-hosted] CD Hal Ruinen"
+
+on:
+  schedule:
+    - cron: "30 0 * * *"
+      timezone: "Europe/Amsterdam"
+  workflow_dispatch:
+    inputs:
+      listing_max_pages:
+        description: "0 = volledige collectie; gebruik 2 voor eerste test"
+        required: true
+        default: "2"
+        type: string
+
+      run_detail:
+        description: "Details, stage, promote en quarantine uitvoeren"
+        required: true
+        default: true
+        type: boolean
+
+      detail_limit:
+        description: "Maximumaantal detailpagina's"
+        required: true
+        default: "25"
+        type: string
+
+      debug_listing:
+        description: "Uitgebreide listingdiagnose tonen"
+        required: true
+        default: true
+        type: boolean
+
+      write:
+        description: "Werkelijke databasewrites uitvoeren"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: usf-cdhal-production
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate CD Hal Ruinen USF on Windows
+    runs-on: [self-hosted, Windows, X64, vinylofy-windows]
+    timeout-minutes: 30
+
+    steps:
+      - name: Verify runner
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        env:
+          RUNNER_NAME: ${{ runner.name }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:RUNNER_NAME -ne 'vinylofy-windows-01') { throw "Unexpected runner: $env:RUNNER_NAME" }
+          Write-Host "Runner: $env:RUNNER_NAME"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: cdhal-validate
+          persist-credentials: false
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.12.15"
+          python-version: "3.11"
+          working-directory: ${{ github.workspace }}/cdhal-validate
+          enable-cache: false
+        env:
+          UV_CACHE_DIR: ${{ runner.temp }}/cdhal-validate-uv-cache
+
+      - name: Check and install persistent validation dependencies
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        working-directory: cdhal-validate
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:LOCALAPPDATA) { throw 'LOCALAPPDATA is required.' }
+          $root = Join-Path $env:LOCALAPPDATA 'Vinylofy'
+          $env:UV_PYTHON_INSTALL_DIR = Join-Path $root 'cdhal-validation-python'
+          $venv = Join-Path $root 'cdhal-validation-venv'
+          $python = Join-Path $venv 'Scripts/python.exe'
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+          if (-not (Test-Path -LiteralPath $python)) {
+            Write-Host "Creating persistent CD Hal validation environment: $venv"
+            uv venv --no-project --seed --managed-python --python 3.11 $venv
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } else { Write-Host "Reusing persistent CD Hal validation environment: $venv" }
+          $packages = @(
+            @{ Import = 'requests'; Spec = 'requests' },
+            @{ Import = 'bs4'; Spec = 'beautifulsoup4' },
+            @{ Import = 'psycopg'; Spec = 'psycopg[binary]' },
+            @{ Import = 'dotenv'; Spec = 'python-dotenv' }
+          )
+          foreach ($package in $packages) {
+            & $python -c "import importlib.util,sys; sys.exit(0 if importlib.util.find_spec('$($package.Import)') else 1)"
+            if ($LASTEXITCODE -ne 0) {
+              Write-Host "Installing missing package: $($package.Spec)"
+              & $python -m pip install $package.Spec
+              if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            } else { Write-Host "Package already available: $($package.Spec)" }
+          }
+          $modules = @(
+            'scripts/scrapers/usf/jobs/refresh_cdhal_listing_prices.py',
+            'scripts/scrapers/usf/jobs/detail_cdhal.py',
+            'scripts/scrapers/usf/jobs/stage_cdhal.py',
+            'scripts/scrapers/usf/jobs/promote_cdhal.py',
+            'scripts/scrapers/usf/jobs/quarantine_cdhal.py',
+            'scripts/scrapers/usf/jobs/run_cdhal_pipeline.py'
+          )
+          & $python -m py_compile @modules
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run focused CD Hal tests
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        working-directory: cdhal-validate
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $python = Join-Path $env:LOCALAPPDATA 'Vinylofy/cdhal-validation-venv/Scripts/python.exe'
+          & $python -m unittest tests.test_cdhal_listing tests.test_cdhal_detail_transport
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Verify CD Hal Ruinen HTML-only price authority
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        working-directory: cdhal-validate
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $target = 'scripts/scrapers/usf/jobs/refresh_cdhal_listing_prices.py'
+          $content = Get-Content -LiteralPath $target -Raw
+          if ($content -match 'fetch_collection_json_prices|selected_json_price|json_product_price|json_variant_price|collection_products_json') {
+            throw '[ERROR] JSON-prijsfallback is aanwezig.'
+          }
+          if ($content -notmatch 'BeautifulSoup') { throw 'BeautifulSoup ontbreekt in de CD Hal listing scraper.' }
+          if ($content -notmatch 'product-item') { throw 'product-item-selector ontbreekt in de CD Hal listing scraper.' }
+          Write-Host '[OK] CD Hal Ruinen gebruikt listing-HTML zonder JSON-prijsfallback.'
+
+      - name: Validate CLIs
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        working-directory: cdhal-validate
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $python = Join-Path $env:LOCALAPPDATA 'Vinylofy/cdhal-validation-venv/Scripts/python.exe'
+          foreach ($module in @('refresh_cdhal_listing_prices', 'detail_cdhal', 'stage_cdhal', 'promote_cdhal', 'quarantine_cdhal', 'run_cdhal_pipeline')) {
+            & $python -m "scripts.scrapers.usf.jobs.$module" --help *> $null
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+
+      - name: Clean validation uv cache
+        if: always()
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $cache = Join-Path $env:RUNNER_TEMP 'cdhal-validate-uv-cache'
+          if (Test-Path -LiteralPath $cache) { Remove-Item -LiteralPath $cache -Recurse -Force }
+
+  pipeline:
+    name: Run CD Hal Ruinen USF
+    needs: validate
+    # CD Hal blokkeert verkeer vanaf GitHub-hosted runner-IP's.
+    # Gebruik dezelfde NL/EU self-hosted runner als Variaworld.
+    runs-on: [self-hosted, Windows, X64, vinylofy-windows]
+    timeout-minutes: 360
+
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      PIP_NO_CACHE_DIR: "1"
+
+    steps:
+      - name: Verify runner
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        env:
+          RUNNER_NAME: ${{ runner.name }}
+        run: |
+          if ($env:RUNNER_NAME -ne 'vinylofy-windows-01') {
+            throw "Unexpected runner: $env:RUNNER_NAME"
+          }
+          Write-Host "Runner: $env:RUNNER_NAME"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: cdhal
+          persist-credentials: false
+
+      - name: Setup uv and Python 3.11
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.12.15"
+          python-version: "3.11"
+          working-directory: ${{ github.workspace }}/cdhal
+          enable-cache: false
+        env:
+          UV_CACHE_DIR: ${{ runner.temp }}/cdhal-uv-cache
+
+      - name: Install dependencies
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        working-directory: cdhal
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:LOCALAPPDATA) { throw 'LOCALAPPDATA is required for managed Python.' }
+          $env:UV_PYTHON_INSTALL_DIR = Join-Path $env:LOCALAPPDATA 'Vinylofy\cdhal-python'
+          $venv = Join-Path $env:RUNNER_TEMP 'cdhal-venv'
+          if (Test-Path -LiteralPath $venv) {
+            Remove-Item -LiteralPath $venv -Recurse -Force
+          }
+          uv venv --no-project --seed --managed-python --python 3.11 $venv
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $python = Join-Path $venv 'Scripts/python.exe'
+          & $python --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $python -m pip install --upgrade pip
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (Test-Path -LiteralPath requirements.txt) {
+            & $python -m pip install -r requirements.txt
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          if (Test-Path -LiteralPath requirements-scrapers.txt) {
+            & $python -m pip install -r requirements-scrapers.txt
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          & $python -m pip install requests beautifulsoup4 'psycopg[binary]' python-dotenv playwright
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Install Playwright Chromium
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:LOCALAPPDATA) { throw 'LOCALAPPDATA is required for Chromium.' }
+          # The E: runner temp drive does not support Playwright's browser install lock.
+          $env:PLAYWRIGHT_BROWSERS_PATH = Join-Path $env:LOCALAPPDATA 'Vinylofy\cdhal-playwright'
+          $python = Join-Path $env:RUNNER_TEMP 'cdhal-venv/Scripts/python.exe'
+          & $python -m playwright install chromium
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Validate database secret
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        run: |
+          if (-not $env:DATABASE_URL) {
+            throw 'DATABASE_URL secret ontbreekt.'
+          }
+
+      - name: Run CD Hal Ruinen pipeline
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        working-directory: cdhal
+        env:
+          LISTING_MAX_PAGES_INPUT: ${{ inputs.listing_max_pages }}
+          RUN_DETAIL_INPUT: ${{ inputs.run_detail }}
+          DETAIL_LIMIT_INPUT: ${{ inputs.detail_limit }}
+          DEBUG_LISTING_INPUT: ${{ inputs.debug_listing }}
+          WRITE_INPUT: ${{ inputs.write }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:LOCALAPPDATA) { throw 'LOCALAPPDATA is required for Chromium.' }
+          $env:PLAYWRIGHT_BROWSERS_PATH = Join-Path $env:LOCALAPPDATA 'Vinylofy\cdhal-playwright'
+          $logDir = Join-Path $PWD 'output/usf-cdhal'
+          New-Item -ItemType Directory -Path $logDir -Force | Out-Null
+
+          if ($env:GITHUB_EVENT_NAME -eq 'schedule') {
+            $listingMaxPages = '0'
+            $runDetail = 'true'
+            $detailLimit = '500'
+            $debugListing = 'false'
+            $write = 'true'
+          } else {
+            $listingMaxPages = $env:LISTING_MAX_PAGES_INPUT
+            $runDetail = $env:RUN_DETAIL_INPUT
+            $detailLimit = $env:DETAIL_LIMIT_INPUT
+            $debugListing = $env:DEBUG_LISTING_INPUT
+            $write = $env:WRITE_INPUT
+          }
+          $python = Join-Path $env:RUNNER_TEMP 'cdhal-venv/Scripts/python.exe'
+          $pipelineArgs = @(
+            '-u', '-m', 'scripts.scrapers.usf.jobs.run_cdhal_pipeline',
+            '--listing-start-page', '1',
+            '--listing-max-pages', $listingMaxPages,
+            '--listing-sleep', '0.35',
+            '--max-page-failures', '3',
+            '--detail-limit', $detailLimit,
+            '--detail-sleep', '0.50',
+            '--detail-retry-days', '30',
+            '--stage-limit', $detailLimit,
+            '--promote-limit', $detailLimit,
+            '--quarantine-limit', '100'
+          )
+          if ($runDetail -eq 'true') {
+            $pipelineArgs += '--run-detail'
+          }
+          if ($debugListing -eq 'true') {
+            $pipelineArgs += '--debug-listing'
+          }
+          if ($write -eq 'true') {
+            $pipelineArgs += '--write'
+          }
+          Write-Host "$python $($pipelineArgs -join ' ')"
+          $log = Join-Path $logDir 'pipeline.log'
+          $ErrorActionPreference = 'Continue'
+          & $python @pipelineArgs 2>&1 | Tee-Object -FilePath $log
+          $pipelineExitCode = $LASTEXITCODE
+          $ErrorActionPreference = 'Stop'
+          if ($pipelineExitCode -ne 0) { exit $pipelineExitCode }
+
+      - name: Upload pipeline log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: usf-cdhal-${{ github.run_id }}
+          path: cdhal/output/usf-cdhal/**
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Clean temporary CD Hal files
+        if: always()
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($name in @('cdhal-venv', 'cdhal-uv-cache')) {
+            $path = Join-Path $env:RUNNER_TEMP $name
+            if (Test-Path -LiteralPath $path) {
+              Remove-Item -LiteralPath $path -Recurse -Force
+            }
+          }

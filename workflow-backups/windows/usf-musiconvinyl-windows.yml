@@ -1,0 +1,219 @@
+name: "[Windows][Self-hosted] Music On Vinyl"
+
+on:
+  schedule:
+    # Dagelijkse volle listing/prijsrefresh
+    - cron: "17 23 * * *"
+    # Elke 2 uur detail enrichment, kleine batch
+    - cron: "57 */2 * * *"
+
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Run mode"
+        required: true
+        default: "price-only"
+        type: choice
+        options:
+          - price-only
+          - detail
+          - full
+      collections:
+        description: "Comma-separated collections"
+        required: true
+        default: "all-products"
+        type: string
+      max_pages:
+        description: "Aantal pagina's per collection"
+        required: true
+        default: "1"
+        type: string
+      listing_limit:
+        description: "Shopify products.json limit per page"
+        required: true
+        default: "100"
+        type: string
+      materialize_limit:
+        description: "Max queued links naar raw"
+        required: true
+        default: "25"
+        type: string
+      stage_limit:
+        description: "Max raw snapshots naar staged_offers"
+        required: true
+        default: "25"
+        type: string
+      promote_limit:
+        description: "Max staged offers promoveren"
+        required: true
+        default: "25"
+        type: string
+      write:
+        description: "Werkelijke databasewrites uitvoeren"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: usf-musiconvinyl-production
+  cancel-in-progress: false
+
+jobs:
+  run:
+    name: Run Music On Vinyl USF pipeline on Windows
+    runs-on: [self-hosted, Windows, X64, vinylofy-windows]
+    timeout-minutes: 360
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      PIP_NO_CACHE_DIR: "1"
+
+    steps:
+      - name: Verify runner
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        env:
+          RUNNER_NAME: ${{ runner.name }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:RUNNER_NAME -ne 'vinylofy-windows-01') { throw "Unexpected runner: $env:RUNNER_NAME" }
+          Write-Host "Runner: $env:RUNNER_NAME"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: musiconvinyl
+          persist-credentials: false
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.12.15"
+          working-directory: ${{ github.workspace }}/musiconvinyl
+          enable-cache: false
+        env:
+          UV_CACHE_DIR: ${{ runner.temp }}/musiconvinyl-uv-cache
+
+      - name: Check and install persistent dependencies
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        working-directory: musiconvinyl
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:LOCALAPPDATA) { throw 'LOCALAPPDATA is required.' }
+          $root = Join-Path $env:LOCALAPPDATA 'Vinylofy'
+          $env:UV_PYTHON_INSTALL_DIR = Join-Path $root 'musiconvinyl-python'
+          $venv = Join-Path $root 'musiconvinyl-venv'
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+          if (-not (Test-Path -LiteralPath (Join-Path $venv 'Scripts/python.exe'))) {
+            Write-Host "Creating persistent Music On Vinyl environment: $venv"
+            uv venv --no-project --seed --managed-python --python 3.11 $venv
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } else { Write-Host "Reusing persistent Music On Vinyl environment: $venv" }
+          $python = Join-Path $venv 'Scripts/python.exe'
+          & $python --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $packages = @(
+            @{ Name = 'requests'; Import = 'requests' },
+            @{ Name = 'beautifulsoup4'; Import = 'bs4' },
+            @{ Name = 'psycopg[binary]'; Import = 'psycopg' },
+            @{ Name = 'python-dotenv'; Import = 'dotenv' }
+          )
+          $missing = @()
+          foreach ($package in $packages) {
+            $previousErrorActionPreference = $ErrorActionPreference
+            $ErrorActionPreference = 'Continue'
+            & $python -c "import $($package.Import)" 2>$null
+            $importExitCode = $LASTEXITCODE
+            $ErrorActionPreference = $previousErrorActionPreference
+            if ($importExitCode -ne 0) { $missing += $package.Name }
+          }
+          if ($missing.Count -gt 0) {
+            Write-Host "Installing missing packages: $($missing -join ', ')"
+            & $python -m pip install @missing
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } else { Write-Host 'All Music On Vinyl runtime packages are already available.' }
+          $modules = @(
+            'scripts/scrapers/musiconvinyl.py',
+            'scripts/scrapers/usf/jobs/discover_musiconvinyl.py',
+            'scripts/scrapers/usf/jobs/materialize_musiconvinyl_listing.py',
+            'scripts/scrapers/usf/jobs/refresh_musiconvinyl_listing_prices.py',
+            'scripts/scrapers/usf/jobs/stage_musiconvinyl.py',
+            'scripts/scrapers/usf/jobs/promote_musiconvinyl.py',
+            'scripts/scrapers/usf/jobs/run_musiconvinyl_pipeline.py',
+            'scripts/scrapers/usf/jobs/enrich_musiconvinyl_details.py',
+            'scripts/scrapers/usf/jobs/refresh_musiconvinyl_prices_only.py',
+            'scripts/scrapers/usf/jobs/sync_musiconvinyl_listing_prices.py'
+          )
+          & $python -m py_compile @modules
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $python -m scripts.scrapers.usf.jobs.run_musiconvinyl_pipeline --help *> $null
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Validate configuration
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:DATABASE_URL) { throw 'GitHub secret DATABASE_URL ontbreekt.' }
+          Write-Host '[CONFIG] DATABASE_URL is ingesteld.'
+
+      - name: Run Music On Vinyl USF pipeline
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        working-directory: musiconvinyl
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          SCHEDULE: ${{ github.event.schedule }}
+          MODE_INPUT: ${{ inputs.mode }}
+          COLLECTIONS_INPUT: ${{ inputs.collections }}
+          MAX_PAGES_INPUT: ${{ inputs.max_pages }}
+          LISTING_LIMIT_INPUT: ${{ inputs.listing_limit }}
+          MATERIALIZE_LIMIT_INPUT: ${{ inputs.materialize_limit }}
+          STAGE_LIMIT_INPUT: ${{ inputs.stage_limit }}
+          PROMOTE_LIMIT_INPUT: ${{ inputs.promote_limit }}
+          WRITE_INPUT: ${{ inputs.write }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:EVENT_NAME -eq 'schedule') {
+            if ($env:SCHEDULE -eq '17 23 * * *') {
+              $mode = 'price-only'; $collections = 'all-products'; $maxPages = '10'; $listingLimit = '100'; $materializeLimit = '500'; $stageLimit = '500'; $promoteLimit = '500'; $write = 'true'
+            } else {
+              $mode = 'detail'; $collections = 'all-products'; $maxPages = '1'; $listingLimit = '100'; $materializeLimit = '25'; $stageLimit = '25'; $promoteLimit = '25'; $write = 'true'
+            }
+          } else {
+            $mode = $env:MODE_INPUT; $collections = $env:COLLECTIONS_INPUT; $maxPages = $env:MAX_PAGES_INPUT; $listingLimit = $env:LISTING_LIMIT_INPUT; $materializeLimit = $env:MATERIALIZE_LIMIT_INPUT; $stageLimit = $env:STAGE_LIMIT_INPUT; $promoteLimit = $env:PROMOTE_LIMIT_INPUT; $write = $env:WRITE_INPUT
+          }
+          $python = Join-Path $env:LOCALAPPDATA 'Vinylofy/musiconvinyl-venv/Scripts/python.exe'
+          Write-Host "settings: mode=$mode collections=$collections max_pages=$maxPages listing_limit=$listingLimit materialize_limit=$materializeLimit stage_limit=$stageLimit promote_limit=$promoteLimit write=$write"
+          if ($mode -eq 'price-only') {
+            $refresh = @('-u', '-m', 'scripts.scrapers.usf.jobs.refresh_musiconvinyl_prices_only', '--collections', $collections, '--max-pages', $maxPages, '--listing-limit', $listingLimit, '--sleep', '30')
+            $sync = @('-u', '-m', 'scripts.scrapers.usf.jobs.sync_musiconvinyl_listing_prices')
+            if ($write -eq 'true') { $refresh += '--write'; $sync += '--write' }
+            & $python @refresh
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            & $python @sync
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } elseif ($mode -eq 'detail') {
+            $detail = @('-u', '-m', 'scripts.scrapers.usf.jobs.enrich_musiconvinyl_details', '--limit', $materializeLimit, '--sleep', '3')
+            $stage = @('-u', '-m', 'scripts.scrapers.usf.jobs.stage_musiconvinyl', '--limit', $stageLimit)
+            $promote = @('-u', '-m', 'scripts.scrapers.usf.jobs.promote_musiconvinyl', '--limit', $promoteLimit)
+            if ($write -eq 'true') { $detail += '--write'; $stage += '--write'; $promote += '--write' }
+            & $python @detail
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            & $python @stage
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            & $python @promote
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } elseif ($mode -eq 'full') {
+            $full = @('-u', '-m', 'scripts.scrapers.usf.jobs.run_musiconvinyl_pipeline', '--collections', $collections, '--max-pages', $maxPages, '--listing-limit', $listingLimit, '--materialize-limit', $materializeLimit, '--stage-limit', $stageLimit, '--promote-limit', $promoteLimit)
+            if ($write -eq 'true') { $full += '--write' }
+            & $python @full
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } else { throw "Unknown mode: $mode" }
+
+      - name: Clean run-specific uv cache
+        if: always()
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $cache = Join-Path $env:RUNNER_TEMP 'musiconvinyl-uv-cache'
+          if (Test-Path -LiteralPath $cache) { Remove-Item -LiteralPath $cache -Recurse -Force }

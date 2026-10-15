@@ -1,0 +1,133 @@
+name: "[Windows][Self-hosted] Top Notch Shop"
+
+on:
+  schedule:
+    - cron: "30 4 * * *"
+      timezone: "Europe/Amsterdam"
+  workflow_dispatch:
+    inputs:
+      max_pages:
+        description: "Listing pages; 0 = volledige catalogus"
+        required: true
+        default: "0"
+        type: choice
+        options: ["0", "1", "3", "5"]
+      detail_limit:
+        description: "Detailpagina's per run; maximum 100"
+        required: true
+        default: "100"
+        type: choice
+        options: ["0", "5", "25", "100"]
+      delay_seconds:
+        description: "Delay between public requests"
+        required: true
+        default: "1.0"
+        type: string
+      write:
+        description: "Accepted EAN-gated records naar de database schrijven"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: topnotch-windows
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate Top Notch scraper on Windows
+    runs-on: [self-hosted, Windows, X64, vinylofy-windows]
+    timeout-minutes: 30
+    steps:
+      - name: Verify runner
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:RUNNER_NAME -ne 'vinylofy-windows-01') { throw "Unexpected runner: $env:RUNNER_NAME" }
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Setup uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.12.15"
+      - name: Setup Python dependencies
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        run: |
+          $venv = Join-Path $env:RUNNER_TEMP 'topnotch-venv'
+          if (Test-Path -LiteralPath $venv) { Remove-Item -LiteralPath $venv -Recurse -Force }
+          uv venv --no-project --seed --managed-python --python 3.11 $venv
+          $python = Join-Path $venv 'Scripts/python.exe'
+          & $python -m pip install requests beautifulsoup4 psycopg[binary] python-dotenv
+          & $python -m py_compile scripts/scrapers/topnotch.py scripts/importers/import_topnotch.py
+          & $python -m unittest tests.test_topnotch_scraper tests.test_topnotch_importer -v
+
+  run:
+    name: Run Top Notch full listing and detail batch on Windows
+    needs: validate
+    runs-on: [self-hosted, Windows, X64, vinylofy-windows]
+    timeout-minutes: 180
+    env:
+      DATABASE_URL: ${{secrets.DATABASE_URL}}
+    steps:
+      - name: Verify runner
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:RUNNER_NAME -ne 'vinylofy-windows-01') { throw "Unexpected runner: $env:RUNNER_NAME" }
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Setup uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.12.15"
+      - name: Setup Python dependencies
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        run: |
+          $venv = Join-Path $env:RUNNER_TEMP 'topnotch-venv'
+          if (Test-Path -LiteralPath $venv) { Remove-Item -LiteralPath $venv -Recurse -Force }
+          uv venv --no-project --seed --managed-python --python 3.11 $venv
+          $python = Join-Path $venv 'Scripts/python.exe'
+          & $python -m pip install requests beautifulsoup4 psycopg[binary] python-dotenv
+      - name: Run full listing and resumable detail batch
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $python = Join-Path $env:RUNNER_TEMP 'topnotch-venv\Scripts/python.exe'
+          $outputDir = Join-Path $env:RUNNER_TEMP 'topnotch'
+          $checkpointDir = Join-Path $env:LOCALAPPDATA 'Vinylofy\topnotch-checkpoint'
+          $checkpointFile = Join-Path $checkpointDir 'topnotch_detail_state.json'
+          New-Item -ItemType Directory -Force -Path $outputDir, $checkpointDir | Out-Null
+          if (Test-Path -LiteralPath $checkpointFile) {
+            Copy-Item -LiteralPath $checkpointFile -Destination (Join-Path $outputDir 'topnotch_detail_state.json') -Force
+            Write-Host "Restored detail checkpoint: $checkpointFile"
+          }
+          if ($env:GITHUB_EVENT_NAME -eq 'schedule') {
+            $maxPages = '0'; $detailLimit = '100'; $delay = '1.0'; $write = 'true'
+          } else {
+            $maxPages = '${{inputs.max_pages}}'; $detailLimit = '${{inputs.detail_limit}}'; $delay = '${{inputs.delay_seconds}}'; $write = '${{inputs.write}}'
+          }
+          Write-Host "max_pages=$maxPages detail_limit=$detailLimit delay=$delay write=$write"
+          & $python -u scripts/scrapers/topnotch.py --max-pages $maxPages --detail-limit $detailLimit --delay-seconds $delay --output-dir $outputDir --detail-state-file (Join-Path $outputDir 'topnotch_detail_state.json')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $summary = Get-Content (Join-Path $outputDir 'summary.json') | ConvertFrom-Json
+          if ($summary.detail_attempted -gt 100) { throw "Detail batch exceeded 100." }
+          if ($write -eq 'true' -and -not $env:DATABASE_URL) { throw 'DATABASE_URL secret ontbreekt voor een write-run.' }
+          $importerArgs = @('-u', '-m', 'scripts.importers.import_topnotch', (Join-Path $outputDir 'topnotch_products.csv'), '--rejects', (Join-Path $outputDir 'rejects.csv'), '--summary', (Join-Path $outputDir 'import_summary.json'))
+          if ($write -ne 'true') { $importerArgs += '--dry-run' }
+          & $python @importerArgs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Copy-Item -LiteralPath (Join-Path $outputDir 'topnotch_detail_state.json') -Destination $checkpointFile -Force
+      - name: Upload Top Notch artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: topnotch-windows-${{github.run_id}}
+          path: ${{runner.temp}}/topnotch
+          if-no-files-found: warn

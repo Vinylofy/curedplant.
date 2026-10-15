@@ -1,0 +1,203 @@
+name: "[Windows][Self-hosted] Blackvinyl"
+
+on:
+  schedule:
+    # Listing/prices are refreshed daily.
+    - cron: "20 2 * * *"
+    # Missing EANs are retried weekly.
+    - cron: "40 2 * * 1"
+
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Runmodus: prices, weekly EAN retry, or full enrichment"
+        required: true
+        default: "full"
+        type: choice
+        options:
+          - prices
+          - ean
+          - full
+      write:
+        description: "Databasewrites uitvoeren; standaard dry-run"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: blackvinyl-catalog
+  cancel-in-progress: false
+
+jobs:
+  run:
+    name: Run Blackvinyl on Windows
+    runs-on: [self-hosted, Windows, X64, vinylofy-windows]
+    timeout-minutes: 120
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      PIP_NO_CACHE_DIR: "1"
+
+    steps:
+      - name: Verify runner
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        env:
+          RUNNER_NAME: ${{ runner.name }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:RUNNER_NAME -ne 'vinylofy-windows-01') { throw "Unexpected runner: $env:RUNNER_NAME" }
+          Write-Host "Runner: $env:RUNNER_NAME"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: blackvinyl
+          persist-credentials: false
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.12.15"
+          python-version: "3.12"
+          working-directory: ${{ github.workspace }}/blackvinyl
+          enable-cache: false
+        env:
+          UV_CACHE_DIR: ${{ runner.temp }}/blackvinyl-uv-cache
+
+      - name: Check and install persistent dependencies
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        working-directory: blackvinyl
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:LOCALAPPDATA) { throw 'LOCALAPPDATA is required.' }
+          $root = Join-Path $env:LOCALAPPDATA 'Vinylofy'
+          $env:UV_PYTHON_INSTALL_DIR = Join-Path $root 'blackvinyl-python'
+          $venv = Join-Path $root 'blackvinyl-venv'
+          $python = Join-Path $venv 'Scripts/python.exe'
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+          if (-not (Test-Path -LiteralPath $python)) {
+            Write-Host "Creating persistent Blackvinyl environment: $venv"
+            uv venv --no-project --seed --managed-python --python 3.12 $venv
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } else { Write-Host "Reusing persistent Blackvinyl environment: $venv" }
+          & $python --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $packages = @(
+            @{ Import = 'requests'; Spec = 'requests' },
+            @{ Import = 'bs4'; Spec = 'beautifulsoup4' },
+            @{ Import = 'psycopg'; Spec = 'psycopg[binary]' },
+            @{ Import = 'dotenv'; Spec = 'python-dotenv' }
+          )
+          foreach ($package in $packages) {
+            & $python -c "import importlib.util,sys; sys.exit(0 if importlib.util.find_spec('$($package.Import)') else 1)"
+            if ($LASTEXITCODE -ne 0) {
+              Write-Host "Installing missing package: $($package.Spec)"
+              & $python -m pip install $package.Spec
+              if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            } else { Write-Host "Package already available: $($package.Spec)" }
+          }
+          $modules = @(
+            'scripts/scrapers/blackvinyl.py',
+            'scripts/importers/import_blackvinyl.py',
+            'scripts/scrapers/usf/core/shop_registry.py',
+            'scripts/scrapers/usf/tests/test_blackvinyl_contract.py'
+          )
+          & $python -m py_compile @modules
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $python -m unittest scripts.scrapers.usf.tests.test_blackvinyl_contract -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $python -m scripts.scrapers.blackvinyl --help *> $null
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          & $python -m scripts.importers.import_blackvinyl --help *> $null
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Restore persistent detail cache
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        working-directory: blackvinyl
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $checkpoint = Join-Path $env:LOCALAPPDATA 'Vinylofy/blackvinyl-checkpoint/blackvinyl_detail_cache.json'
+          $target = Join-Path (Get-Location) 'data/raw/blackvinyl/blackvinyl_detail_cache.json'
+          New-Item -ItemType Directory -Force -Path (Split-Path $target) | Out-Null
+          if (Test-Path -LiteralPath $checkpoint) {
+            Copy-Item -LiteralPath $checkpoint -Destination $target -Force
+            Write-Host "Restored Blackvinyl detail cache: $checkpoint"
+          } else { Write-Host 'No persistent Blackvinyl detail cache found.' }
+
+      - name: Run Blackvinyl scraper and importer
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        working-directory: blackvinyl
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_SCHEDULE: ${{ github.event.schedule }}
+          DISPATCH_MODE: ${{ inputs.mode }}
+          WRITE_INPUT: ${{ inputs.write }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path 'data/raw/blackvinyl', 'output' | Out-Null
+          $python = Join-Path $env:LOCALAPPDATA 'Vinylofy/blackvinyl-venv/Scripts/python.exe'
+          if ($env:EVENT_NAME -eq 'schedule') {
+            if ($env:EVENT_SCHEDULE -eq '20 2 * * *') { $mode = 'prices' }
+            elseif ($env:EVENT_SCHEDULE -eq '40 2 * * 1') { $mode = 'ean' }
+            else { throw "Unknown schedule-event: $env:EVENT_SCHEDULE" }
+            $write = 'true'
+          } else {
+            $mode = if ($env:DISPATCH_MODE) { $env:DISPATCH_MODE } else { 'full' }
+            $write = if ($env:WRITE_INPUT) { $env:WRITE_INPUT } else { 'false' }
+          }
+          switch ($mode) {
+            'prices' { $detailMode = 'none'; $refreshCache = $false }
+            'ean' { $detailMode = 'missing'; $refreshCache = $true }
+            'full' { $detailMode = 'all'; $refreshCache = $true }
+            default { throw "Invalid Blackvinyl mode: $mode" }
+          }
+          $output = 'data/raw/blackvinyl/blackvinyl_products.csv'
+          $cache = 'data/raw/blackvinyl/blackvinyl_detail_cache.json'
+          $scraperArgs = @('-u', '-m', 'scripts.scrapers.blackvinyl', '--detail-mode', $detailMode, '--output', $output, '--detail-cache', $cache)
+          if ($refreshCache) { $scraperArgs += '--refresh-detail-cache' }
+          $env:VINYLOFY_SCRAPER_CMD_BLACKVINYL = ('"{0}" {1}' -f $python, ($scraperArgs -join ' '))
+          $args = @('-u', 'scripts/automation/run_vinylofy_pipeline.py', '--shop', 'blackvinyl', '--skip-upload')
+          if ($write -ne 'true') { $args += '--dry-run-import' }
+          Write-Host "settings: mode=$mode detail_mode=$detailMode refresh_cache=$refreshCache write=$write"
+          Write-Host "$python $($args -join ' ')"
+          & $python @args 2>&1 | Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP 'blackvinyl-pipeline.log')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Save persistent detail cache
+        if: always()
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        working-directory: blackvinyl
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $source = Join-Path (Get-Location) 'data/raw/blackvinyl/blackvinyl_detail_cache.json'
+          $checkpoint = Join-Path $env:LOCALAPPDATA 'Vinylofy/blackvinyl-checkpoint/blackvinyl_detail_cache.json'
+          if (Test-Path -LiteralPath $source) {
+            New-Item -ItemType Directory -Force -Path (Split-Path $checkpoint) | Out-Null
+            Copy-Item -LiteralPath $source -Destination $checkpoint -Force
+            Write-Host "Saved Blackvinyl detail cache: $checkpoint"
+          } else { Write-Host 'No Blackvinyl detail cache produced; checkpoint unchanged.' }
+
+      - name: Upload Blackvinyl artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: blackvinyl-windows-${{ github.run_id }}
+          path: |
+            ${{ github.workspace }}/blackvinyl/data/raw/blackvinyl/*.csv
+            ${{ github.workspace }}/blackvinyl/data/raw/blackvinyl/*.json
+            ${{ github.workspace }}/blackvinyl/output/blackvinyl_*.csv
+            ${{ github.workspace }}/blackvinyl/output/blackvinyl_*.json
+            ${{ github.workspace }}/blackvinyl/output/pipeline_runs/*.json
+            ${{ runner.temp }}/blackvinyl-pipeline.log
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Clean run-specific uv cache
+        if: always()
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $cache = Join-Path $env:RUNNER_TEMP 'blackvinyl-uv-cache'
+          if (Test-Path -LiteralPath $cache) { Remove-Item -LiteralPath $cache -Recurse -Force }

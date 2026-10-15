@@ -1,0 +1,213 @@
+name: "[Windows][Self-hosted] DGM Outlet"
+
+on:
+  schedule:
+    # Dagelijkse DGM USF-run; UTC.
+    - cron: "40 6 * * *"
+
+  workflow_dispatch:
+    inputs:
+      skip_discovery:
+        description: "Bestaande registry gebruiken en discovery overslaan"
+        required: true
+        default: true
+        type: boolean
+      skip_requeue:
+        description: "Stale-link requeue overslaan"
+        required: true
+        default: false
+        type: boolean
+      discovery_start_page:
+        description: "Eerste DGM-listingpagina"
+        required: true
+        default: "1"
+      discovery_max_pages:
+        description: "Aantal listingpagina's; 0 = volledige listing"
+        required: true
+        default: "2"
+      requeue_stale_hours:
+        description: "Minimale ouderdom voor prijsrefresh"
+        required: true
+        default: "24"
+      requeue_limit:
+        description: "Maximaal aantal stale links requeueën"
+        required: true
+        default: "500"
+      requeue_target_queue:
+        description: "Queue maximaal aanvullen tot dit aantal"
+        required: true
+        default: "500"
+      materialize_limit:
+        description: "Maximaal aantal queued links naar raw snapshots"
+        required: true
+        default: "25"
+      stage_limit:
+        description: "Maximaal aantal raw snapshots naar staged_offers"
+        required: true
+        default: "25"
+      promote_limit:
+        description: "Maximaal aantal staged offers promoveren"
+        required: true
+        default: "25"
+      quarantine_limit:
+        description: "Maximaal aantal promote errors quarantinen"
+        required: true
+        default: "100"
+      write:
+        description: "Werkelijke registry-, raw-, staging- en publieke writes uitvoeren"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: usf-dgmoutlet-production
+  cancel-in-progress: false
+
+jobs:
+  run:
+    name: Run DGM Outlet USF pipeline on Windows
+    runs-on: [self-hosted, Windows, X64, vinylofy-windows]
+    timeout-minutes: 180
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      PIP_NO_CACHE_DIR: "1"
+
+    steps:
+      - name: Verify runner
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        env:
+          RUNNER_NAME: ${{ runner.name }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:RUNNER_NAME -ne 'vinylofy-windows-01') { throw "Unexpected runner: $env:RUNNER_NAME" }
+          Write-Host "Runner: $env:RUNNER_NAME"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          path: dgmoutlet
+          persist-credentials: false
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: "0.12.15"
+          python-version: "3.11"
+          working-directory: ${{ github.workspace }}/dgmoutlet
+          enable-cache: false
+        env:
+          UV_CACHE_DIR: ${{ runner.temp }}/dgmoutlet-uv-cache
+
+      - name: Check and install persistent dependencies
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        working-directory: dgmoutlet
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:LOCALAPPDATA) { throw 'LOCALAPPDATA is required.' }
+          $root = Join-Path $env:LOCALAPPDATA 'Vinylofy'
+          $env:UV_PYTHON_INSTALL_DIR = Join-Path $root 'dgmoutlet-python'
+          $venv = Join-Path $root 'dgmoutlet-venv'
+          $python = Join-Path $venv 'Scripts/python.exe'
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+          if (-not (Test-Path -LiteralPath $python)) {
+            Write-Host "Creating persistent DGM Outlet environment: $venv"
+            uv venv --no-project --seed --managed-python --python 3.11 $venv
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } else { Write-Host "Reusing persistent DGM Outlet environment: $venv" }
+          & $python --version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $packages = @(
+            @{ Import = 'requests'; Spec = 'requests' },
+            @{ Import = 'bs4'; Spec = 'beautifulsoup4' },
+            @{ Import = 'psycopg'; Spec = 'psycopg[binary]' },
+            @{ Import = 'dotenv'; Spec = 'python-dotenv' }
+          )
+          foreach ($package in $packages) {
+            & $python -c "import importlib.util,sys; sys.exit(0 if importlib.util.find_spec('$($package.Import)') else 1)"
+            if ($LASTEXITCODE -ne 0) {
+              Write-Host "Installing missing package: $($package.Spec)"
+              & $python -m pip install $package.Spec
+              if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            } else { Write-Host "Package already available: $($package.Spec)" }
+          }
+          $modules = @(
+            'scripts/scrapers/dgmoutlet.py',
+            'scripts/scrapers/usf/jobs/discover_dgmoutlet.py',
+            'scripts/scrapers/usf/jobs/requeue_stale_links.py',
+            'scripts/scrapers/usf/jobs/materialize_dgmoutlet_listing.py',
+            'scripts/scrapers/usf/jobs/stage_dgmoutlet.py',
+            'scripts/scrapers/usf/jobs/promote_dgmoutlet.py',
+            'scripts/scrapers/usf/jobs/quarantine_dgmoutlet.py',
+            'scripts/scrapers/usf/jobs/run_dgmoutlet_pipeline.py'
+          )
+          & $python -m py_compile @modules
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          foreach ($module in @('discover_dgmoutlet', 'requeue_stale_links', 'materialize_dgmoutlet_listing', 'stage_dgmoutlet', 'promote_dgmoutlet', 'quarantine_dgmoutlet', 'run_dgmoutlet_pipeline')) {
+            & $python -m "scripts.scrapers.usf.jobs.$module" --help *> $null
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          & $python -m unittest scripts.scrapers.usf.tests.test_dgmoutlet_pipeline_contract -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Validate configuration
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:DATABASE_URL) { throw 'GitHub secret DATABASE_URL ontbreekt.' }
+          Write-Host '[CONFIG] DATABASE_URL is ingesteld.'
+
+      - name: Run DGM Outlet USF pipeline
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        working-directory: dgmoutlet
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          SKIP_DISCOVERY_INPUT: ${{ inputs.skip_discovery }}
+          SKIP_REQUEUE_INPUT: ${{ inputs.skip_requeue }}
+          DISCOVERY_START_PAGE_INPUT: ${{ inputs.discovery_start_page }}
+          DISCOVERY_MAX_PAGES_INPUT: ${{ inputs.discovery_max_pages }}
+          REQUEUE_STALE_HOURS_INPUT: ${{ inputs.requeue_stale_hours }}
+          REQUEUE_LIMIT_INPUT: ${{ inputs.requeue_limit }}
+          REQUEUE_TARGET_QUEUE_INPUT: ${{ inputs.requeue_target_queue }}
+          MATERIALIZE_LIMIT_INPUT: ${{ inputs.materialize_limit }}
+          STAGE_LIMIT_INPUT: ${{ inputs.stage_limit }}
+          PROMOTE_LIMIT_INPUT: ${{ inputs.promote_limit }}
+          QUARANTINE_LIMIT_INPUT: ${{ inputs.quarantine_limit }}
+          WRITE_INPUT: ${{ inputs.write }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path 'output/usf-dgmoutlet' | Out-Null
+          $python = Join-Path $env:LOCALAPPDATA 'Vinylofy/dgmoutlet-venv/Scripts/python.exe'
+          if ($env:EVENT_NAME -eq 'schedule') {
+            $skipDiscovery = 'false'; $skipRequeue = 'false'; $startPage = '1'; $maxPages = '25'; $staleHours = '24'; $requeueLimit = '250'; $targetQueue = '250'; $materializeLimit = '250'; $stageLimit = '250'; $promoteLimit = '250'; $quarantineLimit = '100'; $write = 'true'
+          } else {
+            $skipDiscovery = if ($env:SKIP_DISCOVERY_INPUT) { $env:SKIP_DISCOVERY_INPUT } else { 'true' }; $skipRequeue = if ($env:SKIP_REQUEUE_INPUT) { $env:SKIP_REQUEUE_INPUT } else { 'false' }; $startPage = if ($env:DISCOVERY_START_PAGE_INPUT) { $env:DISCOVERY_START_PAGE_INPUT } else { '1' }; $maxPages = if ($env:DISCOVERY_MAX_PAGES_INPUT) { $env:DISCOVERY_MAX_PAGES_INPUT } else { '2' }; $staleHours = if ($env:REQUEUE_STALE_HOURS_INPUT) { $env:REQUEUE_STALE_HOURS_INPUT } else { '24' }; $requeueLimit = if ($env:REQUEUE_LIMIT_INPUT) { $env:REQUEUE_LIMIT_INPUT } else { '500' }; $targetQueue = if ($env:REQUEUE_TARGET_QUEUE_INPUT) { $env:REQUEUE_TARGET_QUEUE_INPUT } else { '500' }; $materializeLimit = if ($env:MATERIALIZE_LIMIT_INPUT) { $env:MATERIALIZE_LIMIT_INPUT } else { '25' }; $stageLimit = if ($env:STAGE_LIMIT_INPUT) { $env:STAGE_LIMIT_INPUT } else { '25' }; $promoteLimit = if ($env:PROMOTE_LIMIT_INPUT) { $env:PROMOTE_LIMIT_INPUT } else { '25' }; $quarantineLimit = if ($env:QUARANTINE_LIMIT_INPUT) { $env:QUARANTINE_LIMIT_INPUT } else { '100' }; $write = if ($env:WRITE_INPUT) { $env:WRITE_INPUT } else { 'false' }
+          }
+          $args = @('-u', '-m', 'scripts.scrapers.usf.jobs.run_dgmoutlet_pipeline', '--discovery-start-page', $startPage, '--discovery-max-pages', $maxPages, '--requeue-stale-hours', $staleHours, '--requeue-limit', $requeueLimit, '--requeue-target-queue', $targetQueue, '--materialize-limit', $materializeLimit, '--stage-limit', $stageLimit, '--promote-limit', $promoteLimit, '--quarantine-limit', $quarantineLimit)
+          if ($skipDiscovery -eq 'true') { $args += '--skip-discovery' }
+          if ($skipRequeue -eq 'true') { $args += '--skip-requeue' }
+          if ($write -eq 'true') { $args += '--write' }
+          Write-Host "settings: skip_discovery=$skipDiscovery skip_requeue=$skipRequeue discovery_max_pages=$maxPages requeue_limit=$requeueLimit materialize_limit=$materializeLimit stage_limit=$stageLimit promote_limit=$promoteLimit quarantine_limit=$quarantineLimit write=$write"
+          & $python @args 2>&1 | Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP 'dgmoutlet-pipeline.log')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload DGM diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: usf-dgmoutlet-windows-${{ github.run_id }}
+          path: |
+            ${{ github.workspace }}/dgmoutlet/output/usf-dgmoutlet/**
+            ${{ runner.temp }}/dgmoutlet-pipeline.log
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Clean run-specific uv cache
+        if: always()
+        shell: powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ". '{0}'"
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $cache = Join-Path $env:RUNNER_TEMP 'dgmoutlet-uv-cache'
+          if (Test-Path -LiteralPath $cache) { Remove-Item -LiteralPath $cache -Recurse -Force }
