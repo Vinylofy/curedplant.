@@ -1,0 +1,65 @@
+from __future__ import annotations
+
+from scripts.importers.contracts import ShopImporterDefinition
+from scripts.importers.import_atthemovies import SHOP_DEFINITION as ATTHEMOVIES_IMPORTER
+from scripts.importers.import_bobsvinyl import SHOP_DEFINITION as BOBSVINYL_IMPORTER
+from scripts.importers.import_blackvinyl import SHOP_DEFINITION as BLACKVINYL_IMPORTER
+from scripts.importers.import_dgmoutlet import SHOP_DEFINITION as DGMOUTLET_IMPORTER
+from scripts.importers.import_groovespin import SHOP_DEFINITION as GROOVESPIN_IMPORTER
+from scripts.importers.import_grooverecords import SHOP_DEFINITION as GROOVERECORDS_IMPORTER
+from scripts.importers.import_getbackmusic import SHOP_DEFINITION as GETBACKMUSIC_IMPORTER
+from scripts.importers.import_platomania import SHOP_DEFINITION as PLATOMANIA_IMPORTER
+from scripts.importers.import_platenzaak import SHOP_DEFINITION as PLATENZAAK_IMPORTER
+from scripts.importers.import_recordsonvinyl import SHOP_DEFINITION as RECORDSONVINYL_IMPORTER
+from scripts.importers.import_soundshaarlem import SHOP_DEFINITION as SOUNDSHAARLEM_IMPORTER
+from scripts.importers.import_soundsvenlo import SHOP_DEFINITION as SOUNDSVENLO_IMPORTER
+from scripts.importers.import_suburban import SHOP_DEFINITION as SUBURBAN_IMPORTER
+from scripts.importers.import_variaworld import SHOP_DEFINITION as VARIAWORLD_IMPORTER
+from scripts.importers.import_viprecords import SHOP_DEFINITION as VIPRECORDS_IMPORTER
+from scripts.importers.import_vinylfreaks import SHOP_DEFINITION as VINYLFREAKS_IMPORTER
+from scripts.importers.import_rockinoutrecords import SHOP_DEFINITION as ROCKINOUTRECORDS_IMPORTER
+from scripts.importers.import_topnotch import SHOP_DEFINITION as TOPNOTCH_IMPORTER
+from scripts.importers.import_bestkeptrecords import SHOP_DEFINITION as BESTKEPTRECORDS_IMPORTER
+from scripts.importers.import_vinyleers import SHOP_DEFINITION as VINYLEERS_IMPORTER
+
+SHOP_IMPORTERS: dict[str, ShopImporterDefinition] = {
+    definition.key: definition
+    for definition in (
+        ATTHEMOVIES_IMPORTER,
+        BLACKVINYL_IMPORTER,
+        BOBSVINYL_IMPORTER,
+        DGMOUTLET_IMPORTER,
+        GROOVESPIN_IMPORTER,
+        GROOVERECORDS_IMPORTER,
+        GETBACKMUSIC_IMPORTER,
+        PLATOMANIA_IMPORTER,
+        PLATENZAAK_IMPORTER,
+        RECORDSONVINYL_IMPORTER,
+        SOUNDSHAARLEM_IMPORTER,
+        SOUNDSVENLO_IMPORTER,
+        SUBURBAN_IMPORTER,
+        VARIAWORLD_IMPORTER,
+        VIPRECORDS_IMPORTER,
+        VINYLFREAKS_IMPORTER,
+        ROCKINOUTRECORDS_IMPORTER,
+        TOPNOTCH_IMPORTER,
+        BESTKEPTRECORDS_IMPORTER,
+        VINYLEERS_IMPORTER,
+    )
+}
+
+
+def list_shop_keys() -> list[str]:
+    return sorted(SHOP_IMPORTERS)
+
+
+def iter_shop_importers() -> list[ShopImporterDefinition]:
+    return [SHOP_IMPORTERS[key] for key in list_shop_keys()]
+
+
+def get_shop_importer(key: str) -> ShopImporterDefinition:
+    normalized = key.strip().lower()
+    if normalized not in SHOP_IMPORTERS:
+        available = ", ".join(list_shop_keys())
+        raise KeyError(f"Unknown importer '{key}'. Available: {available}")
+    return SHOP_IMPORTERS[normalized]
