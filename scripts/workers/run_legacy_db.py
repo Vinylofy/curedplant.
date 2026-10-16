@@ -8,8 +8,15 @@ manual dry-run safe and makes the write boundary explicit.
 from __future__ import annotations
 
 import argparse
+import csv
+import importlib
+import os
 import subprocess
 import sys
+from pathlib import Path
+
+import psycopg
+from scripts.importers.common import parse_price
 
 
 PROFILES = {
@@ -53,11 +60,59 @@ def main() -> int:
     if result.returncode:
         return result.returncode
 
+    if args.lane == "price":
+        return sync_listing_prices(args.worker, write=args.write)
+
     import_command = [sys.executable, "-u", "-m", importer]
     if not args.write:
         import_command.append("--dry-run")
     print("[CUREDPLANT] importer:", " ".join(import_command), flush=True)
     return subprocess.run(import_command, check=False).returncode
+
+
+def sync_listing_prices(worker: str, *, write: bool) -> int:
+    """Update existing prices by shop/product URL without requiring an EAN."""
+    _, importer, _ = PROFILES[worker]
+    definition = importlib.import_module(importer).SHOP_DEFINITION
+    csv_path = Path(definition.files.csv_output_path)
+    if not csv_path.exists():
+        raise SystemExit(f"CSV not found: {csv_path}")
+    rows = list(csv.DictReader(csv_path.open(encoding="utf-8-sig", newline="")))
+    valid = [row for row in rows if row.get("product_url") and row.get("price")]
+    if not write:
+        print(f"[PRICE DRY-RUN] rows={len(rows)} price_candidates={len(valid)}", flush=True)
+        return 0
+    database_url = os.environ.get("DATABASE_URL")
+    if not database_url:
+        raise SystemExit("DATABASE_URL is required when write=true")
+    updated = 0
+    unmatched = 0
+    with psycopg.connect(database_url, prepare_threshold=None) as conn:
+        with conn.cursor() as cur:
+            cur.execute("select id from public.shops where domain = %s limit 1", (definition.config.shop_domain,))
+            shop = cur.fetchone()
+            if shop is None:
+                raise SystemExit(f"Shop is not registered: {definition.config.shop_domain}")
+            shop_id = str(shop[0])
+            for row in valid:
+                price = parse_price(row.get("price"))
+                if price is None or price <= 0:
+                    continue
+                cur.execute(
+                    """
+                    update public.prices
+                    set price = %s, currency = %s, availability = %s,
+                        last_seen_at = now(), updated_at = now(), is_active = true
+                    where shop_id = %s and product_url = %s
+                    """,
+                    (price, row.get("currency") or definition.config.currency, row.get("availability") or "unknown", shop_id, row["product_url"]),
+                )
+                if cur.rowcount:
+                    updated += cur.rowcount
+                else:
+                    unmatched += 1
+    print(f"[PRICE WRITE] updated={updated} unmatched={unmatched} candidates={len(valid)}", flush=True)
+    return 0
 
 
 if __name__ == "__main__":
