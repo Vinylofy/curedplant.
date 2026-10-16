@@ -1,6 +1,8 @@
 name: "Curedplant | Price | Bestkeptrecords"
 
 on:
+  schedule:
+    - cron: "37 2 * * *"
   workflow_dispatch:
     inputs:
       limit:
@@ -20,5 +22,5 @@ jobs:
     with:
       worker: bestkeptrecords
       limit: ${{ inputs.limit }}
-      write: ${{ inputs.write }}
+      write: ${{ github.event_name == 'schedule' || inputs.write }}
     secrets: inherit
