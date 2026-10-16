@@ -16,7 +16,7 @@ on:
         type: boolean
     secrets:
       DATABASE_URL:
-        required: true
+        required: false
 
 permissions:
   contents: read
@@ -39,6 +39,10 @@ jobs:
       - name: Run catalog price worker
         run: |
           set -euo pipefail
+          if [ "${{ inputs.write }}" = "true" ] && [ -z "${DATABASE_URL:-}" ]; then
+            echo "DATABASE_URL is required when write=true"
+            exit 1
+          fi
           args=(--worker "${{ inputs.worker }}" --limit "${{ inputs.limit }}")
           if [ "${{ inputs.write }}" = "true" ]; then args+=(--write); fi
           python -u scripts/workers/run_catalog_price.py "${args[@]}"
