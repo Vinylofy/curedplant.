@@ -1,6 +1,8 @@
 name: "Curedplant | Price | Atthemovies"
 
 on:
+  schedule:
+    - cron: "17 2 * * *"
   workflow_dispatch:
     inputs:
       limit:
@@ -20,5 +22,5 @@ jobs:
     with:
       worker: atthemovies
       limit: ${{ inputs.limit }}
-      write: ${{ inputs.write }}
+      write: ${{ github.event_name == 'schedule' || inputs.write }}
     secrets: inherit
