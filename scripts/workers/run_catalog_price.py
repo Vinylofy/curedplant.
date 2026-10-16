@@ -23,15 +23,15 @@ def command_for(worker: str, limit: int) -> list[str]:
         "soundshaarlem": common + ["scripts.scrapers.usf.jobs.refresh_soundshaarlem_listing_prices", "--max-pages-per-seed", str(limit)],
         "soundsvenlo": common + ["scripts.scrapers.usf.jobs.refresh_soundsvenlo_listing_prices", "--max-pages", str(limit)],
         "variaworld": common + ["scripts.scrapers.usf.jobs.refresh_variaworld_listing_prices", "--max-pages", str(limit)],
-        "atthemovies": common + ["scripts.scrapers.atthemovies", "--max-pages", str(limit), "--detail-limit", "0", "--output", "output/atthemovies"],
-        "bestkeptrecords": common + ["scripts.scrapers.bestkeptrecords", "--max-pages", str(limit), "--detail-limit", "0", "--output-dir", "output/bestkeptrecords"],
-        "blackvinyl": common + ["scripts.scrapers.blackvinyl", "--per-page", "50", "--detail-mode", "none", "--output", "output/blackvinyl.csv"],
-        "getbackmusic": common + ["scripts.scrapers.getbackmusic", "--mode", "listing", "--max-pages", str(limit), "--output-dir", "output/getbackmusic"],
-        "rockinoutrecords": common + ["scripts.scrapers.rockinoutrecords", "--max-pages", str(limit), "--detail-limit", "0", "--output-dir", "output/rockinoutrecords"],
-        "topnotch": common + ["scripts.scrapers.topnotch", "--max-pages", str(limit), "--detail-limit", "0", "--output-dir", "output/topnotch"],
-        "vinyleers": common + ["scripts.scrapers.vinyleers", "--max-pages", str(limit), "--detail-limit", "0", "--output-dir", "output/vinyleers"],
-        "vinylfreaks": common + ["scripts.scrapers.vinylfreaks", "--mode", "listing", "--max-pages", str(limit), "--output-dir", "output/vinylfreaks"],
-        "viprecords": common + ["scripts.scrapers.viprecords", "--mode", "listing", "--max-pages", str(limit), "--output-dir", "output/viprecords"],
+        "atthemovies": common + ["scripts.workers.run_legacy_db", "--worker", "atthemovies", "--lane", "price", "--limit", str(limit)],
+        "bestkeptrecords": common + ["scripts.workers.run_legacy_db", "--worker", "bestkeptrecords", "--lane", "price", "--limit", str(limit)],
+        "blackvinyl": common + ["scripts.workers.run_legacy_db", "--worker", "blackvinyl", "--lane", "price", "--limit", str(limit)],
+        "getbackmusic": common + ["scripts.workers.run_legacy_db", "--worker", "getbackmusic", "--lane", "price", "--limit", str(limit)],
+        "rockinoutrecords": common + ["scripts.workers.run_legacy_db", "--worker", "rockinoutrecords", "--lane", "price", "--limit", str(limit)],
+        "topnotch": common + ["scripts.workers.run_legacy_db", "--worker", "topnotch", "--lane", "price", "--limit", str(limit)],
+        "vinyleers": common + ["scripts.workers.run_legacy_db", "--worker", "vinyleers", "--lane", "price", "--limit", str(limit)],
+        "vinylfreaks": common + ["scripts.workers.run_legacy_db", "--worker", "vinylfreaks", "--lane", "price", "--limit", str(limit)],
+        "viprecords": common + ["scripts.workers.run_legacy_db", "--worker", "viprecords", "--lane", "price", "--limit", str(limit)],
         "cdhal": common + ["scripts.scrapers.usf.jobs.run_cdhal_pipeline", "--listing-max-pages", str(limit), "--skip-stage", "--skip-promote", "--skip-quarantine"],
         "colouredvinyl": common + ["scripts.scrapers.usf.jobs.run_colouredvinyl_pipeline", "--mode", "dry-run", "--steps", "listing"],
         "dgmoutlet": common + ["scripts.scrapers.usf.jobs.run_dgmoutlet_pipeline", "--discovery-max-pages", str(limit), "--skip-requeue", "--skip-stage", "--skip-promote", "--skip-quarantine"],
@@ -54,7 +54,7 @@ def main() -> int:
     if args.limit < 1:
         parser.error("--limit must be >= 1")
     command = command_for(args.worker, args.limit)
-    if args.write and args.worker in {"atthemovies", "bobsvinyl", "everythingjazz", "fiftiesstore", "musiconvinyl", "myrecordstore", "northendhaarlem", "platenzaak", "platomania", "recordsonvinyl", "sounds", "soundshaarlem", "soundsvenlo", "variaworld", "cdhal", "colouredvinyl", "dgmoutlet", "imusic", "jpc"}:
+    if args.write and args.worker in {"atthemovies", "bestkeptrecords", "blackvinyl", "getbackmusic", "rockinoutrecords", "topnotch", "vinyleers", "vinylfreaks", "viprecords", "bobsvinyl", "everythingjazz", "fiftiesstore", "musiconvinyl", "myrecordstore", "northendhaarlem", "platenzaak", "platomania", "recordsonvinyl", "sounds", "soundshaarlem", "soundsvenlo", "variaworld", "cdhal", "colouredvinyl", "dgmoutlet", "imusic", "jpc"}:
         command.append("--write")
     print("[CUREDPLANT] catalog-price:", " ".join(command), flush=True)
     return subprocess.run(command, check=False).returncode
