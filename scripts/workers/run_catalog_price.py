@@ -54,7 +54,7 @@ def main() -> int:
     if args.limit < 1:
         parser.error("--limit must be >= 1")
     command = command_for(args.worker, args.limit)
-    if args.write and args.worker in {"bobsvinyl", "everythingjazz", "fiftiesstore", "musiconvinyl", "myrecordstore", "northendhaarlem", "platenzaak", "platomania", "recordsonvinyl", "sounds", "soundshaarlem", "soundsvenlo", "variaworld", "cdhal", "colouredvinyl", "dgmoutlet", "imusic", "jpc"}:
+    if args.write and args.worker in {"atthemovies", "bobsvinyl", "everythingjazz", "fiftiesstore", "musiconvinyl", "myrecordstore", "northendhaarlem", "platenzaak", "platomania", "recordsonvinyl", "sounds", "soundshaarlem", "soundsvenlo", "variaworld", "cdhal", "colouredvinyl", "dgmoutlet", "imusic", "jpc"}:
         command.append("--write")
     print("[CUREDPLANT] catalog-price:", " ".join(command), flush=True)
     return subprocess.run(command, check=False).returncode

@@ -314,6 +314,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-pages", type=int, help="Bounded pilot/crawl limit; omit to follow pagination stop conditions")
     parser.add_argument("--detail-limit", type=int, default=0, help="Enrich at most this many listing rows")
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument(
+        "--write",
+        action="store_true",
+        help="Import the validated CSV rows directly into the shared database.",
+    )
     return parser
 
 
@@ -331,6 +336,18 @@ def main() -> int:
     enrich_details(session, rows, min(args.detail_limit, len(rows)), checkpoint_path=args.output)
     write_csv(rows, args.output)
     print(f"[DONE] rows={len(rows)} output={args.output}", flush=True)
+    if args.write:
+        from scripts.importers.import_atthemovies import CONFIG, map_atthemovies_row
+        from scripts.importers.common import run_import
+
+        run_import(
+            config=CONFIG,
+            csv_path=str(args.output),
+            row_mapper=map_atthemovies_row,
+            dry_run=False,
+            rejects_path="output/atthemovies_rejects.csv",
+            summary_path="output/atthemovies_import_summary.json",
+        )
     return 0
 
 
