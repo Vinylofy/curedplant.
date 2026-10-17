@@ -46,6 +46,50 @@ def command_for(worker: str, limit: int, write: bool) -> list[str]:
         raise SystemExit(f"Unsupported EAN/detail worker: {worker}") from exc
 
 
+def preflight_command(worker: str, limit: int, write: bool) -> list[str] | None:
+    """Refresh a shop-specific link registry before detail enrichment.
+
+    Detail workers intentionally consume the registry; they must not be run
+    against stale URLs left by an old listing snapshot.  Preflight is only
+    enabled for an explicit database-write run.  A dry-run therefore remains
+    read-only and reports the existing queue instead of silently mutating it.
+    """
+    if not write:
+        return None
+    common = [sys.executable, "-u", "-m"]
+    commands = {
+        "everythingjazz": common + [
+            "scripts.scrapers.usf.jobs.refresh_everythingjazz_listing_prices",
+            "--max-pages", "1", "--max-products", str(limit), "--write",
+        ],
+        "fiftiesstore": common + [
+            "scripts.scrapers.usf.jobs.refresh_fiftiesstore_listing_prices",
+            "--max-products", str(limit), "--write",
+        ],
+        "myrecordstore": common + [
+            "scripts.scrapers.usf.jobs.refresh_myrecordstore_listing_prices",
+            "--max-pages", "1", "--write",
+        ],
+        "northendhaarlem": common + [
+            "scripts.scrapers.usf.jobs.refresh_northendhaarlem_listing_prices",
+            "--category-limit", "1", "--max-pages-per-category", "1", "--write",
+        ],
+        "soundshaarlem": common + [
+            "scripts.scrapers.usf.jobs.refresh_soundshaarlem_listing_prices",
+            "--seed-limit", "1", "--max-pages-per-seed", "1", "--write",
+        ],
+        "soundsvenlo": common + [
+            "scripts.scrapers.usf.jobs.refresh_soundsvenlo_listing_prices",
+            "--max-pages", "1", "--write",
+        ],
+        "shop3345": common + [
+            "scripts.scrapers.usf.jobs.refresh_shop3345_listing_prices",
+            "--max-pages", "1", "--write",
+        ],
+    }
+    return commands.get(worker)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--worker", required=True)
@@ -54,6 +98,12 @@ def main() -> int:
     args = parser.parse_args()
     if args.limit < 1:
         parser.error("--limit must be >= 1")
+    preflight = preflight_command(args.worker, args.limit, args.write)
+    if preflight:
+        print("[CUREDPLANT] listing preflight:", " ".join(preflight), flush=True)
+        preflight_result = subprocess.run(preflight, check=False)
+        if preflight_result.returncode:
+            return preflight_result.returncode
     command = command_for(args.worker, args.limit, args.write)
     if args.worker == "sounds" and not args.write:
         command.append("--dry-run")
