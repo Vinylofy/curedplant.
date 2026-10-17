@@ -25,6 +25,9 @@ SHOPS = (
     "cdhal", "colouredvinyl", "dgmoutlet", "everythingjazz", "fiftiesstore",
     "myrecordstore", "northendhaarlem", "shop3345", "soundshaarlem", "soundsvenlo",
 )
+REPAIR_REVISION = {"cdhal": 2, "colouredvinyl": 1, "dgmoutlet": 2,
+    "everythingjazz": 1, "fiftiesstore": 1, "myrecordstore": 2,
+    "northendhaarlem": 3, "shop3345": 2, "soundshaarlem": 1, "soundsvenlo": 3}
 
 
 def get(session, url):
@@ -248,7 +251,7 @@ def main():
     parser.add_argument("--shop", choices=SHOPS, required=True)
     parser.add_argument("--limit", type=int, default=25)
     parser.add_argument("--delay", type=float, default=0.5)
-    parser.add_argument("--attempt", type=int, choices=(1, 2, 3), default=1)
+    parser.add_argument("--attempt", type=int, choices=(1, 2, 3))
     parser.add_argument("--register-only", action="store_true",
                         help="Explicit production bootstrap: registry only, no prices or delisting")
     args = parser.parse_args()
@@ -277,7 +280,7 @@ def main():
                     """, (args.shop, row["source_url"], row.get("source_product_id"), Jsonb(row["payload"])))
         print(f"[DETAIL-REGISTRY] registered={len(rows)}; public price writes=0; delisting=0")
         return 0
-    return run(args.shop, args.limit, args.delay, args.attempt)
+    return run(args.shop, args.limit, args.delay, args.attempt or REPAIR_REVISION[args.shop])
 
 
 if __name__ == "__main__":
