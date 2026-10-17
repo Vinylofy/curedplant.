@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -19,6 +20,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--mode", choices=["step1", "step2", "both"], default="both")
     p.add_argument("--output-dir", default=DEFAULT_OUTPUT_DIR)
     p.add_argument("--interactive", action="store_true")
+    p.add_argument("--limit", type=int, default=0, help="Maximum records for a bounded run")
     return p
 
 
@@ -31,6 +33,8 @@ def main() -> int:
         return run_legacy("platomania_legacy.py")
 
     out_dir = ensure_dir(args.output_dir)
+    if args.limit > 0:
+        os.environ["VINYLOFY_DETAIL_LIMIT"] = str(args.limit)
     choice = {"step1": "1", "step2": "2", "both": "3"}[args.mode]
     return run_legacy("platomania_legacy.py", cwd=out_dir, stdin_data=f"{choice}\n")
 

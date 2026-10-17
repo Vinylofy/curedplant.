@@ -265,6 +265,7 @@ def scrape_seed(
     columns: List[str],
     include_extra: bool,
     output_path: str,
+    max_records: int | None = None,
 ) -> Tuple[int, int]:
     category_name = category_name_from_url(seed_url)
     seen_in_category = set()
@@ -290,6 +291,13 @@ def scrape_seed(
                 continue
             parsed_rows.append(row)
             page_urls.append(row["url"])
+
+        if max_records is not None:
+            remaining = max_records - len(rows_by_url)
+            if remaining <= 0:
+                break
+            parsed_rows = parsed_rows[:remaining]
+            page_urls = page_urls[:remaining]
 
         if not parsed_rows:
             print(f"[STOP] {category_name} | pagina {page} bevat geen artikelen meer.")
@@ -333,6 +341,7 @@ def scrape_all(
     output_path: str,
     columns: List[str],
     load_from_path: str | None = None,
+    max_records: int | None = None,
 ) -> Dict[str, Dict[str, str]]:
     include_extra = mode in {"step2", "both"}
     load_path = load_from_path or output_path
@@ -354,8 +363,11 @@ def scrape_all(
             columns=columns,
             include_extra=include_extra,
             output_path=output_path,
+            max_records=max_records,
         )
         grand_total_pages += pages_done
+        if max_records is not None and len(rows_by_url) >= max_records:
+            break
 
     write_csv(output_path, rows_by_url, columns)
     print(f"[KLAAR] {output_path} opgeslagen met {len(rows_by_url)} records uit {grand_total_pages} pagina's.")
@@ -364,17 +376,27 @@ def scrape_all(
 
 # ---------- Menu actions ----------
 
+def detail_limit_from_env() -> int | None:
+    raw = os.environ.get("VINYLOFY_DETAIL_LIMIT", "").strip()
+    if not raw:
+        return None
+    try:
+        value = int(raw)
+    except ValueError:
+        return None
+    return value if value > 0 else None
+
 def run_step1() -> None:
-    scrape_all(mode="step1", output_path=STEP1_FILE, columns=STEP1_COLUMNS)
+    scrape_all(mode="step1", output_path=STEP1_FILE, columns=STEP1_COLUMNS, max_records=detail_limit_from_env())
 
 
 def run_step2() -> None:
     source_path = STEP1_FILE if os.path.exists(STEP1_FILE) else STEP2_FILE
-    scrape_all(mode="step2", output_path=STEP2_FILE, columns=STEP2_COLUMNS, load_from_path=source_path)
+    scrape_all(mode="step2", output_path=STEP2_FILE, columns=STEP2_COLUMNS, load_from_path=source_path, max_records=detail_limit_from_env())
 
 
 def run_both() -> None:
-    enriched_rows = scrape_all(mode="both", output_path=STEP2_FILE, columns=STEP2_COLUMNS)
+    enriched_rows = scrape_all(mode="both", output_path=STEP2_FILE, columns=STEP2_COLUMNS, max_records=detail_limit_from_env())
 
     step1_rows: Dict[str, Dict[str, str]] = OrderedDict()
     for url, row in enriched_rows.items():
