@@ -19,7 +19,8 @@ gaan niet als verzonnen of ongeldige codes door. Een lege queue of een preview
 zonder netwerkverzoeken is geen geslaagde pilot.
 
 Deze status bewijst de bronpilot, niet een productie-import of database-write.
-Alle onderstaande Actions-tests gebruiken `limit=25, write=false`. Er zijn geen
+De oorspronkelijke Actions-tests gebruiken `limit=25, write=false`. De nieuwe
+North End-vervolgproef gebruikt vijf records en blijft read-only. Er zijn geen
 planningen toegevoegd en geen Windows-actions uitgezet.
 
 ## Resultaten per shop
@@ -34,7 +35,7 @@ planningen toegevoegd en geen Windows-actions uitgezet.
 | Shop3345 | Groen | 18 / 18 | Dry-run haalt echt details op. Shopify expliciet EUR: dezelfde LP is 27,99 EUR in plaats van de automatisch gekozen 33,00 USD. Metadata-write kan geen voorraad of publieke prijs publiceren. | [39014775461](https://github.com/Vinylofy/curedplant./actions/runs/39014775461) |
 | Sounds Haarlem | Groen | 25 / 25 | Actuele listing vervangt oude 404-productlinks als pilotbron; productie prioriteert recente links. Prijs komt uit productlisting, niet uit volledige paginatekst met verzendkosten. | [39014526535](https://github.com/Vinylofy/curedplant./actions/runs/39014526535) |
 | DGM Outlet | Groen | 25 / 25 | EAN komt uit listing-SKU; alle 25 detailaanvragen apart bewezen met response-hash. Dubbele aanvraag verwijderd; HTTP-fouten vallen niet meer stil terug op listingdata. Derde proef geslaagd. | [39014877404](https://github.com/Vinylofy/curedplant./actions/runs/39014877404) |
-| North End Haarlem | Rood — na 3 pogingen geblokkeerd | 0 / 0 vanuit GitHub | Cloudflare 403 op de actuele categorie, ook met gewone Chromium-rendering. Lokale bronproef toonde wel werkende parser (2 geldige GTIN's uit 3). | [39014775460](https://github.com/Vinylofy/curedplant./actions/runs/39014775460) |
+| North End Haarlem | Rood — toegangsblokkade bevestigd in vervolgproef | 0 / 0 vanuit GitHub | Ook met één blijvende browsersessie en 30 seconden tussen aanvragen: Cloudflare challenge op categorie én homepage. Lokaal 3/3 pagina's bereikbaar, twee geldige GTIN's. | [39064461985](https://github.com/Vinylofy/curedplant./actions/runs/39064461985) |
 | Sounds Venlo | Rood — na 3 pogingen geblokkeerd | 0 / 0 vanuit GitHub | Cloudflare 403 op /vinyl/, ook met gewone Chromium-rendering. Lokale bronproef haalde 3/3 geldige GTIN's op. | [39014775514](https://github.com/Vinylofy/curedplant./actions/runs/39014775514) |
 
 Elke nieuwe pilot bewaart een JSON-resultaat en een samenvatting in de Action.
@@ -66,8 +67,40 @@ lossen de aangetoonde Cloudflare-blokkade niet op.
 - Shop3345 schrijft vanuit de detailworker uitsluitend verrijking; raw-prijs en
   raw-voorraad blijven null. `stock_shop3345` blijft de voorraadautoriteit.
 - HTTP-blokkades bij North End tellen niet meer als een inhoudelijke EAN-misser.
-- Negen unittests slagen, inclusief prijsisolatie, echte dry-run-detailaanvragen,
+- Vijftien unittests slagen, inclusief prijsisolatie, echte dry-run-detailaanvragen,
   database-writegrenzen en EUR-marktkeuze. Python-compilatie en diffcontrole slagen.
+
+## North End: expliciet heropende herstelronde, 17 oktober 2026
+
+Op nieuw verzoek van de gebruiker is North End opnieuw onderzocht. De eerdere
+drie mislukte proeven eindigden in
+[run 39014775460](https://github.com/Vinylofy/curedplant./actions/runs/39014775460).
+Deze vervolgronde is afzonderlijk gelabeld als repair_cycle=2, attempt=1.
+
+Nieuwe codeverbeteringen:
+
+- Eén HTTP-/browsersessie per batch voor behoud van first-party cookies. De
+  gewone browser begint bij de homepage en gebruikt daarna dezelfde pagina.
+- Minimaal 30 seconden tussen documentaanvragen, overeenkomstig de door de shop
+  gepubliceerde Crawl-delay. Een blijvende 403 of 429 stopt verdere aanvragen.
+- Barcode alleen uit de specificatietabel van het eigen product. De globale
+  afkapping op woorden zoals "Meer" en "Menu" is verwijderd; ongeldige
+  controlecijfers of verschillende productcodes worden geweigerd.
+- Ook de waargenomen detailprijs wordt tot het eigen prijsblok beperkt.
+- Bij listingproblemen wordt een fout doorgegeven in plaats van stil met een
+  onvolledige catalogus door te gaan. Beide North End-lanes hebben browserondersteuning.
+
+De gepubliceerde RSS-route is onderzocht. Deze bevat navigatie-/categorielinks,
+geen productprijzen of EAN-feed en vervangt dus de detailpagina's niet.
+
+Lokale liveproef: 3/3 detailpagina's HTTP 200; twee geldige GTIN's en één ontbrekende
+geldige barcode. Dezelfde verbeterde code is met een limiet van vijf records getest in
+[Action 39064461985](https://github.com/Vinylofy/curedplant./actions/runs/39064461985).
+Definitieve GitHub-uitkomst: rood. De categorie-aanvraag met de HTTP-sessie geeft
+403 met cf-mitigated=challenge. Na de wachttijd geeft ook de normale
+browsernavigatie naar de homepage 403 met dezelfde challenge-markering. De
+batch stopt daarop; er zijn geen detailpagina's aangevraagd en geen verdere
+automatische pogingen ingepland. Databasewrites: nul.
 
 ## Eerder vastgelegde groene resultaten
 
