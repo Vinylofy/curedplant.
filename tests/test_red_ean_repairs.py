@@ -8,9 +8,22 @@ from bs4 import BeautifulSoup
 from scripts.workers.run_ean_detail import command_for, preflight_command
 from scripts.scrapers.usf.jobs import detail_shop3345, detail_soundsvenlo
 from scripts.scrapers.usf.jobs.refresh_myrecordstore_listing_prices import extract_listing_card_prices
+from scripts.scrapers.usf.jobs.live_detail_pilot import discover
 
 
 class RedRepairsTests(unittest.TestCase):
+    def test_shop3345_us_runner_uses_explicit_eur_presentment(self):
+        session = Mock()
+        def response(url, **kwargs):
+            price = '27.99' if 'currency=EUR' in url else '33.00'
+            result = Mock(status_code=200)
+            result.json.return_value = {'products': [{'title': 'Album LP', 'handle': 'album',
+                'variants': [{'available': True, 'price': price}]}]}
+            return result
+        session.get.side_effect = response
+        row = discover('shop3345', session, 1)[0]
+        self.assertEqual((row['payload']['price'], row['payload']['currency']), ('27.99', 'EUR'))
+
     def test_price_badge_stays_in_own_product_card(self):
         soup = BeautifulSoup('''<main><p>Verzending 4,99</p>
             <div><a href="/item/one">Album 1</a><p class="bg-(--secondary)">26,99</p></div>

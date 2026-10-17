@@ -218,3 +218,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Bounded scraper verification outputs (published as Actions artifacts).
+/output/

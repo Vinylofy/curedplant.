@@ -91,7 +91,8 @@ def discover(shop, session, limit):
             seed_url=url, listing_url=url, page=1, seen_at=now)
         return [link_row(x) for x in links][:limit]
     if shop == "shop3345":
-        products = get(session, "https://3345.nl/products.json?limit=100").json()["products"]
+        # Shopify otherwise returns USD presentment prices on US-hosted runners.
+        products = get(session, "https://3345.nl/products.json?limit=100&currency=EUR").json()["products"]
         rows = []
         for p in products:
             title = p.get("title", "")
@@ -106,7 +107,8 @@ def discover(shop, session, limit):
             rows.append({"source_url": "https://3345.nl/products/" + p["handle"],
                 "payload": {"title": title, "price": next(iter(prices)) if len(prices) == 1 else None,
                 "availability": "in_stock" if available else "out_of_stock",
-                "is_secondhand": False, "listing_cta_add_to_cart": bool(available)}})
+                "currency": "EUR", "is_secondhand": False,
+                "listing_cta_add_to_cart": bool(available)}})
         return rows[:limit]
     if shop == "dgmoutlet":
         from scripts.scrapers.dgmoutlet import DGMOutletLPScraper, BASE_URL
@@ -205,7 +207,8 @@ def run(shop, limit, delay, attempt):
         rows = discover(shop, session, limit)
         summary["discovered"] = len(rows)
         for row in rows:
-            record = {"url": row["source_url"], "listing_price": row["payload"].get("price")}
+            record = {"url": row["source_url"], "listing_price": row["payload"].get("price"),
+                      "listing_currency": row["payload"].get("currency")}
             try:
                 ean, title, issue = parse(shop, session, row)
                 valid = strict_normalize_gtin(ean)
