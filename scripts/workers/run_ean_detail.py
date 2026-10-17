@@ -53,10 +53,9 @@ def command_for(worker: str, limit: int, write: bool = False) -> list[str]:
 def preflight_command(worker: str, limit: int, write: bool) -> list[str] | None:
     """Refresh a shop-specific link registry before detail enrichment.
 
-    Detail workers intentionally consume the registry; they must not be run
-    against stale URLs left by an old listing snapshot.  Preflight is only
-    enabled for an explicit database-write run.  A dry-run therefore remains
-    read-only and reports the existing queue instead of silently mutating it.
+    An explicit write run refreshes a bounded set of registry links without
+    updating public prices or delisting missing products. A dry-run instead
+    verifies live listing/detail data without touching the registry.
     """
     if not write:
         return None

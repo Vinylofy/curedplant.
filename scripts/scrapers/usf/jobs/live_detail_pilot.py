@@ -26,7 +26,7 @@ SHOPS = (
     "cdhal", "colouredvinyl", "dgmoutlet", "everythingjazz", "fiftiesstore",
     "myrecordstore", "northendhaarlem", "shop3345", "soundshaarlem", "soundsvenlo",
 )
-REPAIR_REVISION = {"cdhal": 2, "colouredvinyl": 1, "dgmoutlet": 2,
+REPAIR_REVISION = {"cdhal": 2, "colouredvinyl": 1, "dgmoutlet": 3,
     "everythingjazz": 1, "fiftiesstore": 1, "myrecordstore": 2,
     "northendhaarlem": 3, "shop3345": 2, "soundshaarlem": 1, "soundsvenlo": 3}
 
