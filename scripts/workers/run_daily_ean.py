@@ -31,7 +31,7 @@ def execute(shop, limit, write, *, progress=None, queue=None, source_factory=Ean
     today = today or day_key()
     summary = {"shop": shop, "day": today, "write": write, "requested": limit,
                "reserved": 0, "selected": 0, "attempted": 0, "valid_eans": 0,
-               "missing_ean": 0, "claim_skips": 0, "discovery_pages": 0,
+               "missing_ean": 0, "technical_errors": 0, "claim_skips": 0, "discovery_pages": 0,
                "price_writes": 0, "records": [], "errors": []}
     source, state = None, None
     try:
@@ -95,7 +95,8 @@ def execute(shop, limit, write, *, progress=None, queue=None, source_factory=Ean
                 # together. A DB failure leaves an expiring claim, not a done row.
                 queue.finish(shop, row, result)
             summary["attempted"] += 1
-            summary["valid_eans" if result.get("ean") else "missing_ean"] += 1
+            counter = "technical_errors" if result.get("error") else "valid_eans" if result.get("ean") else "missing_ean"
+            summary[counter] += 1
             summary["records"].append(result)
             print("[DAILY-EAN]", json.dumps(result, ensure_ascii=False), flush=True)
             if stop:
@@ -116,7 +117,7 @@ def execute(shop, limit, write, *, progress=None, queue=None, source_factory=Ean
         summary["status"] = "red" if summary["errors"] else "waiting" if not summary["attempted"] else "green"
         if write and state is not None:
             state["last_result"] = {key: summary[key] for key in
-                ("day", "attempted", "valid_eans", "missing_ean", "status", "outcome")}
+                ("day", "attempted", "valid_eans", "missing_ean", "technical_errors", "status", "outcome")}
             try:
                 progress.save(state)
             except Exception as exc:
@@ -130,7 +131,8 @@ def execute(shop, limit, write, *, progress=None, queue=None, source_factory=Ean
             with open(step_summary, "a") as handle:
                 handle.write(f"### {shop}: {summary['status']} — {summary.get('outcome')}\n\n"
                     f"Nieuwe details: **{summary['attempted']}**; geldige GTIN: **{summary['valid_eans']}**; "
-                    f"EAN ontbreekt: {summary['missing_ean']}; fouten: {len(summary['errors'])}.\n\n"
+                    f"EAN ontbreekt: {summary['missing_ean']}; technische detailfouten: {summary['technical_errors']}; "
+                    f"overige fouten: {len(summary['errors']) - summary['technical_errors']}.\n\n"
                     f"Gereserveerd vandaag: {summary.get('daily_reserved')}; prijswrites: **0**. "
                     f"Volgende cataloguspositie: `{summary.get('next_cursor')}`.\n\n"
                     + "\n".join(f"- {error['error']}" for error in summary["errors"]) + "\n")

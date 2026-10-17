@@ -112,6 +112,25 @@ iMusic/JPC zijn in deze bronproef niet aangevraagd vanwege hun bestaande
 registratiewachtrij. De eerdere 26 groene beoordelingen zijn dus geen claim dat
 alle 26 nieuwe productieplanningen al succesvol hebben gedraaid.
 
+### GitHub-controle van de dagelijkse EAN-lane
+
+Codecommit `dd6497f` staat op `main`; de voortgangsbranch bestaat. Eerste
+begrensde GitHub-tests (alleen EAN, geen prijsactions gestart):
+
+| Shop | Nieuwe details / geldige GTIN | Bevinding | Run |
+| --- | --- | --- | --- |
+| Rockin Out Records | 1 / 1 | Listing en detail beide HTTP 200 vanuit GitHub; read-only geslaagd. Lokale 403 reproduceert hier niet. | [39069440852](https://github.com/Vinylofy/curedplant./actions/runs/39069440852) |
+| Vinyl Freaks | 5 / 2 | Alle vijf eigen detailpagina's opgehaald; drie terecht zonder geldige barcode. De eerste eenrecordproef selecteerde een product zonder geldige EAN en werd rood; deze is niet als bronblokkade geïnterpreteerd. | [39069502791](https://github.com/Vinylofy/curedplant./actions/runs/39069502791) |
+| Everything Jazz | 0 / 0 | `waiting`: bestaande queue en de eerste tien cataloguspagina's bevatten geen onbehandelde kandidaten. Reeds afgehandelde producten blijven overgeslagen. Read-only schuift het opgeslagen checkpoint niet op. | [39069439149](https://github.com/Vinylofy/curedplant./actions/runs/39069439149) |
+
+De eerste expliciete Rockin Out write-proef kon het checkpoint met een
+reservering van één record opslaan, maar de categorieverbinding kreeg een
+connect-timeout voordat discovery of detailverwerking plaatsvond. Er zijn in
+die proef geen productdetails geschreven. Het budget bleef zichtbaar bewaard;
+zie [39069521570](https://github.com/Vinylofy/curedplant./actions/runs/39069521570).
+Dit is een verbindingsfout, geen inhoudelijke EAN-misser. De dagelijkse worker
+telt technische detailfouten afzonderlijk van inhoudelijke EAN-missers.
+
 ## Resultaten per shop
 
 | Shop | Status | Geldige GTIN / opgehaalde details | Herstel / bevinding | Bewijsrun |

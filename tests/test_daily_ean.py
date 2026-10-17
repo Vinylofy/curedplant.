@@ -160,6 +160,8 @@ class DailyEanTests(unittest.TestCase):
         first = daily.execute("everythingjazz", 100, True, progress=progress, queue=queue,
                               source_factory=Blocked, today="2026-10-18")
         self.assertEqual(first["attempted"], 1)
+        self.assertEqual(first["technical_errors"], 1)
+        self.assertEqual(first["missing_ean"], 0)
         second = daily.execute("everythingjazz", 1, True, progress=progress, queue=queue,
                                source_factory=Source, today="2026-10-19")
         self.assertTrue(second["records"][0]["source_url"].endswith("/1"))

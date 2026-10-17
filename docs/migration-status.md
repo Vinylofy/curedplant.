@@ -12,7 +12,8 @@ Actions lanes are intentionally separate:
 | EAN/detail | `ean-detail-<shop>.yml` | detail pages and EAN enrichment | dry-run |
 
 Each scraper has one price Action and one EAN/detail Action. Each has its own
-manual run and schedule, so a slow or broken scraper does not block another.
+manual run; approved workers are scheduled independently, so a slow or broken
+scraper does not block another.
 The database write flag is explicit; schedules are configured to write because
 these are the production Ubuntu replacements, while manual runs default to a
 dry-run for verification.
