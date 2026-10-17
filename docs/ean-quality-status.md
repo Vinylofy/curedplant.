@@ -67,7 +67,7 @@ lossen de aangetoonde Cloudflare-blokkade niet op.
 - Shop3345 schrijft vanuit de detailworker uitsluitend verrijking; raw-prijs en
   raw-voorraad blijven null. `stock_shop3345` blijft de voorraadautoriteit.
 - HTTP-blokkades bij North End tellen niet meer als een inhoudelijke EAN-misser.
-- Vierendertig unittests slagen, inclusief prijsisolatie, echte dry-run-detailaanvragen,
+- Zesendertig unittests slagen, inclusief prijsisolatie, echte dry-run-detailaanvragen,
   database-writegrenzen en EUR-marktkeuze. Python-compilatie en diffcontrole slagen.
 
 ## North End: expliciet heropende herstelronde, 17 oktober 2026
@@ -188,10 +188,32 @@ details opgehaald, vier overeenstemmende GTIN's en de eerder bewezen verkeerde
 Fresku-code afzonderlijk afgewezen. Bron bereikbaar, kwaliteit baseline rood.
 Dit is een Linux-ontwikkelproef op Python 3.12, nog geen hosted-runnerbewijs.
 
-GitHub-vervolgproeven en hun definitieve uitkomsten worden hieronder toegevoegd.
+De lokale North End-baseline haalt vijf details op: vier overeenstemmende
+GTIN's, één ontbrekende geldige barcode, geen parserafwijkingen of HTTP-fouten.
+Dit is een geslaagde ontwikkelproef, nog geen geslaagde hosted-runnerproef.
+
+De vier oorspronkelijke-bronproeven op GitHub zijn afgerond (Ubuntu, Python
+3.11.17). Alle vier: write=false, nul databasewrites.
+
+| Shop / lane | Uitkomst | Bewijs |
+| --- | --- | --- |
+| North End / prijs | Rood, categorie HTTP 403 met de oorspronkelijke HTTP-code | [39066105289](https://github.com/Vinylofy/curedplant./actions/runs/39066105289) |
+| North End / detail | Rood, categorie HTTP 403; geen details aangevraagd | [39066106839](https://github.com/Vinylofy/curedplant./actions/runs/39066106839) |
+| Sounds Venlo / prijs | Groen, 50 producten met prijzen; HTTP 403 maar oorspronkelijke browserroute levert de listing | [39066108321](https://github.com/Vinylofy/curedplant./actions/runs/39066108321) |
+| Sounds Venlo / detail | Rood, listing via browser werkt; oude detailworker gebruikt weer HTTP en krijgt 403 op het eerste product | [39066110319](https://github.com/Vinylofy/curedplant./actions/runs/39066110319) |
+
+De Venlo-prijsproef bewijst dat hosted Linux toegang kan krijgen via de oude
+browserroute. Alleen IP of besturingssysteem aanwijzen als oorzaak is dus te
+stellig. De verbeterde current-variant neemt nu per shop de oorspronkelijke
+HTTP-/browserheaders over, navigeert direct naar de gevraagde categorie (geen
+verplichte homepage) en houdt de gewone browsersessie ook voor details aan.
+De correcte productgebonden EAN-parser blijft behouden. Dit is een tweede,
+afzonderlijke gerichte vervolgvariant; de bronkopieën blijven ongewijzigd.
+Nieuwe read-only GitHub-proeven van deze current-variant volgen hieronder.
+
 Bewijs: JSON-artifact `windows-baseline-<shop>-<lane>-<run_id>`, met product-URL,
 listingprijs, oude en gevalideerde EAN, response-hash, transportstatus,
-broncommit en nul databasewrites. De vierendertig tests en actionlint-controle
+broncommit en nul databasewrites. De zesendertig tests en actionlint-controle
 van de zes gewijzigde workflowbestanden slagen.
 
 ## Eerder vastgelegde groene resultaten

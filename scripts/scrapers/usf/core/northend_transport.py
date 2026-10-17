@@ -26,11 +26,19 @@ class NorthEndSession(requests.Session):
     origin = ORIGIN
     minimum_interval = 30.0
     canonical_url = staticmethod(canonical_url)
+    # Match the HTTP settings of the successful Windows source. Chromium uses
+    # that same ordinary profile and opens the requested document directly.
+    source_headers = {
+        'User-Agent': ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                       'AppleWebKit/537.36 (KHTML, like Gecko) '
+                       'Chrome/124.0 Safari/537.36'),
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'nl-NL,nl;q=0.9,en-US;q=0.7,en;q=0.6',
+    }
 
     def __init__(self, *, interval=None, clock=time.monotonic, sleeper=time.sleep):
         super().__init__()
-        self.headers.update({'User-Agent': 'Vinylofy/1.0 (+https://vinylofy.com)',
-                             'Accept-Language': 'nl-NL,nl;q=0.9,en;q=0.8'})
+        self.headers.update(self.source_headers)
         self.interval = max(self.minimum_interval, interval if interval is not None else self.minimum_interval)
         self.clock, self.sleeper = clock, sleeper
         self.last_request = None
@@ -56,7 +64,7 @@ class NorthEndSession(requests.Session):
 
     def _navigate(self, url):
         self._pace()
-        observed = self._page.goto(url, wait_until='load', timeout=45000)
+        observed = self._page.goto(url, wait_until='domcontentloaded', timeout=45000)
         if observed is None:
             raise requests.HTTPError('North End browser returned no document response')
         response = requests.Response()
@@ -80,17 +88,18 @@ class NorthEndSession(requests.Session):
         self._observe(response, 'http_session')
         if response.status_code != 403:
             return response
-        # One ordinary browser session starts at the public homepage. This
-        # preserves first-party cookies and the normal home -> category flow.
+        # Retain the old shop's HTTP settings in one ordinary browser session.
+        # The native Venlo Windows source's direct category navigation has now
+        # been proven on hosted Linux; do not require an unrelated homepage.
         self._blocked = None
         from playwright.sync_api import sync_playwright
         self._playwright = sync_playwright().start()
         self._browser = self._playwright.chromium.launch(headless=True)
-        self._page = self._browser.new_page(locale='nl-NL')
-        homepage = self._navigate(self.origin + '/')
-        if homepage.status_code >= 400:
-            return homepage
-        return homepage if url == self.origin + '/' else self._navigate(url)
+        self._page = self._browser.new_page(
+            user_agent=self.headers['User-Agent'], locale='nl-NL',
+            extra_http_headers={'Accept-Language': self.headers['Accept-Language'],
+                                'Referer': self.origin + '/'})
+        return self._navigate(url)
 
     def close(self):
         try:

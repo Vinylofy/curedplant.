@@ -30,7 +30,7 @@ jobs:
     name: ${{ inputs.worker }} | Linux | EAN/detail | ${{ inputs.source_version }}
     runs-on: ubuntu-latest
     concurrency:
-      group: curedplant-${{ inputs.worker }}-${{ inputs.source_version == 'windows-baseline' && 'baseline' || 'detail' }}
+      group: curedplant-${{ inputs.worker }}-${{ contains(fromJSON('["northendhaarlem","soundsvenlo"]'), inputs.worker) && 'source' || 'detail' }}
       cancel-in-progress: false
     timeout-minutes: ${{ inputs.source_version == 'windows-baseline' && 30 || 60 }}
     env:

@@ -52,12 +52,17 @@ class NorthEndTests(unittest.TestCase):
                 self.assertEqual(session.get('https://northendhaarlem.nl/category/').status_code, 200)
                 self.assertEqual(session.get('https://northendhaarlem.nl/product/').status_code, 200)
                 self.assertEqual([c.args[0] for c in page.goto.call_args_list], [
-                    'https://www.northendhaarlem.nl/',
                     'https://www.northendhaarlem.nl/category/',
                     'https://www.northendhaarlem.nl/product/'])
                 fetch.assert_called_once()
                 browser.new_page.assert_called_once()
             browser.close.assert_called_once()
+
+    def test_profile_matches_working_windows_source(self):
+        from scripts.workers.windows_baseline.refresh_northendhaarlem_listing_prices import REQUEST_HEADERS
+        with NorthEndSession() as session:
+            for key, value in REQUEST_HEADERS.items():
+                self.assertEqual(session.headers[key], value)
 
     def test_only_current_product_barcode_is_used(self):
         html = '''<nav>Menu Meer Barcode 8719262044807</nav>

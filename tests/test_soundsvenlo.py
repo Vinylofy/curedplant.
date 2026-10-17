@@ -79,6 +79,12 @@ class SoundsVenloTests(unittest.TestCase):
         self.assertEqual(metadata['detail_product_id'], '4707526')
         self.assertIsNone(metadata['label'])
 
+    def test_profile_matches_working_windows_listing_source(self):
+        from scripts.workers.windows_baseline.refresh_soundsvenlo_listing_prices import DEFAULT_HEADERS
+        with SoundsVenloSession() as session:
+            for key, value in DEFAULT_HEADERS.items():
+                self.assertEqual(session.headers[key], value)
+
 
 if __name__ == '__main__':
     unittest.main()
