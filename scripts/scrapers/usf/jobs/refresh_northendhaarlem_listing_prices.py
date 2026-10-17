@@ -92,7 +92,7 @@ def normalize_product_url(href: str) -> str | None:
     if not PRODUCT_PATH_RE.search(parsed.path):
         return None
     path = parsed.path.rstrip("/") + "/"
-    return urlunparse(("https", SHOP_DOMAIN, path, "", "", ""))
+    return urlunparse(("https", "www." + SHOP_DOMAIN, path, "", "", ""))
 
 
 def source_product_id_from_url(url: str) -> str | None:

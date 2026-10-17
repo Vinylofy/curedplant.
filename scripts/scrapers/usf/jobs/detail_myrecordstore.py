@@ -192,18 +192,19 @@ def main() -> int:
                     "listing_payload": payload,
                 }
 
-                insert_raw_shop_scrape(
-                    run_id=None,
-                    shop_id=SHOP_ID,
-                    source_url=url,
-                    source_product_id=row.get("source_product_id"),
-                    title_raw=title,
-                    ean_raw=ean,
-                    price_raw=payload.get("price"),
-                    availability_raw=payload.get("availability"),
-                    image_url_raw=image_url,
-                    payload=detail_payload,
-                )
+                if args.write:
+                    insert_raw_shop_scrape(
+                        run_id=None,
+                        shop_id=SHOP_ID,
+                        source_url=url,
+                        source_product_id=row.get("source_product_id"),
+                        title_raw=title,
+                        ean_raw=ean,
+                        price_raw=payload.get("price"),
+                        availability_raw=payload.get("availability"),
+                        image_url_raw=image_url,
+                        payload=detail_payload,
+                    )
 
                 update_link(conn, link_id=str(row["id"]), payload=payload, ean=ean, detail_payload=detail_payload, rescrape_days=args.rescrape_days, write=args.write)
                 stats["processed"] += 1

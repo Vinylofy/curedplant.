@@ -384,6 +384,9 @@ def main() -> int:
 
     stored = 0
     skipped = 0
+    fetched = 0
+    ean_hits = 0
+    errors = 0
 
     for index, link in enumerate(links, start=1):
         source_url = normalize_product_url(link["source_url"])
@@ -400,30 +403,17 @@ def main() -> int:
             flush=True,
         )
 
-        if not args.write:
-            print(
-                "[DETAIL-SAMPLE]",
-                {
-                    "source_url": source_url,
-                    "listing_price": get_listing_price(link),
-                    "listing_availability": get_listing_availability(link),
-                    "artist": listing_payload.get("artist"),
-                    "title": listing_payload.get("title"),
-                },
-                flush=True,
-            )
-            skipped += 1
-            continue
-
         try:
             response = session.get(source_url, timeout=30)
         except requests.RequestException as exc:
             skipped += 1
+            errors += 1
             print("[DETAIL][WARN] request failed", {"url": source_url, "error": str(exc)}, flush=True)
             continue
 
-        if response.status_code == 429:
-            print("[DETAIL][WARN] HTTP 429, stopping safely.", flush=True)
+        if response.status_code in {403, 429}:
+            errors += 1
+            print("[DETAIL][WARN] blocked, stopping safely.", flush=True)
             break
 
         if response.status_code in (404, 410):
@@ -432,7 +422,8 @@ def main() -> int:
                 {"status": response.status_code, "url": source_url},
                 flush=True,
             )
-            mark_detail_scraped(link["id"])
+            if args.write:
+                mark_detail_scraped(link["id"])
             skipped += 1
             continue
 
@@ -440,11 +431,14 @@ def main() -> int:
             response.raise_for_status()
         except requests.RequestException as exc:
             skipped += 1
+            errors += 1
             print("[DETAIL][WARN] HTTP error", {"url": source_url, "error": str(exc)}, flush=True)
             continue
 
         html = response.text
         ean_raw = extract_ean(html, source_url)
+        fetched += 1
+        ean_hits += bool(ean_raw)
         metadata = extract_detail_metadata(html)
         image_url_raw = extract_image_url(html)
         title_raw = build_title_raw(listing_payload, html)
@@ -455,6 +449,11 @@ def main() -> int:
             or clean(link.get("source_product_id"))
             or urlparse(source_url).path.strip("/").split("/")[-1]
         )
+
+        if not args.write:
+            print("[DETAIL-PARSED]", {"url": source_url, "ean": ean_raw}, flush=True)
+            time.sleep(args.sleep)
+            continue
 
         raw_id = insert_raw_shop_scrape(
             run_id=None,
@@ -498,10 +497,10 @@ def main() -> int:
 
     print(
         "[DETAIL] done",
-        {"stored": stored, "skipped": skipped, "write": args.write},
+        {"stored": stored, "skipped": skipped, "fetched": fetched, "ean_hits": ean_hits, "errors": errors, "write": args.write},
         flush=True,
     )
-    return 0
+    return 1 if errors else 0
 
 
 if __name__ == "__main__":

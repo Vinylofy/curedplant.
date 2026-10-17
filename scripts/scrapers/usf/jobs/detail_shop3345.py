@@ -17,6 +17,7 @@ from scripts.scrapers.usf.core.db import db_connection
 from scripts.scrapers.usf.core.link_registry import (
     insert_raw_shop_scrape,
     mark_detail_scraped,
+    mark_detail_ean_found,
 )
 
 
@@ -363,11 +364,6 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
-    if "--write" in sys.argv[1:]:
-        raise SystemExit(
-            "[DISABLED] detail_shop3345.py mag geen 3345-voorraad meer schrijven. "
-            "Gebruik scripts.scrapers.usf.stock_shop3345."
-        )
     args = build_parser().parse_args()
 
     if args.limit < 1:
@@ -397,6 +393,9 @@ def main() -> int:
 
     stored = 0
     skipped = 0
+    fetched = 0
+    ean_hits = 0
+    errors = 0
 
     for index, link in enumerate(links, start=1):
         source_url = normalize_product_url(link["source_url"])
@@ -413,30 +412,17 @@ def main() -> int:
             flush=True,
         )
 
-        if not args.write:
-            print(
-                "[DETAIL-SAMPLE]",
-                {
-                    "source_url": source_url,
-                    "listing_price": get_listing_price(link),
-                    "listing_availability": get_listing_availability(link),
-                    "artist": listing_payload.get("artist"),
-                    "title": listing_payload.get("title"),
-                },
-                flush=True,
-            )
-            skipped += 1
-            continue
-
         try:
             response = session.get(source_url, timeout=30)
         except requests.RequestException as exc:
             skipped += 1
+            errors += 1
             print("[DETAIL][WARN] request failed", {"url": source_url, "error": str(exc)}, flush=True)
             continue
 
-        if response.status_code == 429:
-            print("[DETAIL][WARN] HTTP 429, stopping safely.", flush=True)
+        if response.status_code in {403, 429}:
+            errors += 1
+            print("[DETAIL][WARN] blocked, stopping safely.", flush=True)
             break
 
         if response.status_code in (404, 410):
@@ -445,7 +431,8 @@ def main() -> int:
                 {"status": response.status_code, "url": source_url},
                 flush=True,
             )
-            mark_detail_scraped(link["id"])
+            if args.write:
+                mark_detail_scraped(link["id"])
             skipped += 1
             continue
 
@@ -453,11 +440,14 @@ def main() -> int:
             response.raise_for_status()
         except requests.RequestException as exc:
             skipped += 1
+            errors += 1
             print("[DETAIL][WARN] HTTP error", {"url": source_url, "error": str(exc)}, flush=True)
             continue
 
         html = response.text
         ean_raw = extract_ean(html, source_url)
+        fetched += 1
+        ean_hits += bool(ean_raw)
         metadata = extract_detail_metadata(html)
         image_url_raw = extract_image_url(html)
         title_raw = build_title_raw(listing_payload, html)
@@ -473,7 +463,8 @@ def main() -> int:
                 },
                 flush=True,
             )
-            mark_detail_scraped(link["id"])
+            if args.write:
+                mark_detail_scraped(link["id"])
             skipped += 1
             continue
         source_product_id = (
@@ -482,6 +473,13 @@ def main() -> int:
             or urlparse(source_url).path.strip("/").split("/")[-1]
         )
 
+        if not args.write:
+            print("[DETAIL-PARSED]", {"url": source_url, "ean": ean_raw}, flush=True)
+            time.sleep(args.sleep)
+            continue
+
+        # Only enrichment is permitted here. stock_shop3345 remains the sole
+        # price/availability authority; null price prevents staging as an offer.
         raw_id = insert_raw_shop_scrape(
             run_id=None,
             shop_id=SHOP_ID,
@@ -489,15 +487,15 @@ def main() -> int:
             source_product_id=source_product_id,
             title_raw=title_raw,
             ean_raw=ean_raw,
-            price_raw=price_raw,
-            availability_raw=availability_raw,
+            price_raw=None,
+            availability_raw=None,
             image_url_raw=image_url_raw,
             payload={
                 "source": "detail_shop3345",
                 "scraped_at": datetime.now(timezone.utc).isoformat(),
                 "html_length": len(html),
                 "status_code": response.status_code,
-                "detail_price_policy": "listing_price_and_availability_are_authoritative",
+                "detail_price_policy": "metadata_only_stock_shop3345_is_inventory_authority",
                 "listing_payload": listing_payload,
                 "genre": metadata.get("genre"),
                 "label": metadata.get("label"),
@@ -506,7 +504,10 @@ def main() -> int:
                 "detail_product_id": metadata.get("detail_product_id"),
             },
         )
-        mark_detail_scraped(link["id"])
+        if ean_raw:
+            mark_detail_ean_found(link["id"], ean_raw)
+        else:
+            mark_detail_scraped(link["id"])
         stored += 1
 
         print(
@@ -524,10 +525,10 @@ def main() -> int:
 
     print(
         "[DETAIL] done",
-        {"stored": stored, "skipped": skipped, "write": args.write},
+        {"stored": stored, "skipped": skipped, "fetched": fetched, "ean_hits": ean_hits, "errors": errors, "write": args.write},
         flush=True,
     )
-    return 0
+    return 1 if errors else 0
 
 
 if __name__ == "__main__":

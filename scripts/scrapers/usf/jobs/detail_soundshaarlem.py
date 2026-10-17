@@ -150,9 +150,9 @@ def parse_product_page(html: str, source_url: str, listing_payload: dict[str, An
     genre = extract_detail_field(text, "Genre")
     extra = extract_detail_field(text, "Extra")
 
-    price, price_old = extract_prices(text)
-    if not price:
-        price = clean(listing_payload.get("price") or listing_payload.get("price_current")) or None
+    # Full-page text also contains shipping charges and related products.
+    price = clean(listing_payload.get("price") or listing_payload.get("price_current")) or None
+    price_old = None
     if not price_old:
         price_old = clean(listing_payload.get("price_old")) or None
 
@@ -196,7 +196,7 @@ def get_detail_candidates(limit: int, rescrape_days: int) -> list[dict[str, Any]
                     last_detail_scraped_at is null
                     or last_detail_scraped_at < now() - (%s * interval '1 day')
                   )
-                order by last_detail_scraped_at asc nulls first, first_seen_at asc
+                order by last_seen_at desc, last_detail_scraped_at asc nulls first
                 limit %s
                 """,
                 (SHOP_ID, rescrape_days, limit),

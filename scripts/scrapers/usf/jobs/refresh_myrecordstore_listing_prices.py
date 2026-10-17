@@ -117,6 +117,10 @@ def extract_listing_card_prices(anchor) -> list[str]:
             )
         ]
 
+        # Current Tailwind layout: one dedicated coloured price badge per item.
+        if not price_nodes:
+            price_nodes = candidate.select('p[class*="bg-(--secondary)"]')
+
         if not price_nodes:
             continue
 
@@ -256,7 +260,7 @@ def parse_listing_page(html: str, *, listing_url: str, page: int, seen_at: datet
             "artist_raw": artist_raw,
             "price": price,
             "price_candidates": prices,
-            "price_selector": '[class*="itemTilePrice"], [class$="__price"]',
+            "price_selector": '[class*="itemTilePrice"], [class$="__price"], p[class*="bg-(--secondary)"]',
             "price_source": "listing",
             "sale_price": sale_price,
             "original_price": original_price,

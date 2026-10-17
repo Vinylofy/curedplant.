@@ -7,7 +7,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse, urlunparse
 
 import requests
 from bs4 import BeautifulSoup, Tag
@@ -242,6 +242,9 @@ def update_link_enrichment(
 
 
 def fetch_html(url: str, timeout: int = 45, attempts: int = 3) -> tuple[int, str]:
+    parsed = urlparse(url)
+    if parsed.hostname in {"northendhaarlem.nl", "www.northendhaarlem.nl"}:
+        url = urlunparse(parsed._replace(netloc="www.northendhaarlem.nl"))
     last_error: Exception | None = None
 
     for attempt in range(1, attempts + 1):
@@ -341,6 +344,11 @@ def main() -> int:
             status_code, html = fetch_html(source_url)
             if status_code >= 400:
                 print("[NORTHEND-DETAIL-SKIP] http_error", {"url": source_url, "status_code": status_code}, flush=True)
+                # Transport failures must not become 'EAN missing' attempts.
+                if status_code in {403, 429} or status_code >= 500:
+                    return 1
+                if status_code in {404, 410}:
+                    continue
                 update_link_enrichment(
                     conn,
                     link_id=row["id"],

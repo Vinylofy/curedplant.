@@ -9,6 +9,10 @@ import sys
 
 def command_for(worker: str, limit: int, write: bool = False) -> list[str]:
     common = [sys.executable, "-u", "-m"]
+    reviewed = {"cdhal", "colouredvinyl", "dgmoutlet", "everythingjazz", "fiftiesstore",
+                "myrecordstore", "northendhaarlem", "shop3345", "soundshaarlem", "soundsvenlo"}
+    if worker in reviewed and not write:
+        return common + ["scripts.scrapers.usf.jobs.live_detail_pilot", "--shop", worker, "--limit", str(limit)]
     commands: dict[str, list[str]] = {
         "bobsvinyl": common + ["scripts.scrapers.usf.jobs.detail_bobsvinyl", "--limit", str(limit)],
         "everythingjazz": common + ["scripts.scrapers.usf.jobs.detail_everythingjazz", "--limit", str(limit)],
@@ -19,7 +23,7 @@ def command_for(worker: str, limit: int, write: bool = False) -> list[str]:
         "platenzaak": common + ["scripts.scrapers.usf.jobs.detail_platenzaak", "--limit", str(limit)],
         "soundshaarlem": common + ["scripts.scrapers.usf.jobs.detail_soundshaarlem", "--limit", str(limit)],
         "soundsvenlo": common + ["scripts.scrapers.usf.jobs.detail_soundsvenlo", "--limit", str(limit)],
-        "fiftiesstore": common + ["scripts.scrapers.usf.jobs.promote_fiftiesstore", "--limit", str(limit)],
+        "fiftiesstore": common + ["scripts.scrapers.usf.jobs.refresh_fiftiesstore_listing_prices", "--max-products", str(limit), "--skip-delist-missing"],
         "musiconvinyl": common + ["scripts.scrapers.usf.jobs.enrich_musiconvinyl_details", "--limit", str(limit)],
         "atthemovies": common + ["scripts.workers.run_legacy_db", "--worker", "atthemovies", "--lane", "detail", "--limit", str(limit)],
         "bestkeptrecords": common + ["scripts.workers.run_legacy_db", "--worker", "bestkeptrecords", "--lane", "detail", "--limit", str(limit)],
@@ -30,8 +34,8 @@ def command_for(worker: str, limit: int, write: bool = False) -> list[str]:
         "vinyleers": common + ["scripts.workers.run_legacy_db", "--worker", "vinyleers", "--lane", "detail", "--limit", str(limit)],
         "vinylfreaks": common + ["scripts.workers.run_legacy_db", "--worker", "vinylfreaks", "--lane", "detail", "--limit", str(limit)],
         "viprecords": common + ["scripts.workers.run_legacy_db", "--worker", "viprecords", "--lane", "detail", "--limit", str(limit)],
-        "cdhal": common + ["scripts.scrapers.usf.jobs.run_cdhal_pipeline", "--skip-listing", "--run-detail", "--detail-limit", str(limit), "--skip-stage", "--skip-promote", "--skip-quarantine"],
-        "colouredvinyl": common + ["scripts.scrapers.usf.jobs.run_colouredvinyl_pipeline", "--mode", "dry-run", "--steps", "detail", "--detail-limit", str(limit)],
+        "cdhal": common + ["scripts.scrapers.usf.jobs.detail_cdhal", "--limit", str(limit), "--sleep", "2"],
+        "colouredvinyl": common + ["scripts.scrapers.usf.jobs.detail_colouredvinyl", "--limit", str(limit)],
         "dgmoutlet": common + ["scripts.scrapers.usf.jobs.run_dgmoutlet_pipeline", "--skip-discovery", "--skip-requeue", "--skip-stage", "--skip-promote", "--skip-quarantine", "--materialize-limit", str(limit)],
         "platomania": common + ["scripts.scrapers.platomania", "--mode", "both", "--output-dir", "data/raw/platomania", "--limit", str(limit)],
         "recordsonvinyl": common + ["scripts.scrapers.recordsonvinyl", "--master-csv", "data/raw/recordsonvinyl/recordsonvinyl_master.csv", "--out", "data/raw/recordsonvinyl/recordsonvinyl_products.csv", "crawl", "--max-pages", "1", "--limit-products", str(limit)],
@@ -56,38 +60,11 @@ def preflight_command(worker: str, limit: int, write: bool) -> list[str] | None:
     """
     if not write:
         return None
-    common = [sys.executable, "-u", "-m"]
-    commands = {
-        "everythingjazz": common + [
-            "scripts.scrapers.usf.jobs.refresh_everythingjazz_listing_prices",
-            "--max-pages", "1", "--max-products", str(limit), "--write",
-        ],
-        "fiftiesstore": common + [
-            "scripts.scrapers.usf.jobs.refresh_fiftiesstore_listing_prices",
-            "--max-products", str(limit), "--write",
-        ],
-        "myrecordstore": common + [
-            "scripts.scrapers.usf.jobs.refresh_myrecordstore_listing_prices",
-            "--max-pages", "1", "--write",
-        ],
-        "northendhaarlem": common + [
-            "scripts.scrapers.usf.jobs.refresh_northendhaarlem_listing_prices",
-            "--category-limit", "1", "--max-pages-per-category", "1", "--write",
-        ],
-        "soundshaarlem": common + [
-            "scripts.scrapers.usf.jobs.refresh_soundshaarlem_listing_prices",
-            "--seed-limit", "1", "--max-pages-per-seed", "1", "--write",
-        ],
-        "soundsvenlo": common + [
-            "scripts.scrapers.usf.jobs.refresh_soundsvenlo_listing_prices",
-            "--max-pages", "1", "--write",
-        ],
-        "shop3345": common + [
-            "scripts.scrapers.usf.jobs.refresh_shop3345_listing_prices",
-            "--max-pages", "1", "--write",
-        ],
-    }
-    return commands.get(worker)
+    if worker not in {"cdhal", "colouredvinyl", "dgmoutlet", "everythingjazz", "myrecordstore",
+                      "northendhaarlem", "shop3345", "soundshaarlem", "soundsvenlo"}:
+        return None
+    return [sys.executable, "-u", "-m", "scripts.scrapers.usf.jobs.live_detail_pilot",
+            "--shop", worker, "--limit", str(limit), "--register-only"]
 
 
 def main() -> int:
