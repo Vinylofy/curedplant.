@@ -38,7 +38,7 @@ def command_for(worker: str, limit: int) -> list[str]:
         "sounds": common + ["scripts.scrapers.usf.jobs.detail_sounds", "--limit", str(limit)],
         "shop3345": common + ["scripts.scrapers.usf.jobs.detail_shop3345", "--limit", str(limit)],
         "variaworld": common + ["scripts.scrapers.usf.jobs.detail_variaworld", "--limit", str(limit)],
-        "suburban": common + ["scripts.scrapers.suburban", "--mode", "detail", "--max-pages", "1", "--detail-limit", str(limit), "--output-dir", "output/suburban"],
+        "suburban": common + ["scripts.workers.run_legacy_db", "--worker", "suburban", "--lane", "detail", "--limit", str(limit)],
     }
     try:
         return commands[worker]
