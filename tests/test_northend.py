@@ -42,6 +42,8 @@ class NorthEndTests(unittest.TestCase):
             playwright = Mock()
             browser = playwright.chromium.launch.return_value
             page = browser.new_page.return_value
+            page.url = 'about:blank'
+            page.locator.return_value.first.count.return_value = 0
             page.goto.return_value = Mock(status=200, headers={})
             page.content.return_value = '<h1>North End</h1>'
             module = Mock()
@@ -52,6 +54,7 @@ class NorthEndTests(unittest.TestCase):
                 self.assertEqual(session.get('https://northendhaarlem.nl/category/').status_code, 200)
                 self.assertEqual(session.get('https://northendhaarlem.nl/product/').status_code, 200)
                 self.assertEqual([c.args[0] for c in page.goto.call_args_list], [
+                    'https://www.northendhaarlem.nl/',
                     'https://www.northendhaarlem.nl/category/',
                     'https://www.northendhaarlem.nl/product/'])
                 fetch.assert_called_once()
@@ -63,6 +66,36 @@ class NorthEndTests(unittest.TestCase):
         with NorthEndSession() as session:
             for key, value in REQUEST_HEADERS.items():
                 self.assertEqual(session.headers[key], value)
+
+    def test_product_navigation_clicks_existing_catalogue_link(self):
+        with NorthEndSession(clock=Mock(return_value=0), sleeper=Mock()) as session:
+            page = session._page = Mock(url=session.origin + '/c-1/vinyl/')
+            page.locator.return_value.first.count.return_value = 1
+            page.expect_navigation.return_value.__enter__ = Mock(
+                return_value=Mock(value=Mock(status=200, headers={})))
+            page.expect_navigation.return_value.__exit__ = Mock(return_value=False)
+            page.content.return_value = '<h1>Product</h1>'
+            result = session._navigate(session.origin + '/a-123/album/')
+            self.assertEqual(result.status_code, 200)
+            page.locator.return_value.first.click.assert_called_once()
+            page.goto.assert_not_called()
+            self.assertEqual(session.events[-1]['navigation'], 'link')
+            session._page = None
+
+    def test_blocked_homepage_stops_before_category_or_product(self):
+        module = Mock()
+        playwright = module.sync_playwright.return_value.start.return_value
+        page = playwright.chromium.launch.return_value.new_page.return_value
+        page.url = 'about:blank'
+        page.locator.return_value.first.count.return_value = 0
+        page.goto.return_value = Mock(status=403, headers={'cf-mitigated': 'challenge'})
+        page.content.return_value = 'blocked'
+        with patch.dict('sys.modules', {'playwright.sync_api': module}), \
+             patch('requests.Session.get', return_value=response(403)), \
+             NorthEndSession(clock=Mock(return_value=0), sleeper=Mock()) as session:
+            self.assertEqual(session.get(session.origin + '/c-1/vinyl/').status_code, 403)
+            self.assertEqual(session.get(session.origin + '/a-1/album/').status_code, 403)
+            page.goto.assert_called_once()
 
     def test_only_current_product_barcode_is_used(self):
         html = '''<nav>Menu Meer Barcode 8719262044807</nav>

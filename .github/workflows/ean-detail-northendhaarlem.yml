@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       source_version:
-        description: "Linux source: Windows baseline is read-only (max 3 pages / 25 details)"
+        description: "current: repaired Windows transport; windows-baseline: original read-only comparison"
         required: true
-        default: windows-baseline
+        default: current
         type: choice
         options:
           - windows-baseline

@@ -30,7 +30,7 @@ SHOPS = (
 )
 REPAIR_REVISION = {"cdhal": 2, "colouredvinyl": 1, "dgmoutlet": 3,
     "everythingjazz": 1, "fiftiesstore": 1, "myrecordstore": 2,
-    "northendhaarlem": 2, "shop3345": 2, "soundshaarlem": 1, "soundsvenlo": 2}
+    "northendhaarlem": 3, "shop3345": 2, "soundshaarlem": 1, "soundsvenlo": 3}
 
 
 def new_session(shop):

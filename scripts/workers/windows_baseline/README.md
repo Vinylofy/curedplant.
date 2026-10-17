@@ -13,8 +13,9 @@ EAN defects. The harness compares their observed EANs with the repaired
 product-scoped parsers and rejects disagreement. A correct checksum alone does
 not establish that a barcode belongs to the current album.
 
-The existing four manual workflows offer `source_version=windows-baseline`
-(default) or `current`. The baseline uses Ubuntu and Python 3.11, matching the
+The existing four manual workflows offer `source_version=current` (repaired Windows HTTP/browser profile and
+product-scoped EAN checks) or `windows-baseline` (unchanged source comparison).
+The EAN workflows default to `current`; price workflow defaults are unchanged. The baseline uses Ubuntu and Python 3.11, matching the
 Windows Python minor version. Dependencies still come from the current
 requirements; runtime versions are included in the artifact. This reproduces
 the shop source code and its HTTP settings, not the Windows machine or network.

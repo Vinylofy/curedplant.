@@ -15,6 +15,8 @@ class SoundsVenloSession(NorthEndSession):
     # Reuse the tested session lifecycle, not North End's origin or site policy.
     origin = 'https://www.sounds-venlo.nl'
     minimum_interval = 10.0
+    browser_entry_home = False
+    catalog_prefix = '/vinyl/'
     canonical_url = staticmethod(canonical_url)
     source_headers = {
         'User-Agent': ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) '

@@ -67,7 +67,7 @@ lossen de aangetoonde Cloudflare-blokkade niet op.
 - Shop3345 schrijft vanuit de detailworker uitsluitend verrijking; raw-prijs en
   raw-voorraad blijven null. `stock_shop3345` blijft de voorraadautoriteit.
 - HTTP-blokkades bij North End tellen niet meer als een inhoudelijke EAN-misser.
-- Zesendertig unittests slagen, inclusief prijsisolatie, echte dry-run-detailaanvragen,
+- Eenenveertig unittests slagen, inclusief prijsisolatie, echte dry-run-detailaanvragen,
   database-writegrenzen en EUR-marktkeuze. Python-compilatie en diffcontrole slagen.
 
 ## North End: expliciet heropende herstelronde, 17 oktober 2026
@@ -165,7 +165,7 @@ De Windows-prijslogs bewijzen respectievelijk 4.618 en 20.357 catalogusrecords;
 276 en 10.702 bestaande prijzen verwerkt. Dit is geen nieuwe EAN-goedkeuring.
 
 De vier bestaande handmatige Linux-actions hebben nu de keuze
-`source_version=windows-baseline` (standaard) of `current`. De baseline draait
+`source_version=windows-baseline` of `current` (standaard voor EAN). De baseline draait
 op Ubuntu/Python 3.11, gebruikt de originele fetch- en parserfuncties en
 controleert vóór import de SHA-256-hashes in
 `scripts/workers/windows_baseline/manifest.json`. Gedeelde USF-helpers en
@@ -209,11 +209,32 @@ HTTP-/browserheaders over, navigeert direct naar de gevraagde categorie (geen
 verplichte homepage) en houdt de gewone browsersessie ook voor details aan.
 De correcte productgebonden EAN-parser blijft behouden. Dit is een tweede,
 afzonderlijke gerichte vervolgvariant; de bronkopieën blijven ongewijzigd.
-Nieuwe read-only GitHub-proeven van deze current-variant volgen hieronder.
+Deze tweede current-vervolgvariant is voor EAN/detail op GitHub getest:
+
+- [North End 39066397769](https://github.com/Vinylofy/curedplant./actions/runs/39066397769):
+  categorie met HTTP én directe browsernavigatie geeft Cloudflare 403; nul details.
+- [Sounds Venlo 39066401105](https://github.com/Vinylofy/curedplant./actions/runs/39066401105):
+  categorie via browser geeft 200 en vijf geselecteerde producten; eerste directe
+  browsernavigatie naar Fresku geeft Cloudflare 403; nul opgehaalde details.
+
+De derde en laatste EAN-vervolgvariant gebruikt echte cataloguslinks: de browser
+klikt de bestaande productanker aan en keert voor een volgend product zo nodig
+naar de catalogus terug. De browser verzorgt zelf de normale verwijzende pagina;
+er wordt geen vaste Referer-header voor alle documenten gebruikt. North End
+begint voor deze variant bij de homepage met het Windows-profiel en volgt de
+categorielink; een geblokkeerde homepage beëindigt de proef direct. Venlo begint
+bij de bewezen bereikbare listing. Wachtintervallen en stoppen bij 403/429 blijven
+behouden. Vervolgvalidatie is uitsluitend EAN/detail, zonder prijsherstarts.
+
+De echte Chromium-navigatie is lokaal getest met onderschepte fixture-antwoorden:
+catalogus → product 1 → catalogus → product 2, vier documenten, beide product-
+requests hebben de catalogus als Referer. Deze check bereikt de shops niet en
+bewijst de browserbediening, niet de toegang vanuit GitHub. De definitieve
+shopuitkomsten van variant drie worden hieronder toegevoegd.
 
 Bewijs: JSON-artifact `windows-baseline-<shop>-<lane>-<run_id>`, met product-URL,
 listingprijs, oude en gevalideerde EAN, response-hash, transportstatus,
-broncommit en nul databasewrites. De zesendertig tests en actionlint-controle
+broncommit en nul databasewrites. De eenenveertig tests en actionlint-controle
 van de zes gewijzigde workflowbestanden slagen.
 
 ## Eerder vastgelegde groene resultaten
