@@ -7,7 +7,7 @@ import subprocess
 import sys
 
 
-def command_for(worker: str, limit: int) -> list[str]:
+def command_for(worker: str, limit: int, write: bool) -> list[str]:
     common = [sys.executable, "-u", "-m"]
     commands: dict[str, list[str]] = {
         "bobsvinyl": common + ["scripts.scrapers.usf.jobs.detail_bobsvinyl", "--limit", str(limit)],
@@ -54,7 +54,9 @@ def main() -> int:
     args = parser.parse_args()
     if args.limit < 1:
         parser.error("--limit must be >= 1")
-    command = command_for(args.worker, args.limit)
+    command = command_for(args.worker, args.limit, args.write)
+    if args.worker == "sounds" and not args.write:
+        command.append("--dry-run")
     if args.write and args.worker in {"atthemovies", "bestkeptrecords", "blackvinyl", "fiftiesstore", "getbackmusic", "rockinoutrecords", "topnotch", "vinyleers", "vinylfreaks", "viprecords", "bobsvinyl", "everythingjazz", "imusic", "jpc", "myrecordstore", "northendhaarlem", "platenzaak", "soundshaarlem", "soundsvenlo", "cdhal", "colouredvinyl", "dgmoutlet", "shop3345"}:
         command.append("--write")
     print("[CUREDPLANT] ean-detail:", " ".join(command), flush=True)

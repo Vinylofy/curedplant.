@@ -24,6 +24,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="Fetch Sounds detail pages into raw_shop_scrapes")
     p.add_argument("--limit", type=int, default=5)
     p.add_argument("--sleep", type=float, default=1.5)
+    p.add_argument("--dry-run", action="store_true", help="Fetch and parse details without database writes")
     return p
 
 
@@ -202,6 +203,15 @@ def main() -> int:
         price_raw = get_listing_price(url)  # listing-first policy: current price comes from shop_product_links.payload
         availability_raw = extract_availability(html)
         image_url_raw = extract_image_url(html)
+
+        if args.dry_run:
+            print(
+                f"[DETAIL][DRY-RUN] url={url} ean={ean_raw or ''} "
+                f"availability={availability_raw or ''}",
+                flush=True,
+            )
+            time.sleep(args.sleep)
+            continue
 
         raw_id = insert_raw_shop_scrape(
             run_id=None,
