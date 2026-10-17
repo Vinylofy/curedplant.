@@ -47,7 +47,10 @@ def main() -> int:
 
     detail_limit = str(args.limit if args.lane == "detail" else 0)
     if style == "mode":
-        scraper_args = ["--mode", "detail" if args.lane == "detail" else "listing", "--max-pages", "1" if args.lane == "detail" else str(args.limit), "--detail-limit", detail_limit]
+        mode = "both" if args.lane == "detail" and args.worker in {"getbackmusic", "suburban", "viprecords"} else ("detail" if args.lane == "detail" else "listing")
+        scraper_args = ["--mode", mode, "--max-pages", "1" if args.lane == "detail" else str(args.limit), "--detail-limit", detail_limit]
+        if args.worker == "vinylfreaks":
+            scraper_args.extend(["--transport", "http"])
     elif style == "blackvinyl":
         scraper_args = ["--detail-mode", "all" if args.lane == "detail" else "none", "--output", "data/raw/blackvinyl/blackvinyl_products.csv"]
     elif style == "legacy":
