@@ -186,7 +186,7 @@ def parse(shop, session, row):
     if shop == "northendhaarlem":
         from scripts.scrapers.usf.jobs import detail_northendhaarlem as source
         detail = source.parse_detail_page(html, listing_payload=payload)
-        return detail["ean"], detail["title_raw"], None
+        return detail["ean"], detail["title_raw"], detail.get("ean_issue")
     if shop == "soundshaarlem":
         from scripts.scrapers.usf.jobs import detail_soundshaarlem as source
         detail = source.parse_product_page(html, url, payload)
