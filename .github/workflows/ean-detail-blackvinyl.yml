@@ -1,6 +1,8 @@
 name: "Curedplant | EAN/detail | Blackvinyl"
 
 on:
+  schedule:
+    - cron: "23 4 * * *"
   workflow_dispatch:
     inputs:
       limit:
@@ -19,6 +21,6 @@ jobs:
     uses: ./.github/workflows/_ean-detail-worker.yml
     with:
       worker: blackvinyl
-      limit: ${{ inputs.limit }}
-      write: ${{ inputs.write }}
+      limit: ${{ github.event_name == 'schedule' && '250' || inputs.limit }}
+      write: ${{ github.event_name == 'schedule' || inputs.write }}
     secrets: inherit
