@@ -23,11 +23,15 @@ def canonical_url(url):
 
 
 class NorthEndSession(requests.Session):
-    def __init__(self, *, interval=30.0, clock=time.monotonic, sleeper=time.sleep):
+    origin = ORIGIN
+    minimum_interval = 30.0
+    canonical_url = staticmethod(canonical_url)
+
+    def __init__(self, *, interval=None, clock=time.monotonic, sleeper=time.sleep):
         super().__init__()
         self.headers.update({'User-Agent': 'Vinylofy/1.0 (+https://vinylofy.com)',
                              'Accept-Language': 'nl-NL,nl;q=0.9,en;q=0.8'})
-        self.interval = max(30.0, interval)
+        self.interval = max(self.minimum_interval, interval if interval is not None else self.minimum_interval)
         self.clock, self.sleeper = clock, sleeper
         self.last_request = None
         self.events = []
@@ -57,14 +61,14 @@ class NorthEndSession(requests.Session):
             raise requests.HTTPError('North End browser returned no document response')
         response = requests.Response()
         response.status_code = observed.status
-        response.url = canonical_url(url)
+        response.url = self.canonical_url(url)
         response.headers.update(observed.headers)
         response.encoding = 'utf-8'
         response._content = self._page.content().encode('utf-8')
         return self._observe(response, 'persistent_browser')
 
     def get(self, url, **kwargs):
-        url = canonical_url(url)
+        url = self.canonical_url(url)
         if self._blocked is not None:
             # Stop the batch after a continuing site denial, even if the caller
             # tries another category. Do not hit Cloudflare repeatedly.
@@ -83,10 +87,10 @@ class NorthEndSession(requests.Session):
         self._playwright = sync_playwright().start()
         self._browser = self._playwright.chromium.launch(headless=True)
         self._page = self._browser.new_page(locale='nl-NL')
-        homepage = self._navigate(ORIGIN + '/')
+        homepage = self._navigate(self.origin + '/')
         if homepage.status_code >= 400:
             return homepage
-        return homepage if url == ORIGIN + '/' else self._navigate(url)
+        return homepage if url == self.origin + '/' else self._navigate(url)
 
     def close(self):
         try:

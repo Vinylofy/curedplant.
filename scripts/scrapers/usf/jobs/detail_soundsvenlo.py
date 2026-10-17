@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import time
 from datetime import datetime, timezone
@@ -13,7 +14,8 @@ from bs4 import BeautifulSoup
 from psycopg.rows import dict_row
 
 from scripts.scrapers.usf.core.db import db_connection
-from scripts.scrapers.usf.core.site_transport import get_with_browser
+from scripts.scrapers.usf.core.soundsvenlo_transport import SoundsVenloSession
+from scripts.importers.common import strict_normalize_gtin
 from scripts.scrapers.usf.core.link_registry import (
     insert_raw_shop_scrape,
     mark_detail_scraped,
@@ -75,17 +77,7 @@ def normalize_availability(value: object) -> str:
 
 
 def normalize_ean(value: object) -> str | None:
-    if value is None:
-        return None
-    text = clean(value)
-    if re.fullmatch(r"\d+\.0", text):
-        text = text[:-2]
-    digits = re.sub(r"\D", "", text)
-    if len(digits) == 11:
-        digits = "0" + digits
-    if len(digits) in (8, 12, 13, 14):
-        return digits
-    return None
+    return strict_normalize_gtin(value)
 
 
 def normalize_product_url(value: object) -> str:
@@ -227,38 +219,81 @@ def get_listing_availability(row: dict[str, Any]) -> str:
 
 def extract_ean_from_url(source_url: str) -> str | None:
     slug = urlparse(source_url).path.strip("/").split("/")[-1]
-    for match in re.finditer(r"(\d{12,14})", slug):
+    for match in re.finditer(r"(?<!\d)(\d{12,14})(?!\d)", slug):
         ean = normalize_ean(match.group(1))
         if ean:
             return ean
     return None
 
 
+def product_scope(html: str):
+    soup = BeautifulSoup(html, 'html.parser')
+    heading = soup.select_one('main h1')
+    if heading is None:
+        return None
+    group = heading.find_parent('hgroup') or heading
+    parent = group.find_parent('div')
+    if parent is None:
+        return None
+    scope = BeautifulSoup(str(parent), 'html.parser')
+    for node in scope.select('script, style, form, template, svg, nav, .group'):
+        node.decompose()
+    return scope
+
+
+def ean_evidence(html: str, source_url: str) -> dict[str, Any]:
+    candidates: dict[str, list[str]] = {}
+    offer_availability = None
+    def add(value, origin):
+        ean = normalize_ean(value)
+        if ean:
+            candidates.setdefault(ean, []).append(origin)
+
+    scope = product_scope(html)
+    if scope is not None:
+        for line in scope.stripped_strings:
+            if re.fullmatch(r'\d{12,14}', clean(line)):
+                add(clean(line), 'product_metadata_line')
+        text = clean(scope.get_text(' ', strip=True))
+        for match in re.finditer(r'\b(?:EAN|GTIN|Barcode|Streepjescode)\s*:?\s*(\d{8,14})(?!\d)', text, re.I):
+            add(match.group(1), 'product_labelled_barcode')
+
+    # Only the structured Product belonging to this URL can add identifiers.
+    soup = BeautifulSoup(html, 'html.parser')
+    wanted = normalize_product_url(source_url)
+    for node in soup.select('script[type="application/ld+json"]'):
+        try:
+            data = json.loads(node.get_text())
+        except (ValueError, TypeError):
+            continue
+        stack = data if isinstance(data, list) else [data]
+        while stack:
+            item = stack.pop()
+            if not isinstance(item, dict):
+                continue
+            stack.extend(item.get('@graph', []))
+            types = item.get('@type', [])
+            types = [types] if isinstance(types, str) else types
+            if 'Product' not in types or normalize_product_url(item.get('url', '')) != wanted:
+                continue
+            offer = item.get('offers')
+            if isinstance(offer, dict):
+                offer_availability = offer.get('availability')
+            for key in ('gtin', 'gtin8', 'gtin12', 'gtin13', 'gtin14', 'barcode'):
+                if item.get(key):
+                    add(item[key], 'current_product_jsonld')
+    from_url = extract_ean_from_url(source_url)
+    if from_url:
+        add(from_url, 'product_url')
+    ean = next(iter(candidates)) if len(candidates) == 1 else None
+    return {'ean': ean, 'candidates': sorted(candidates),
+            'detail_availability_observed': offer_availability,
+            'source': candidates.get(ean, []),
+            'issue': 'ambiguous_product_eans' if len(candidates) > 1 else 'missing_valid_product_ean' if not ean else None}
+
+
 def extract_ean(html: str, source_url: str) -> str | None:
-    patterns = [
-        r'"barcode"\s*:\s*"(\d{8,14})"',
-        r'"gtin(?:8|12|13|14)?"\s*:\s*"(\d{8,14})"',
-        r'\b(?:EAN|GTIN|Barcode|Streepjescode)\D{0,80}(\d{8,14})\b',
-    ]
-    for pattern in patterns:
-        match = re.search(pattern, html, flags=re.IGNORECASE | re.DOTALL)
-        if match:
-            ean = normalize_ean(match.group(1))
-            if ean:
-                return ean
-
-    ean_from_url = extract_ean_from_url(source_url)
-    if ean_from_url:
-        return ean_from_url
-
-    # Sounds Venlo detail pages often show the barcode as an unlabeled numeric
-    # metadata line. Prefer 12-14 digit candidates and ignore shorter product IDs.
-    candidates = []
-    for match in re.finditer(r"\b(\d{12,14})\b", html):
-        ean = normalize_ean(match.group(1))
-        if ean and ean not in candidates:
-            candidates.append(ean)
-    return candidates[0] if candidates else None
+    return ean_evidence(html, source_url)['ean']
 
 
 def extract_image_url(html: str) -> str | None:
@@ -280,7 +315,9 @@ def extract_image_url(html: str) -> str | None:
 
 
 def extract_detail_text_lines(html: str) -> list[str]:
-    soup = BeautifulSoup(html, "html.parser")
+    soup = product_scope(html)
+    if soup is None:
+        return []
     return [
         clean(line)
         for line in soup.get_text("\n", strip=True).splitlines()
@@ -298,34 +335,32 @@ def extract_detail_metadata(html: str) -> dict[str, str | None]:
         "detail_product_id": None,
     }
 
+    scope = product_scope(html)
+    if scope is not None:
+        for link in scope.select('a[href]'):
+            href, title = str(link.get('href', '')), clean(link.get_text(' ', strip=True))
+            if '/artiest-' in href:
+                continue
+            if re.fullmatch(r'(?:\d*\s*(?:LP|CD)|(?:7|10|12)\s*(?:inch|"))', title, re.I):
+                metadata['format'] = title
+            elif metadata['genre'] is None:
+                metadata['genre'] = title or None
+
     for index, line in enumerate(lines):
+        release = re.search(r'\bRelease\s*:?\s*(\d{2}-\d{2}-\d{4})', line, re.I)
+        if release:
+            metadata['release_date'] = release.group(1)
+        label = re.fullmatch(r'(?:Label|Maatschappij)\s*:\s*(.+)', line, re.I)
+        if label:
+            metadata['label'] = label.group(1)
+        if re.fullmatch(r'\d{6,9}', line):
+            metadata['detail_product_id'] = line
         if line.lower() == "release" and index + 1 < len(lines):
             metadata["release_date"] = clean(lines[index + 1])
             continue
         if re.fullmatch(r"\d{2}-\d{2}-\d{4}", line):
             metadata["release_date"] = line
             continue
-
-    # Best-effort extraction from the canonical detail block around the barcode.
-    # The detail page sequence is typically: artist, title, genre, label, format,
-    # barcode, "Release", release_date, internal_product_id, price, availability.
-    ean_positions = [
-        index
-        for index, line in enumerate(lines)
-        if normalize_ean(line) and len(re.sub(r"\D", "", line)) >= 12
-    ]
-    if ean_positions:
-        pos = ean_positions[0]
-        if pos >= 1:
-            metadata["format"] = lines[pos - 1]
-        if pos >= 2:
-            metadata["label"] = lines[pos - 2]
-        if pos >= 3:
-            metadata["genre"] = lines[pos - 3]
-        for candidate in lines[pos + 1 : pos + 5]:
-            if re.fullmatch(r"\d{6,9}", candidate):
-                metadata["detail_product_id"] = candidate
-                break
 
     return metadata
 
@@ -365,6 +400,12 @@ def main() -> int:
     if args.retry_days < 1:
         raise SystemExit("[ERROR] --retry-days moet minimaal 1 zijn.")
 
+    with SoundsVenloSession() as session:
+        return run_detail(args, session)
+
+
+def run_detail(args, session) -> int:
+
     links = fetch_detail_queue(limit=args.limit, retry_days=args.retry_days)
     print(
         "[DETAIL]",
@@ -379,9 +420,6 @@ def main() -> int:
 
     if not links:
         return 0
-
-    session = requests.Session()
-    session.headers.update({"User-Agent": DEFAULT_USER_AGENT})
 
     stored = 0
     skipped = 0
@@ -405,7 +443,7 @@ def main() -> int:
         )
 
         try:
-            response = get_with_browser(session, source_url, timeout=30)
+            response = session.get(source_url, timeout=30)
         except requests.RequestException as exc:
             skipped += 1
             errors += 1
@@ -437,7 +475,8 @@ def main() -> int:
             continue
 
         html = response.text
-        ean_raw = extract_ean(html, source_url)
+        evidence = ean_evidence(html, source_url)
+        ean_raw = evidence['ean']
         fetched += 1
         ean_hits += bool(ean_raw)
         metadata = extract_detail_metadata(html)
@@ -478,6 +517,7 @@ def main() -> int:
                 "format": metadata.get("format") or listing_payload.get("format"),
                 "release_date": metadata.get("release_date"),
                 "detail_product_id": metadata.get("detail_product_id"),
+                "ean_evidence": evidence,
             },
         )
         mark_detail_scraped(link["id"])

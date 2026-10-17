@@ -45,7 +45,9 @@ class RedRepairsTests(unittest.TestCase):
         response.raise_for_status.return_value = None
         with contextlib.ExitStack() as stack:
             stack.enter_context(patch.object(module, 'fetch_detail_queue', return_value=[row]))
-            session = stack.enter_context(patch.object(module.requests, 'Session'))
+            session = stack.enter_context(patch.object(module, 'SoundsVenloSession')) if module is detail_soundsvenlo else stack.enter_context(patch.object(module.requests, 'Session'))
+            if module is detail_soundsvenlo:
+                session.return_value.__enter__.return_value = session.return_value
             session.return_value.get.return_value = response
             insert = stack.enter_context(patch.object(module, 'insert_raw_shop_scrape', return_value='raw-1'))
             mark = stack.enter_context(patch.object(module, 'mark_detail_scraped'))

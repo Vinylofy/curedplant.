@@ -15,6 +15,7 @@ from scripts.scrapers.usf.core.fast_listing_price_sync import bulk_update_prices
 from scripts.scrapers.usf.core.link_registry import upsert_discovered_links
 from scripts.scrapers.usf.core.listing_price_sync import ListingOffer, sync_listing_offers
 from scripts.scrapers.usf.core.models import DiscoveredLink
+from scripts.scrapers.usf.core.soundsvenlo_transport import SoundsVenloSession
 
 
 SHOP_ID = "soundsvenlo"
@@ -247,6 +248,10 @@ def fetch_html_with_playwright(url: str, *, referer: str | None = None, timeout_
 
 def fetch_listing_html(session: requests.Session, url: str, *, referer: str | None = None) -> str:
     """Fast requests first; Playwright fallback on 403 or request failure."""
+    if isinstance(session, SoundsVenloSession):
+        response = session.get(url, timeout=30)
+        response.raise_for_status()
+        return response.text
     try:
         response = session.get(
             url,
@@ -437,8 +442,11 @@ def main() -> int:
     if args.max_page_failures < 1:
         raise SystemExit("[ERROR] --max-page-failures moet minimaal 1 zijn.")
 
-    session = requests.Session()
-    session.headers.update(DEFAULT_HEADERS)
+    with SoundsVenloSession() as session:
+        return run_listing(args, session)
+
+
+def run_listing(args, session) -> int:
 
     seen_at = datetime.now(timezone.utc)
     all_links: list[DiscoveredLink] = []
@@ -462,6 +470,8 @@ def main() -> int:
         try:
             html = fetch_listing_html(session, listing_url, referer=referer)
         except Exception as exc:
+            if isinstance(exc, requests.HTTPError) and exc.response is not None and exc.response.status_code in {403, 429}:
+                raise
             consecutive_failures += 1
             print(
                 "[LISTING-REFRESH][WARN] fetch failed",

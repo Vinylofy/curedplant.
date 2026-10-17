@@ -22,6 +22,7 @@ from bs4 import BeautifulSoup
 from scripts.importers.common import strict_normalize_gtin
 from scripts.scrapers.usf.core.site_transport import get_with_browser
 from scripts.scrapers.usf.core.northend_transport import NorthEndSession
+from scripts.scrapers.usf.core.soundsvenlo_transport import SoundsVenloSession
 
 SHOPS = (
     "cdhal", "colouredvinyl", "dgmoutlet", "everythingjazz", "fiftiesstore",
@@ -29,7 +30,15 @@ SHOPS = (
 )
 REPAIR_REVISION = {"cdhal": 2, "colouredvinyl": 1, "dgmoutlet": 3,
     "everythingjazz": 1, "fiftiesstore": 1, "myrecordstore": 2,
-    "northendhaarlem": 1, "shop3345": 2, "soundshaarlem": 1, "soundsvenlo": 3}
+    "northendhaarlem": 1, "shop3345": 2, "soundshaarlem": 1, "soundsvenlo": 1}
+
+
+def new_session(shop):
+    if shop == 'northendhaarlem':
+        return NorthEndSession()
+    if shop == 'soundsvenlo':
+        return SoundsVenloSession()
+    return requests.Session()
 
 
 def get(session, url):
@@ -194,6 +203,9 @@ def parse(shop, session, row):
     if shop in {"soundsvenlo", "shop3345"}:
         if shop == "soundsvenlo":
             from scripts.scrapers.usf.jobs import detail_soundsvenlo as source
+            evidence = source.ean_evidence(html, url)
+            row['detail_evidence'] = evidence
+            return evidence['ean'], source.build_title_raw(payload, html), evidence['issue']
         else:
             from scripts.scrapers.usf.jobs import detail_shop3345 as source
         return source.extract_ean(html, url), source.build_title_raw(payload, html), None
@@ -222,8 +234,8 @@ def run(shop, limit, delay, attempt):
     summary = {"shop": shop, "attempt": attempt, "write": False,
         "time": datetime.now(timezone.utc).isoformat(), "discovered": 0,
         "fetched": 0, "valid_eans": 0, "missing_ean": 0, "errors": [], "records": []}
-    session = NorthEndSession() if shop == "northendhaarlem" else requests.Session()
-    if shop != "northendhaarlem":
+    session = new_session(shop)
+    if not isinstance(session, NorthEndSession):
         session.headers.update({"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
                                 "Accept-Language": "nl-NL,nl;q=0.9,en;q=0.8"})
     try:
@@ -238,6 +250,9 @@ def run(shop, limit, delay, attempt):
                 record.update(title=title, ean=valid, observed_ean=ean, issue=issue)
                 if shop == "dgmoutlet":
                     record.update(ean_source="listing_sku", detail_sha256=row["payload"].get("detail_sha256"))
+                if shop == 'soundsvenlo':
+                    record.update(ean_evidence=row.get('detail_evidence'),
+                                  listing_availability=row['payload'].get('availability'))
                 summary["fetched"] += 1
                 summary["valid_eans" if valid else "missing_ean"] += 1
             except Exception as exc:
@@ -289,7 +304,7 @@ def main():
         # Preserve existing detail metadata and counters when refreshing listing
         # evidence. The earlier listing commands also changed public prices and
         # could delist a catalog based on a bounded sample.
-        with (NorthEndSession() if args.shop == "northendhaarlem" else requests.Session()) as session:
+        with new_session(args.shop) as session:
             rows = discover(args.shop, session, args.limit)
         if not rows:
             raise SystemExit("Live discovery is empty; registry left unchanged")
