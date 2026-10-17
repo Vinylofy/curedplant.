@@ -131,6 +131,24 @@ zie [39069521570](https://github.com/Vinylofy/curedplant./actions/runs/390695215
 Dit is een verbindingsfout, geen inhoudelijke EAN-misser. De dagelijkse worker
 telt technische detailfouten afzonderlijk van inhoudelijke EAN-missers.
 
+De twee daaropvolgende write-proeven zijn beide inhoudelijk groen. Twee
+verschillende GitHub-runners selecteerden verschillende producten uit dezelfde
+bewaarde wachtrij, valideerden de barcode en committen de metadata. De tweede
+run had geen nieuwe discovery nodig en pakte het volgende onbehandelde record.
+
+| Write-run | Product | GTIN-14 | Dagteller na afloop |
+| --- | --- | --- | --- |
+| [39069611801](https://github.com/Vinylofy/curedplant./actions/runs/39069611801) | Lady Wray – Cover Girl (LP Pink Vinyl) | 00349223016659 | 2 gereserveerd (inclusief de eerdere mislukte verbinding) |
+| [39069693233](https://github.com/Vinylofy/curedplant./actions/runs/39069693233) | Timbaland – Best Of (LP Gold Vinyl) | 08717662596087 | 3 gereserveerd |
+
+Beide: één detailpoging, één geldige EAN, geen fouten en nul prijswrites.
+Het opgeslagen checkpoint is daarna onafhankelijk via de GitHub API gelezen:
+cataloguspagina 2, dagbudget 3, laatste uitkomst groen. Hiermee zijn de
+werkelijke repositoryrechten, databasewrite en hervatting vanuit een volgende
+runner bewezen voor Rockin Out. Dit is geen claim van 26 geslaagde write-runs;
+de overige ingeplande shops gebruiken dezelfde geteste voortgangslaag en hun
+eigen adapters.
+
 ## Resultaten per shop
 
 | Shop | Status | Geldige GTIN / opgehaalde details | Herstel / bevinding | Bewijsrun |
