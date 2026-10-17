@@ -17,15 +17,17 @@ The database write flag is explicit; schedules are configured to write because
 these are the production Ubuntu replacements, while manual runs default to a
 dry-run for verification.
 
-To prevent duplicate writes while the old Vinylofy schedules are still live,
-scheduled jobs are guarded by the repository variable
-`CUREDPLANT_SCHEDULE_ENABLED`. Leave it unset during the pilot. After a worker
-has passed its manual dry-run and one green write run, enable the variable and
-then retire only that worker's old Windows/Ubuntu counterpart.
+EAN automation is now configured per approved shop: 26 daily jobs, maximum
+100 previously unprocessed product details per shop and Amsterdam day. Manual
+EAN runs default to `write=false`. Two blocked EAN actions have no schedule.
+See [the central EAN quality and schedule status](ean-quality-status.md) for
+exact times, durable progress, evidence and limitations. There is no global
+`CUREDPLANT_SCHEDULE_ENABLED` gate in these workflows; the individual workflow
+cron and write input control execution.
 
-Windows counterparts in Vinylofy remain enabled during migration. Retire one
-only after the same worker has a green Curedplant run and its output has been
-checked. This prevents a failed migration from creating a data gap.
+Price schedules are independent and were not changed by this EAN rollout.
+Windows counterparts are not retired automatically. Disable a counterpart
+only after its own replacement has a successful run with verified output.
 
 The repository must have these Actions secrets before a write run:
 

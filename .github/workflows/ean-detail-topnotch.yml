@@ -1,24 +1,29 @@
 name: "Curedplant | EAN/detail | Topnotch"
 
 on:
+  schedule:
+    - cron: "44 2 * * *"
   workflow_dispatch:
     inputs:
       limit:
-        description: "Detail records for this worker"
+        description: "Max new product details (1-100); daily total never exceeds 100"
         required: true
-        default: "25"
+        default: "100"
         type: string
       write:
-        description: "Write to database where supported"
+        description: "Save EAN metadata and progress; never write prices"
         required: true
         default: false
         type: boolean
 
+permissions:
+  contents: write
+
 jobs:
   worker:
-    uses: ./.github/workflows/_ean-detail-worker.yml
+    uses: ./.github/workflows/_daily-ean-worker.yml
     with:
       worker: topnotch
-      limit: ${{ inputs.limit }}
-      write: ${{ inputs.write }}
+      limit: ${{ github.event_name == 'schedule' && '100' || inputs.limit }}
+      write: ${{ github.event_name == 'schedule' || inputs.write }}
     secrets: inherit

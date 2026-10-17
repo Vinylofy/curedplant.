@@ -1,4 +1,4 @@
-name: "Curedplant | EAN/detail | Sounds Venlo"
+name: "Curedplant | GEBLOKKEERD | EAN/detail | Sounds Venlo"
 
 on:
   workflow_dispatch:

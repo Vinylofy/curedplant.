@@ -21,7 +21,96 @@ zonder netwerkverzoeken is geen geslaagde pilot.
 Deze status bewijst de bronpilot, niet een productie-import of database-write.
 De oorspronkelijke Actions-tests gebruiken `limit=25, write=false`. De nieuwe
 North End- en Venlo-vervolgproeven gebruiken vijf records en blijven read-only. Er zijn geen
-planningen toegevoegd en geen Windows-actions uitgezet.
+planningen toegevoegd en geen Windows-actions uitgezet tijdens die herstelronde.
+De daaropvolgende dagelijkse EAN-inrichting staat hieronder.
+
+## Dagelijkse EAN-planning in curedplant., 17 oktober 2026
+
+De 26 geregistreerd groene shops krijgen ieder hun eigen dagelijkse EAN-action
+op Ubuntu. North End Haarlem en Sounds Venlo behouden uitsluitend handmatige
+starts en heten nu `Curedplant | GEBLOKKEERD | EAN/detail | <shop>`.
+De bestaande prijsactions en Windows-planningen zijn hierbij niet gewijzigd.
+
+De dagelijkse worker gebruikt de bestaande shopspecifieke listing- en
+detailparsers. Anders dan de oude CSV-pipelines verwerkt deze uitsluitend
+EAN-verrijking en productidentiteit: geen prijs-, voorraad- of prijshistoriewrites.
+Raw-verrijkingsrecords hebben `price_raw` en `availability_raw` op NULL.
+
+- Per shop maximaal **100 nieuwe productdetailpogingen per Amsterdamse kalenderdag**.
+  Dit garandeert geen 100 gevonden of wereldwijd unieke EAN's. Een product
+  zonder geldige code telt als gecontroleerd en wordt als misser opgeslagen.
+- De database selecteert actieve, nog niet afgehandelde productlinks; reeds
+  opgehaalde details en aanwezige raw-EAN's worden overgeslagen. Volgorde:
+  eerste ontdekking, daarna vaste recordidentiteit. Een volgende run pakt de volgende set.
+- De cataloguspositie en het dagbudget staan duurzaam in
+  `.state/ean/<shop>.json` op branch `automation/ean-progress`, onafhankelijk
+  van tijdelijke runnerbestanden en artifacts. Per shop kan één EAN-job tegelijk lopen.
+  Een corrupte of ontoegankelijke checkpoint veroorzaakt rood, geen reset.
+- Nieuwe productlinks worden indien nodig via maximaal tien listingpagina's
+  ontdekt. De volgende pagina wordt onthouden. Na het cataloguseinde volgt na
+  zeven dagen opnieuw discovery; afgeronde productdetails blijven uitgesloten.
+- iMusic en JPC gebruiken hun bestaande databasewachtrij. Zonder nieuwe
+  geregistreerde links melden zij `waiting_for_source_registry`; deze wijziging
+  bouwt geen nieuwe discovery-crawler voor die twee shops.
+- Iedere write-run reserveert vooraf het resterende dagbudget. Ook extra
+  handmatige starts kunnen samen de 100 niet overschrijden. Ongebruikte
+  gereserveerde plaatsen na een storing blijven die dag verbruikt; de volgende
+  Amsterdamse kalenderdag begint een nieuw budget.
+- Een vastgelegde technische fout wordt overgeslagen bij de volgende normale
+  nieuwe-productrun en blijft zichtbaar voor gericht herstel. HTTP 403/429
+  stopt de run. Een crash vóór databasecommit laat alleen een claim achter;
+  die vervalt na twee uur, zodat een latere run het onafgemaakte record kan herstellen.
+- Handmatige starts hebben standaard `write=false`: wel broncontrole en
+  databaselezingen, geen writes of voortgangswijziging. Herhaalde read-only
+  tests kunnen daardoor bewust dezelfde nog niet afgehandelde producten tonen.
+- Per run staan aantallen, fouten en volgende positie in de Actions-samenvatting;
+  productbewijs staat in artifact `daily-ean-<shop>-<run_id>` (14 dagen).
+
+De tijden hieronder zijn UTC; in Nederland één uur later in wintertijd en
+twee uur later in zomertijd. GitHub kan geplande starts vertragen.
+
+| EAN-action / shop | Dagelijks UTC | Maximum nieuwe details |
+| --- | --- | --- |
+| Atthemovies | 00:17 | 100 |
+| Bestkeptrecords | 00:24 | 100 |
+| Blackvinyl | 00:31 | 100 |
+| Bob's Vinyl | 00:38 | 100 |
+| Cdhal | 00:45 | 100 |
+| Colouredvinyl | 00:52 | 100 |
+| Dgmoutlet | 00:59 | 100 |
+| Everything Jazz | 01:06 | 100 |
+| FiftiesStore | 01:13 | 100 |
+| Getbackmusic | 01:20 | 100 |
+| iMusic | 01:27 | 100 |
+| JPC | 01:34 | 100 |
+| My Record Store | 01:41 | 100 |
+| Platenzaak | 01:48 | 100 |
+| Platomania | 01:55 | 100 |
+| Recordsonvinyl | 02:02 | 100 |
+| Rockinoutrecords | 02:09 | 100 |
+| Shop3345 | 02:16 | 100 |
+| Sounds | 02:23 | 100 |
+| Sounds Haarlem | 02:30 | 100 |
+| Suburban | 02:37 | 100 |
+| Topnotch | 02:44 | 100 |
+| Variaworld | 02:51 | 100 |
+| Vinyleers | 02:58 | 100 |
+| Vinylfreaks | 03:05 | 100 |
+| Viprecords | 03:12 | 100 |
+
+Validatie: 61 tests geslaagd, inclusief vier echte Postgres-wachtrijtests op
+een tijdelijke lokale database. Bewezen: 100 + 100 verschillende producten,
+60 + 40 + 0 binnen één dag, hervatten na crash, behoud van voortgang na
+rediscovery, NULL-prijs/voorraad in raw-verrijking en rollback bij productfout.
+Workflowvalidatie met actionlint en Python-compilatie slagen.
+
+Begrensde live ontwikkelproef van de nieuwe adapters: 24 shops kregen maximaal
+één listing- en één detailaanvraag; 22 details opgehaald, waarvan 20 met geldige
+GTIN en twee zonder (FiftiesStore en VIP Records). Rockin Out Records en Vinyl
+Freaks gaven bij deze lokale HTTP-proef 403; dit is geen nieuw GitHub-bewijs.
+iMusic/JPC zijn in deze bronproef niet aangevraagd vanwege hun bestaande
+registratiewachtrij. De eerdere 26 groene beoordelingen zijn dus geen claim dat
+alle 26 nieuwe productieplanningen al succesvol hebben gedraaid.
 
 ## Resultaten per shop
 
@@ -60,7 +149,7 @@ lossen de aangetoonde Cloudflare-blokkade niet op.
 
 ## Productiegrenzen en controles
 
-- Expliciete write-runs gebruiken native shop-workers; de voorafgaande
+- De eerdere expliciete write-runs gebruikten native shop-workers; de voorafgaande
   registratie ververst uitsluitend een begrensde set productlinks. Die stap
   wijzigt geen publieke prijzen en delist geen ontbrekende catalogusproducten.
 - Voor FiftiesStore is delisten op basis van de begrensde EAN-steekproef uitgezet.

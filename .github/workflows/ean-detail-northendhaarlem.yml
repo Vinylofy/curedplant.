@@ -1,4 +1,4 @@
-name: "Curedplant | EAN/detail | North End Haarlem"
+name: "Curedplant | GEBLOKKEERD | EAN/detail | North End Haarlem"
 
 on:
   workflow_dispatch:
