@@ -13,6 +13,7 @@ from bs4 import BeautifulSoup
 from psycopg.rows import dict_row
 
 from scripts.scrapers.usf.core.db import db_connection
+from scripts.scrapers.usf.core.site_transport import get_with_browser
 from scripts.scrapers.usf.core.link_registry import (
     insert_raw_shop_scrape,
     mark_detail_scraped,
@@ -404,7 +405,7 @@ def main() -> int:
         )
 
         try:
-            response = session.get(source_url, timeout=30)
+            response = get_with_browser(session, source_url, timeout=30)
         except requests.RequestException as exc:
             skipped += 1
             errors += 1

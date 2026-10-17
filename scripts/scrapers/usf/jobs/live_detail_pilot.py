@@ -19,6 +19,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from scripts.importers.common import strict_normalize_gtin
+from scripts.scrapers.usf.core.site_transport import get_with_browser
 
 SHOPS = (
     "cdhal", "colouredvinyl", "dgmoutlet", "everythingjazz", "fiftiesstore",
@@ -27,7 +28,7 @@ SHOPS = (
 
 
 def get(session, url):
-    response = session.get(url, timeout=(10, 30))
+    response = get_with_browser(session, url, timeout=(10, 30))
     response.raise_for_status()
     return response
 
@@ -137,7 +138,10 @@ def parse(shop, session, row):
         return parsed["ean_raw"], parsed["title_raw"], parsed["payload"].get("detail_issue")
     if shop == "cdhal":
         from scripts.scrapers.usf.jobs import detail_cdhal as source
-        response = source.request_detail_page(session, url, max_attempts=2)
+        response = get_with_browser(session, url, timeout=(10, 30))
+        if response.status_code == 429:
+            # Native CDHal retry logic honours Retry-After and stays bounded.
+            response = source.request_detail_page(session, url, max_attempts=2)
         response.raise_for_status()
         html = response.text
     else:

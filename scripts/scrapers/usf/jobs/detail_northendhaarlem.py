@@ -16,6 +16,7 @@ from psycopg.types.json import Jsonb
 
 from scripts.scrapers.usf.core.db import db_connection, load_env
 from scripts.scrapers.usf.core.link_registry import insert_raw_shop_scrape
+from scripts.scrapers.usf.core.site_transport import get_with_browser
 
 SHOP_ID = "northendhaarlem"
 SHOP_DOMAIN = "northendhaarlem.nl"
@@ -249,7 +250,7 @@ def fetch_html(url: str, timeout: int = 45, attempts: int = 3) -> tuple[int, str
 
     for attempt in range(1, attempts + 1):
         try:
-            response = requests.get(
+            response = get_with_browser(requests.Session(),
                 url,
                 headers=REQUEST_HEADERS,
                 timeout=(10, timeout),
