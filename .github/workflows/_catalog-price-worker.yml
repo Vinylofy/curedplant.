@@ -63,6 +63,15 @@ jobs:
           if [ "${{ inputs.write }}" = "true" ]; then args+=(--write); fi
           python -u -m scripts.workers.run_catalog_price "${args[@]}"
 
+      - name: Upload price source verification evidence
+        if: always() && inputs.source_version == 'current' && !inputs.write && contains(fromJSON('["northendhaarlem","soundsvenlo"]'), inputs.worker)
+        uses: actions/upload-artifact@v4
+        with:
+          name: price-evidence-${{ inputs.worker }}-${{ github.run_id }}
+          path: output/price-pilots/
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Upload Linux Windows-source comparison evidence
         if: always() && inputs.source_version == 'windows-baseline'
         uses: actions/upload-artifact@v4

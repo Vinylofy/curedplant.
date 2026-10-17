@@ -7,11 +7,13 @@ import subprocess
 import sys
 
 
-def command_for(worker: str, limit: int, source_version: str = "current") -> list[str]:
+def command_for(worker: str, limit: int, source_version: str = "current", write: bool = False) -> list[str]:
     if source_version == "windows-baseline":
         from scripts.workers.run_windows_baseline import command_for as baseline_command
         return baseline_command(worker, "price", limit)
     common = [sys.executable, "-u", "-m"]
+    if worker in {"northendhaarlem", "soundsvenlo"} and not write:
+        return common + ["scripts.scrapers.usf.jobs.live_price_pilot", "--shop", worker, "--limit", str(limit)]
     commands: dict[str, list[str]] = {
         "bobsvinyl": common + ["scripts.scrapers.usf.jobs.refresh_bobsvinyl_listing_prices", "--start-page", "1", "--max-pages", str(limit)],
         "everythingjazz": common + ["scripts.scrapers.usf.jobs.refresh_everythingjazz_listing_prices", "--start-page", "1", "--max-pages", str(limit)],
@@ -59,10 +61,7 @@ def main() -> int:
         parser.error("--limit must be >= 1")
     if args.source_version == "windows-baseline" and args.write:
         parser.error("Windows baseline is read-only; write=true is not allowed")
-    command = command_for(args.worker, args.limit, args.source_version)
-    if args.worker == "northendhaarlem" and not args.write and args.source_version == "current":
-        # A read-only source pilot must not visit every category implicitly.
-        command += ["--category-limit", "1"]
+    command = command_for(args.worker, args.limit, args.source_version, args.write)
     if args.write and args.worker in {"atthemovies", "bestkeptrecords", "blackvinyl", "getbackmusic", "rockinoutrecords", "topnotch", "vinyleers", "vinylfreaks", "viprecords", "bobsvinyl", "everythingjazz", "fiftiesstore", "musiconvinyl", "myrecordstore", "northendhaarlem", "platenzaak", "platomania", "recordsonvinyl", "sounds", "soundshaarlem", "soundsvenlo", "variaworld", "cdhal", "colouredvinyl", "dgmoutlet", "imusic", "jpc"}:
         command.append("--write")
     print("[CUREDPLANT] catalog-price:", " ".join(command), flush=True)
