@@ -7,7 +7,7 @@ import subprocess
 import sys
 
 
-def command_for(worker: str, limit: int, write: bool) -> list[str]:
+def command_for(worker: str, limit: int, write: bool = False) -> list[str]:
     common = [sys.executable, "-u", "-m"]
     commands: dict[str, list[str]] = {
         "bobsvinyl": common + ["scripts.scrapers.usf.jobs.detail_bobsvinyl", "--limit", str(limit)],
