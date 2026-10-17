@@ -9,6 +9,7 @@ import argparse
 from dataclasses import asdict
 from datetime import datetime, timezone
 import json
+import hashlib
 import os
 from pathlib import Path
 import re
@@ -115,7 +116,19 @@ def discover(shop, session, limit):
         return rows[:limit]
     if shop == "dgmoutlet":
         from scripts.scrapers.dgmoutlet import DGMOutletLPScraper, BASE_URL
-        source = DGMOutletLPScraper("unused.csv", max_pages=1)
+        class VerifiedDgm(DGMOutletLPScraper):
+            def __init__(self):
+                super().__init__("unused.csv", max_pages=1)
+                self.detail_hashes = {}
+
+            def _fetch(self, url):
+                # Native _fetch swallows transport failures and may silently
+                # fall back to listing stock. A verification must expose them.
+                response = get(session, url)
+                self.detail_hashes[url] = hashlib.sha256(response.content).hexdigest()
+                return response.text
+
+        source = VerifiedDgm()
         url = BASE_URL.format(page=1)
         soup = BeautifulSoup(get(session, url).text, "html.parser")
         rows = []
@@ -124,8 +137,10 @@ def discover(shop, session, limit):
             row = source._parse_card(card, 1, url, now.isoformat())
             if row:
                 payload = asdict(row)
-                payload.update(price=row.price_current, title=row.raw_name)
-                rows.append({"source_url": row.url, "payload": payload, "detail_checked": True})
+                payload.update(price=row.price_current, title=row.raw_name,
+                               detail_sha256=source.detail_hashes.get(row.url))
+                rows.append({"source_url": row.url, "payload": payload,
+                             "detail_checked": row.url in source.detail_hashes})
             time.sleep(1.5)
         return rows
     raise ValueError(shop)
@@ -135,6 +150,9 @@ def parse(shop, session, row):
     url, payload = row["source_url"], row["payload"]
     if shop == "dgmoutlet":
         # _parse_card already fetched the same product detail for availability.
+        if not row.get("detail_checked"):
+            response = get(session, url)
+            payload["detail_sha256"] = hashlib.sha256(response.content).hexdigest()
         return payload.get("ean"), payload.get("title"), None
     if shop == "everythingjazz":
         from scripts.scrapers.usf.jobs import detail_everythingjazz as source
@@ -216,6 +234,8 @@ def run(shop, limit, delay, attempt):
                 ean, title, issue = parse(shop, session, row)
                 valid = strict_normalize_gtin(ean)
                 record.update(title=title, ean=valid, observed_ean=ean, issue=issue)
+                if shop == "dgmoutlet":
+                    record.update(ean_source="listing_sku", detail_sha256=row["payload"].get("detail_sha256"))
                 summary["fetched"] += 1
                 summary["valid_eans" if valid else "missing_ean"] += 1
             except Exception as exc:
