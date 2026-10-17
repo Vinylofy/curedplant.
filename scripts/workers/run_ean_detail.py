@@ -34,7 +34,7 @@ def command_for(worker: str, limit: int, write: bool) -> list[str]:
         "colouredvinyl": common + ["scripts.scrapers.usf.jobs.run_colouredvinyl_pipeline", "--mode", "dry-run", "--steps", "detail", "--detail-limit", str(limit)],
         "dgmoutlet": common + ["scripts.scrapers.usf.jobs.run_dgmoutlet_pipeline", "--skip-discovery", "--skip-requeue", "--skip-stage", "--skip-promote", "--skip-quarantine", "--materialize-limit", str(limit)],
         "platomania": common + ["scripts.scrapers.platomania", "--mode", "both", "--output-dir", "data/raw/platomania", "--limit", str(limit)],
-        "recordsonvinyl": common + ["scripts.scrapers.recordsonvinyl", "--master-csv", "data/raw/recordsonvinyl/recordsonvinyl_master.csv", "crawl", "--max-pages", "1", "--limit-products", str(limit)],
+        "recordsonvinyl": common + ["scripts.scrapers.recordsonvinyl", "--master-csv", "data/raw/recordsonvinyl/recordsonvinyl_master.csv", "--out", "data/raw/recordsonvinyl/recordsonvinyl_products.csv", "crawl", "--max-pages", "1", "--limit-products", str(limit)],
         "sounds": common + ["scripts.scrapers.usf.jobs.detail_sounds", "--limit", str(limit)],
         "shop3345": common + ["scripts.scrapers.usf.jobs.detail_shop3345", "--limit", str(limit)],
         "variaworld": common + ["scripts.scrapers.usf.jobs.detail_variaworld", "--limit", str(limit)],
@@ -60,7 +60,20 @@ def main() -> int:
     if args.write and args.worker in {"atthemovies", "bestkeptrecords", "blackvinyl", "fiftiesstore", "getbackmusic", "rockinoutrecords", "topnotch", "vinyleers", "vinylfreaks", "viprecords", "bobsvinyl", "everythingjazz", "imusic", "jpc", "myrecordstore", "northendhaarlem", "platenzaak", "soundshaarlem", "soundsvenlo", "cdhal", "colouredvinyl", "dgmoutlet", "shop3345"}:
         command.append("--write")
     print("[CUREDPLANT] ean-detail:", " ".join(command), flush=True)
-    return subprocess.run(command, check=False).returncode
+    result = subprocess.run(command, check=False)
+    if result.returncode:
+        return result.returncode
+
+    # These two CSV-native scrapers need their own importer checkpoint so the
+    # pilot reports accepted/rejected EAN quality instead of only exiting 0.
+    if args.worker in {"platomania", "recordsonvinyl"}:
+        importer = "scripts.importers.import_platomania" if args.worker == "platomania" else "scripts.importers.import_recordsonvinyl"
+        import_command = [sys.executable, "-u", "-m", importer]
+        if not args.write:
+            import_command.append("--dry-run")
+        print("[CUREDPLANT] importer:", " ".join(import_command), flush=True)
+        return subprocess.run(import_command, check=False).returncode
+    return 0
 
 
 if __name__ == "__main__":

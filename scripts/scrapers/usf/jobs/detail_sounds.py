@@ -175,6 +175,7 @@ def main() -> int:
     print(f"[DETAIL] queued={len(links)}", flush=True)
 
     session = requests.Session()
+    fetched = ean_hits = missing_ean = 0
 
     for idx, link in enumerate(links, start=1):
         url = link["source_url"]
@@ -198,8 +199,13 @@ def main() -> int:
             continue
 
         html = response.text
+        fetched += 1
         title = extract_title(html)
         ean_raw = extract_ean(html)
+        if ean_raw:
+            ean_hits += 1
+        else:
+            missing_ean += 1
         price_raw = get_listing_price(url)  # listing-first policy: current price comes from shop_product_links.payload
         availability_raw = extract_availability(html)
         image_url_raw = extract_image_url(html)
@@ -236,6 +242,11 @@ def main() -> int:
 
         time.sleep(args.sleep)
 
+    print(
+        f"[DETAIL-SUMMARY] fetched={fetched} ean_hits={ean_hits} "
+        f"missing_ean={missing_ean} dry_run={args.dry_run}",
+        flush=True,
+    )
     return 0
 
 

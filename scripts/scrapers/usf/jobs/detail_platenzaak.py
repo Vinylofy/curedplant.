@@ -22,6 +22,7 @@ from scripts.scrapers.usf.core.large_catalog_policy import (
     technical_failure_retry,
 )
 from scripts.scrapers.usf.core.link_registry import insert_raw_shop_scrape
+from scripts.importers.common import strict_normalize_gtin
 
 SHOP_ID = "platenzaak"
 REQUEST_TIMEOUT_SECONDS = 30
@@ -289,7 +290,8 @@ def fetch_detail(session: requests.Session, link: EligibleLink) -> DetailOutcome
 
     soup = BeautifulSoup(response.text, "html.parser")
     details = extract_detail_table(soup)
-    ean = clean(details.get("ean")) or None
+    ean_candidate = clean(details.get("ean")) or None
+    ean = ean_candidate if ean_candidate and strict_normalize_gtin(ean_candidate) else None
     image_url = extract_og_image(soup)
 
     if ean:
