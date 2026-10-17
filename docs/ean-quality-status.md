@@ -20,7 +20,7 @@ zonder netwerkverzoeken is geen geslaagde pilot.
 
 Deze status bewijst de bronpilot, niet een productie-import of database-write.
 De oorspronkelijke Actions-tests gebruiken `limit=25, write=false`. De nieuwe
-North End-vervolgproef gebruikt vijf records en blijft read-only. Er zijn geen
+North End- en Venlo-vervolgproeven gebruiken vijf records en blijven read-only. Er zijn geen
 planningen toegevoegd en geen Windows-actions uitgezet.
 
 ## Resultaten per shop
@@ -35,8 +35,8 @@ planningen toegevoegd en geen Windows-actions uitgezet.
 | Shop3345 | Groen | 18 / 18 | Dry-run haalt echt details op. Shopify expliciet EUR: dezelfde LP is 27,99 EUR in plaats van de automatisch gekozen 33,00 USD. Metadata-write kan geen voorraad of publieke prijs publiceren. | [39014775461](https://github.com/Vinylofy/curedplant./actions/runs/39014775461) |
 | Sounds Haarlem | Groen | 25 / 25 | Actuele listing vervangt oude 404-productlinks als pilotbron; productie prioriteert recente links. Prijs komt uit productlisting, niet uit volledige paginatekst met verzendkosten. | [39014526535](https://github.com/Vinylofy/curedplant./actions/runs/39014526535) |
 | DGM Outlet | Groen | 25 / 25 | EAN komt uit listing-SKU; alle 25 detailaanvragen apart bewezen met response-hash. Dubbele aanvraag verwijderd; HTTP-fouten vallen niet meer stil terug op listingdata. Derde proef geslaagd. | [39014877404](https://github.com/Vinylofy/curedplant./actions/runs/39014877404) |
-| North End Haarlem | Rood — toegangsblokkade bevestigd in vervolgproef | 0 / 0 vanuit GitHub | Ook met één blijvende browsersessie en 30 seconden tussen aanvragen: Cloudflare challenge op categorie én homepage. Lokaal 3/3 pagina's bereikbaar, twee geldige GTIN's. | [39064461985](https://github.com/Vinylofy/curedplant./actions/runs/39064461985) |
-| Sounds Venlo | Rood — toegangsblokkade bevestigd; EAN-identiteitsfout hersteld | 0 / 0 vanuit GitHub | Cloudflare challenge op /vinyl/ én homepage met blijvende browsersessie. Lokaal 5/5 pagina's, vier correcte GTIN's en één terecht lege EAN. De eerdere globale EAN-scan is verwijderd. | [39065075856](https://github.com/Vinylofy/curedplant./actions/runs/39065075856) |
+| North End Haarlem | Rood — toegang geblokkeerd na drie vervolgvarianten | 0 / 0 vanuit GitHub | Laatste variant: categorie via HTTP 403, homepage via browser met Windows-profiel eveneens Cloudflare 403. Lokaal met oude broncode 5/5 details en vier geldige GTIN's. | [39066854696](https://github.com/Vinylofy/curedplant./actions/runs/39066854696) |
+| Sounds Venlo | Rood — detailtoegang geblokkeerd; EAN-identiteitsfout hersteld | 0 / 0 vanuit GitHub | Catalogus via browser 200; vijf producten geselecteerd. Ook echte catalogusklik naar eerste detail geeft Cloudflare 403. Lokaal 5/5 details, vier correcte GTIN's en één terecht lege EAN. | [39066857022](https://github.com/Vinylofy/curedplant./actions/runs/39066857022) |
 
 Elke nieuwe pilot bewaart een JSON-resultaat en een samenvatting in de Action.
 Download op de runpagina het artifact `ean-evidence-<shop>-<run_id>` voor de
@@ -230,7 +230,22 @@ De echte Chromium-navigatie is lokaal getest met onderschepte fixture-antwoorden
 catalogus → product 1 → catalogus → product 2, vier documenten, beide product-
 requests hebben de catalogus als Referer. Deze check bereikt de shops niet en
 bewijst de browserbediening, niet de toegang vanuit GitHub. De definitieve
-shopuitkomsten van variant drie worden hieronder toegevoegd.
+shopuitkomsten van variant drie staan hieronder.
+
+### Definitieve EAN-uitkomst van de derde vervolgvariant
+
+Beide runs zijn afgerond op codecommit `678ec14`, zonder databasewrites.
+
+| Shop | Geselecteerd / details / geldige GTIN | Laatste bewezen punt | Bewijs |
+| --- | --- | --- | --- |
+| North End Haarlem | 0 / 0 / 0 | HTTP-aanvraag categorie 403; gewone browser met Windows-profiel geeft op homepage ook 403 met cf-mitigated=challenge. Daarna gestopt. | [39066854696](https://github.com/Vinylofy/curedplant./actions/runs/39066854696) |
+| Sounds Venlo | 5 / 0 / 0 | Listing via browser 200. Bestaande catalogusanker naar Fresku echt aangeklikt (`navigation=link`); detailresponse 403 met cf-mitigated=challenge. Daarna gestopt. | [39066857022](https://github.com/Vinylofy/curedplant./actions/runs/39066857022) |
+
+Status blijft voor beide rood. Er zijn geen verdere herstelpogingen gestart,
+geen EAN-planningen aangezet en geen Windows-runners uitgezet. De eerdere
+Venlo-prijsproef is uitsluitend bewijs voor de bereikbare listing, geen EAN-
+goedkeuring. Voor verdere EAN-validatie is toegang tot productdetails vanuit
+de runner nodig, bijvoorbeeld via een met de shop afgestemde toegang of feed.
 
 Bewijs: JSON-artifact `windows-baseline-<shop>-<lane>-<run_id>`, met product-URL,
 listingprijs, oude en gevalideerde EAN, response-hash, transportstatus,
