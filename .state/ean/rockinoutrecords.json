@@ -15,6 +15,7 @@
     "attempted": 1,
     "valid_eans": 1,
     "missing_ean": 0,
+    "technical_errors": 0,
     "status": "green",
     "outcome": "completed"
   }
