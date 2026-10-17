@@ -21,6 +21,7 @@ from bs4 import BeautifulSoup
 
 from scripts.importers.common import strict_normalize_gtin
 from scripts.scrapers.usf.core.site_transport import get_with_browser
+from scripts.scrapers.usf.core.northend_transport import NorthEndSession
 
 SHOPS = (
     "cdhal", "colouredvinyl", "dgmoutlet", "everythingjazz", "fiftiesstore",
@@ -28,11 +29,11 @@ SHOPS = (
 )
 REPAIR_REVISION = {"cdhal": 2, "colouredvinyl": 1, "dgmoutlet": 3,
     "everythingjazz": 1, "fiftiesstore": 1, "myrecordstore": 2,
-    "northendhaarlem": 3, "shop3345": 2, "soundshaarlem": 1, "soundsvenlo": 3}
+    "northendhaarlem": 1, "shop3345": 2, "soundshaarlem": 1, "soundsvenlo": 3}
 
 
 def get(session, url):
-    response = get_with_browser(session, url, timeout=(10, 30))
+    response = session.get(url, timeout=(10, 30)) if isinstance(session, NorthEndSession) else get_with_browser(session, url, timeout=(10, 30))
     response.raise_for_status()
     return response
 
@@ -221,9 +222,10 @@ def run(shop, limit, delay, attempt):
     summary = {"shop": shop, "attempt": attempt, "write": False,
         "time": datetime.now(timezone.utc).isoformat(), "discovered": 0,
         "fetched": 0, "valid_eans": 0, "missing_ean": 0, "errors": [], "records": []}
-    session = requests.Session()
-    session.headers.update({"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
-                            "Accept-Language": "nl-NL,nl;q=0.9,en;q=0.8"})
+    session = NorthEndSession() if shop == "northendhaarlem" else requests.Session()
+    if shop != "northendhaarlem":
+        session.headers.update({"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+                                "Accept-Language": "nl-NL,nl;q=0.9,en;q=0.8"})
     try:
         rows = discover(shop, session, limit)
         summary["discovered"] = len(rows)
@@ -248,6 +250,10 @@ def run(shop, limit, delay, attempt):
             time.sleep(max(delay, 2.0) if shop in {"cdhal", "dgmoutlet"} else delay)
     except Exception as exc:
         summary["errors"].append({"stage": "discovery", "error": str(exc)})
+    finally:
+        if isinstance(session, NorthEndSession):
+            summary.update(repair_cycle=2, transport=session.events)
+        session.close()
     # Source-missing EANs are visible, but HTTP failures/empty queues cannot pass.
     summary["status"] = "green" if summary["valid_eans"] >= min(3, limit) and not summary["errors"] else "red"
     output = Path("output/ean-pilots") / f"{shop}.json"
@@ -283,7 +289,7 @@ def main():
         # Preserve existing detail metadata and counters when refreshing listing
         # evidence. The earlier listing commands also changed public prices and
         # could delist a catalog based on a bounded sample.
-        with requests.Session() as session:
+        with (NorthEndSession() if args.shop == "northendhaarlem" else requests.Session()) as session:
             rows = discover(args.shop, session, args.limit)
         if not rows:
             raise SystemExit("Live discovery is empty; registry left unchanged")

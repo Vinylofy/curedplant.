@@ -16,7 +16,8 @@ from psycopg.types.json import Jsonb
 
 from scripts.scrapers.usf.core.db import db_connection, load_env
 from scripts.scrapers.usf.core.link_registry import insert_raw_shop_scrape
-from scripts.scrapers.usf.core.site_transport import get_with_browser
+from scripts.scrapers.usf.core.northend_transport import NorthEndSession
+from scripts.importers.common import strict_normalize_gtin
 
 SHOP_ID = "northendhaarlem"
 SHOP_DOMAIN = "northendhaarlem.nl"
@@ -66,12 +67,7 @@ def decimal_price(value: Any) -> Decimal | None:
 
 
 def normalize_ean(value: str | None) -> str | None:
-    if not value:
-        return None
-    digits = re.sub(r"\D+", "", value)
-    if len(digits) in {8, 12, 13, 14}:
-        return digits
-    return None
+    return strict_normalize_gtin(value)
 
 
 def normalize_availability(text: str | None) -> str | None:
@@ -114,13 +110,35 @@ def extract_prices(text: str) -> tuple[str | None, str | None, bool]:
     return current_price, original_price, bool(original_price)
 
 
+def product_scope(soup: BeautifulSoup):
+    product = soup.select_one('.article.product-page, [itemtype="https://schema.org/Product"]')
+    if product is None:
+        return None
+    # Work on a copy: related product cards and navigation are not attributes
+    # of the item being enriched. Ordinary words such as "meer" are not cutoffs.
+    scope = BeautifulSoup(str(product), 'html.parser')
+    for node in scope.select('.products, .prev_next-button, .related-products, nav'):
+        node.decompose()
+    return scope
+
+
 def main_product_text(soup: BeautifulSoup) -> str:
-    text = clean(soup.get_text(" ", strip=True))
-    for marker in ("Klanten kochten ook", "Gerelateerde producten", "Meer", "Menu"):
-        idx = text.lower().find(marker.lower())
-        if idx > 0:
-            return text[:idx]
-    return text
+    scope = product_scope(soup)
+    return clean(scope.get_text(" ", strip=True)) if scope is not None else ''
+
+
+def product_eans(soup: BeautifulSoup) -> set[str]:
+    product = product_scope(soup)
+    if product is None:
+        return set()
+    result = set()
+    for row in product.select('table.article-specs tr'):
+        cells = row.find_all(['th', 'td'], recursive=False)
+        if len(cells) >= 2 and re.fullmatch(r'(?:ean|barcode|upc|gtin(?:8|12|13|14)?)', clean(cells[0].get_text()), re.I):
+            ean = normalize_ean(clean(cells[1].get_text()))
+            if ean:
+                result.add(ean)
+    return result
 
 
 def extract_ean(text: str) -> str | None:
@@ -242,7 +260,10 @@ def update_link_enrichment(
         )
 
 
-def fetch_html(url: str, timeout: int = 45, attempts: int = 3) -> tuple[int, str]:
+def fetch_html(url: str, timeout: int = 45, attempts: int = 3, session=None) -> tuple[int, str]:
+    if session is None:
+        with NorthEndSession() as owned:
+            return fetch_html(url, timeout, attempts, session=owned)
     parsed = urlparse(url)
     if parsed.hostname in {"northendhaarlem.nl", "www.northendhaarlem.nl"}:
         url = urlunparse(parsed._replace(netloc="www.northendhaarlem.nl"))
@@ -250,7 +271,7 @@ def fetch_html(url: str, timeout: int = 45, attempts: int = 3) -> tuple[int, str
 
     for attempt in range(1, attempts + 1):
         try:
-            response = get_with_browser(requests.Session(),
+            response = session.get(
                 url,
                 headers=REQUEST_HEADERS,
                 timeout=(10, timeout),
@@ -297,15 +318,19 @@ def parse_detail_page(html: str, *, listing_payload: dict[str, Any]) -> dict[str
     soup = BeautifulSoup(html, "html.parser")
     text = main_product_text(soup)
     title_raw = extract_title(soup, listing_payload.get("title_raw"))
-    ean = extract_ean(text)
+    candidates = product_eans(soup)
+    ean = next(iter(candidates)) if len(candidates) == 1 else None
     image_url = extract_image_url(soup) or listing_payload.get("image_url")
     availability = normalize_availability(text) or listing_payload.get("availability")
-    detail_price, detail_original_price, detail_is_sale = extract_prices(text)
+    price_scope = soup.select_one('.article.product-page .price-container .pricetag')
+    detail_price, detail_original_price, detail_is_sale = extract_prices(clean(price_scope.get_text(' ', strip=True)) if price_scope else '')
     listing_price = listing_payload.get("price")
     format_raw = infer_format(title_raw, text) or listing_payload.get("format") or listing_payload.get("carrier")
 
     return {
         "ean": ean,
+        "ean_source": "product_barcode_attribute" if ean else None,
+        "ean_issue": "ambiguous_product_barcodes" if len(candidates) > 1 else "missing_valid_barcode" if not ean else None,
         "title_raw": title_raw,
         "artist_raw": listing_payload.get("artist_raw"),
         "format": format_raw,
@@ -330,7 +355,7 @@ def main() -> int:
     args = parser.parse_args()
 
     load_env()
-    with db_connection() as conn:
+    with db_connection() as conn, NorthEndSession() as session:
         candidates = get_detail_candidates(conn, limit=args.limit, rescrape_days=args.rescrape_days)
         print(
             "[NORTHEND-DETAIL] candidates",
@@ -342,7 +367,7 @@ def main() -> int:
             payload = dict(row.get("payload") or {})
             source_url = row["source_url"]
             print("[NORTHEND-DETAIL] fetch", {"index": index, "url": source_url}, flush=True)
-            status_code, html = fetch_html(source_url)
+            status_code, html = fetch_html(source_url, session=session)
             if status_code >= 400:
                 print("[NORTHEND-DETAIL-SKIP] http_error", {"url": source_url, "status_code": status_code}, flush=True)
                 # Transport failures must not become 'EAN missing' attempts.

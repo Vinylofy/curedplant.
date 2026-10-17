@@ -19,6 +19,7 @@ from scripts.scrapers.usf.core.fast_listing_price_sync import bulk_update_prices
 from scripts.scrapers.usf.core.link_registry import upsert_discovered_links
 from scripts.scrapers.usf.core.listing_price_sync import ListingOffer, sync_listing_offers
 from scripts.scrapers.usf.core.models import DiscoveredLink
+from scripts.scrapers.usf.core.northend_transport import NorthEndSession
 
 SHOP_ID = "northendhaarlem"
 SHOP_NAME = "North End Haarlem"
@@ -200,12 +201,15 @@ def page_signature(source_urls: Iterable[str]) -> str:
     return hashlib.sha1(joined.encode("utf-8")).hexdigest()
 
 
-def fetch_html(url: str, timeout: int = 45, attempts: int = 3) -> tuple[int, str]:
+def fetch_html(url: str, timeout: int = 45, attempts: int = 3, session=None) -> tuple[int, str]:
+    if session is None:
+        with NorthEndSession() as owned:
+            return fetch_html(url, timeout, attempts, session=owned)
     last_error: Exception | None = None
 
     for attempt in range(1, attempts + 1):
         try:
-            response = requests.get(
+            response = session.get(
                 url,
                 headers=REQUEST_HEADERS,
                 timeout=(10, timeout),
@@ -351,7 +355,13 @@ def discover_listing_rows(
     category_limit: int,
     max_pages_per_category: int,
     delay_seconds: float,
+    session=None,
 ) -> list[ListingRow]:
+    if session is None:
+        with NorthEndSession() as owned:
+            return discover_listing_rows(category_limit=category_limit,
+                max_pages_per_category=max_pages_per_category,
+                delay_seconds=delay_seconds, session=owned)
     selected_seeds = CATEGORY_SEEDS[:category_limit] if category_limit > 0 else CATEGORY_SEEDS
     all_rows: list[ListingRow] = []
     global_seen_urls: set[str] = set()
@@ -368,7 +378,7 @@ def discover_listing_rows(
 
             url = category_url(seed, page)
             print("[NORTHEND-LISTING] page", {"category": seed["slug"], "page": page, "url": url}, flush=True)
-            status_code, html = fetch_html(url)
+            status_code, html = fetch_html(url, session=session)
             if status_code in {404, 410}:
                 print(
                     "[NORTHEND-LISTING-STOP] missing_page",
@@ -382,7 +392,7 @@ def discover_listing_rows(
                     {"category": seed["slug"], "page": page, "status_code": status_code},
                     flush=True,
                 )
-                break
+                raise requests.HTTPError(f'North End listing returned HTTP {status_code}; stop batch')
 
             rows = parse_listing_page(
                 html,
