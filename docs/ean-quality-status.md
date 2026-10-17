@@ -36,7 +36,7 @@ planningen toegevoegd en geen Windows-actions uitgezet.
 | Sounds Haarlem | Groen | 25 / 25 | Actuele listing vervangt oude 404-productlinks als pilotbron; productie prioriteert recente links. Prijs komt uit productlisting, niet uit volledige paginatekst met verzendkosten. | [39014526535](https://github.com/Vinylofy/curedplant./actions/runs/39014526535) |
 | DGM Outlet | Groen | 25 / 25 | EAN komt uit listing-SKU; alle 25 detailaanvragen apart bewezen met response-hash. Dubbele aanvraag verwijderd; HTTP-fouten vallen niet meer stil terug op listingdata. Derde proef geslaagd. | [39014877404](https://github.com/Vinylofy/curedplant./actions/runs/39014877404) |
 | North End Haarlem | Rood — toegangsblokkade bevestigd in vervolgproef | 0 / 0 vanuit GitHub | Ook met één blijvende browsersessie en 30 seconden tussen aanvragen: Cloudflare challenge op categorie én homepage. Lokaal 3/3 pagina's bereikbaar, twee geldige GTIN's. | [39064461985](https://github.com/Vinylofy/curedplant./actions/runs/39064461985) |
-| Sounds Venlo | Rood — na 3 pogingen geblokkeerd | 0 / 0 vanuit GitHub | Cloudflare 403 op /vinyl/, ook met gewone Chromium-rendering. Lokale bronproef haalde 3/3 geldige GTIN's op. | [39014775514](https://github.com/Vinylofy/curedplant./actions/runs/39014775514) |
+| Sounds Venlo | Rood — toegangsblokkade bevestigd; EAN-identiteitsfout hersteld | 0 / 0 vanuit GitHub | Cloudflare challenge op /vinyl/ én homepage met blijvende browsersessie. Lokaal 5/5 pagina's, vier correcte GTIN's en één terecht lege EAN. De eerdere globale EAN-scan is verwijderd. | [39065075856](https://github.com/Vinylofy/curedplant./actions/runs/39065075856) |
 
 Elke nieuwe pilot bewaart een JSON-resultaat en een samenvatting in de Action.
 Download op de runpagina het artifact `ean-evidence-<shop>-<run_id>` voor de
@@ -51,7 +51,7 @@ en de runlinks blijven in dit document staan.
 - My Record Store: tweede reparatie; gewijzigde prijsmarkup herkend.
 - Shop3345: tweede reparatie; expliciete EUR-markt bevestigd vanuit GitHub.
 - DGM Outlet: derde en laatste reparatie geslaagd; 25/25 detailresponses met hash en geldige GTIN.
-- North End Haarlem en Sounds Venlo: drie transportvarianten getest (normale HTTP, gewone Chromium, Chromium met eenmaal acht seconden laadtijd). Alle drie worden vanuit GitHub door Cloudflare geweigerd. Geen verdere automatische reparatie of herstart ingezet.
+- Eerste herstelronde North End Haarlem en Sounds Venlo: drie transportvarianten getest (normale HTTP, gewone Chromium, Chromium met eenmaal acht seconden laadtijd). Alle drie werden vanuit GitHub door Cloudflare geweigerd. De expliciet gevraagde vervolgronden staan hieronder; er is geen automatische herstart ingepland.
 
 Voor North End Haarlem en Sounds Venlo is gezamenlijk vervolg nodig: toegang
 voor de GitHub-runner met de shop afstemmen, of een toegestane andere runner
@@ -67,7 +67,7 @@ lossen de aangetoonde Cloudflare-blokkade niet op.
 - Shop3345 schrijft vanuit de detailworker uitsluitend verrijking; raw-prijs en
   raw-voorraad blijven null. `stock_shop3345` blijft de voorraadautoriteit.
 - HTTP-blokkades bij North End tellen niet meer als een inhoudelijke EAN-misser.
-- Vijftien unittests slagen, inclusief prijsisolatie, echte dry-run-detailaanvragen,
+- Drieëntwintig unittests slagen, inclusief prijsisolatie, echte dry-run-detailaanvragen,
   database-writegrenzen en EUR-marktkeuze. Python-compilatie en diffcontrole slagen.
 
 ## North End: expliciet heropende herstelronde, 17 oktober 2026
@@ -101,6 +101,58 @@ Definitieve GitHub-uitkomst: rood. De categorie-aanvraag met de HTTP-sessie geef
 browsernavigatie naar de homepage 403 met dezelfde challenge-markering. De
 batch stopt daarop; er zijn geen detailpagina's aangevraagd en geen verdere
 automatische pogingen ingepland. Databasewrites: nul.
+
+## Sounds Venlo: hernieuwde bronreview, 17 oktober 2026
+
+Deze expliciet gevraagde vervolgronde is repair_cycle=2, attempt=1. De actuele
+catalogusroute `/vinyl/` werkt vanuit de ontwikkelomgeving en de pagina bevat
+de verwachte vervolglinks `/vinyl/p2/`, `/vinyl/p3/`. De robots-instructies
+publiceren een Crawl-delay van tien seconden en een sitemap; er is geen
+productfeed met EAN's gevonden in de onderzochte pagina's.
+
+Er is naast de eerdere Cloudflare-blokkade een concrete identiteitsfout bewezen:
+op de pagina van Fresku – Leren Leven (`/4707526-fresku-leren-leven/`) stond
+geen eigen barcode in het productblok of Product-JSON-LD. De oude parser koos
+`0602475004783` uit een afbeelding van het gerelateerde album In Het Diepe
+(`/4704205-fresku-in-het-diepe/`). De eerdere lokale beoordeling van drie
+EAN-hits was hierdoor te ruim en is geen bewijs van drie correcte matches.
+
+Hersteld in code:
+
+- Geen algemene scan meer op lange nummers in alle HTML of afbeeldingsnamen.
+- EAN uitsluitend uit het eigen productblok, Product-JSON-LD met dezelfde URL
+  of een geldige code in de eigen product-URL. Controlecijfer verplicht;
+  verschillende geldige codes geven geen willekeurig gekozen match.
+- Interne product-ID's van zeven cijfers worden niet als barcode gebruikt.
+- Genre, formaat, release en intern product-ID blijven in het eigen productblok;
+  een niet vermelde platenmaatschappij blijft leeg.
+- Eén HTTP-/browsersessie per batch, tien seconden tussen documentaanvragen,
+  en stop bij blijvende 403/429. Beide worker-lanes hebben browserondersteuning.
+
+Lokale liveproef met vijf records: alle vijf detailpagina's HTTP 200,
+vier geldige productgebonden GTIN's, één terecht lege EAN, geen databasewrites.
+
+| Product | Gevalideerde GTIN-14 | Bewijsbron |
+| --- | --- | --- |
+| Fresku – Leren Leven | Geen | Eigen product heeft geen geldige barcode; code van gerelateerd album geweigerd |
+| America – Holiday Harmony | 00792755872161 | Eigen zichtbare productmetadata |
+| Various – Sinister Sounds Of Halloween Horror | 00826853007580 | Eigen zichtbare productmetadata |
+| Kikagaku Moyo – Masana Temples | 00606825444120 | Eigen metadata en product-URL `/0606825444120-4357567/` stemmen overeen |
+| Kikagaku Moyo – Forest Of Lost Children | 09504281135228 | Eigen zichtbare productmetadata |
+
+Bronverschil zichtbaar gemaakt: America staat in de listing als in_stock,
+maar de eigen Product-JSON-LD zegt BackOrder. De detailworker verandert daarom
+geen publieke prijs/voorraad op basis van die andere bron; beide waarnemingen
+staan in het pilotbewijs.
+
+De read-only GitHub-proef met een limiet van vijf records staat in
+[Action 39065075856](https://github.com/Vinylofy/curedplant./actions/runs/39065075856).
+Definitieve GitHub-uitkomst: rood. De HTTP-aanvraag op /vinyl/ en daarna de
+normale browseraanvraag op de homepage geven beide HTTP 403 met expliciete
+cf-mitigated=challenge. De sessie stopt daarop; geen verdere categorie- of
+detailaanvragen, geen databasewrites en geen aanvullende automatische pogingen.
+De productparser is lokaal aantoonbaar verbeterd, maar de runner-toegang is
+niet opgelost door deze codewijziging.
 
 ## Eerder vastgelegde groene resultaten
 
