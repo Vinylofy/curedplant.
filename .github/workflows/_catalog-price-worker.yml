@@ -3,6 +3,10 @@ name: Curedplant catalog price worker (reusable)
 on:
   workflow_call:
     inputs:
+      source_version:
+        required: false
+        default: current
+        type: string
       worker:
         required: true
         type: string
@@ -23,30 +27,47 @@ permissions:
 
 jobs:
   run:
+    name: ${{ inputs.worker }} | Linux | Price | ${{ inputs.source_version }}
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    concurrency:
+      group: curedplant-${{ inputs.worker }}-${{ inputs.source_version == 'windows-baseline' && 'baseline' || 'price' }}
+      cancel-in-progress: false
+    timeout-minutes: ${{ inputs.source_version == 'windows-baseline' && 30 || 60 }}
     env:
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DATABASE_URL: ${{ inputs.source_version != 'windows-baseline' && secrets.DATABASE_URL || '' }}
       PYTHONUNBUFFERED: "1"
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          python-version: ${{ inputs.source_version == 'windows-baseline' && '3.11' || '3.12' }}
       - name: Install scraper dependencies
         run: python -m pip install -r requirements.txt
       - name: Install North End or Sounds Venlo browser transport
-        if: contains(fromJSON('["northendhaarlem","soundsvenlo"]'), inputs.worker)
+        if: inputs.worker == 'soundsvenlo' || (inputs.source_version != 'windows-baseline' && inputs.worker == 'northendhaarlem')
         run: |
           python -m pip install 'playwright>=1.50,<2'
           python -m playwright install --with-deps chromium
       - name: Run catalog price worker
         run: |
           set -euo pipefail
+          if [ "${{ inputs.source_version }}" = "windows-baseline" ] && [ "${{ inputs.write }}" = "true" ]; then
+            echo "Windows baseline is read-only; write=true is not allowed"
+            exit 1
+          fi
           if [ "${{ inputs.write }}" = "true" ] && [ -z "${DATABASE_URL:-}" ]; then
             echo "DATABASE_URL is required when write=true"
             exit 1
           fi
-          args=(--worker "${{ inputs.worker }}" --limit "${{ inputs.limit }}")
+          args=(--source-version "${{ inputs.source_version }}" --worker "${{ inputs.worker }}" --limit "${{ inputs.limit }}")
           if [ "${{ inputs.write }}" = "true" ]; then args+=(--write); fi
-          python -u scripts/workers/run_catalog_price.py "${args[@]}"
+          python -u -m scripts.workers.run_catalog_price "${args[@]}"
+
+      - name: Upload Linux Windows-source comparison evidence
+        if: always() && inputs.source_version == 'windows-baseline'
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-baseline-${{ inputs.worker }}-price-${{ github.run_id }}
+          path: output/windows-baseline/
+          if-no-files-found: error
+          retention-days: 14

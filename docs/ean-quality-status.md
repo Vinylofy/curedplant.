@@ -67,7 +67,7 @@ lossen de aangetoonde Cloudflare-blokkade niet op.
 - Shop3345 schrijft vanuit de detailworker uitsluitend verrijking; raw-prijs en
   raw-voorraad blijven null. `stock_shop3345` blijft de voorraadautoriteit.
 - HTTP-blokkades bij North End tellen niet meer als een inhoudelijke EAN-misser.
-- Drieëntwintig unittests slagen, inclusief prijsisolatie, echte dry-run-detailaanvragen,
+- Vierendertig unittests slagen, inclusief prijsisolatie, echte dry-run-detailaanvragen,
   database-writegrenzen en EUR-marktkeuze. Python-compilatie en diffcontrole slagen.
 
 ## North End: expliciet heropende herstelronde, 17 oktober 2026
@@ -153,6 +153,46 @@ cf-mitigated=challenge. De sessie stopt daarop; geen verdere categorie- of
 detailaanvragen, geen databasewrites en geen aanvullende automatische pogingen.
 De productparser is lokaal aantoonbaar verbeterd, maar de runner-toegang is
 niet opgelost door deze codewijziging.
+
+## Linux-proef met de werkende Windows-broncode, 17 oktober 2026
+
+Op verzoek zijn de vier oorspronkelijke bronbestanden (listing en detail per
+shop) ongewijzigd gekopieerd uit Vinylofy/Vinylofy commit
+`c4b86b475c3af219b5f5dee77335c625af24605f`. Dat is de bronversie van de vandaag
+geslaagde Windows-runs [North End 39015584821](https://github.com/Vinylofy/Vinylofy/actions/runs/39015584821)
+en [Sounds Venlo 39029778437](https://github.com/Vinylofy/Vinylofy/actions/runs/39029778437).
+De Windows-prijslogs bewijzen respectievelijk 4.618 en 20.357 catalogusrecords;
+276 en 10.702 bestaande prijzen verwerkt. Dit is geen nieuwe EAN-goedkeuring.
+
+De vier bestaande handmatige Linux-actions hebben nu de keuze
+`source_version=windows-baseline` (standaard) of `current`. De baseline draait
+op Ubuntu/Python 3.11, gebruikt de originele fetch- en parserfuncties en
+controleert vóór import de SHA-256-hashes in
+`scripts/workers/windows_baseline/manifest.json`. Gedeelde USF-helpers en
+dependencies komen uit curedplant.; hun runtimeversies staan in het bewijs.
+De Windows-machine en zijn netwerk worden hierdoor niet gereproduceerd.
+
+De aparte testworker roept geen native database-pipeline aan. Writes worden in
+de workflow en CLI geweigerd en DATABASE_URL wordt niet aan de baseline-job
+doorgegeven. Limieten: één tot drie listingpagina's (North End alleen de eerste
+categorie), maximaal 25 details uit de eerste listingpagina, één native poging
+per fetch en 30/10 seconden tussen aanvragen. De oorspronkelijke gewone
+Venlo-browserfallback blijft behouden; bij 429 stopt de proef. De twee lanes
+worden per shop achter elkaar uitgevoerd. Planning en Windows-activatie zijn
+niet gewijzigd.
+
+Een baseline-EAN wordt vergeleken met de herstelde productgebonden parser;
+afwijkingen worden opgeslagen en veroorzaken rood. Zo wordt de oude verkeerde
+albumkoppeling niet stil opnieuw goedgekeurd. De lokale Venlo-proef heeft vijf
+details opgehaald, vier overeenstemmende GTIN's en de eerder bewezen verkeerde
+Fresku-code afzonderlijk afgewezen. Bron bereikbaar, kwaliteit baseline rood.
+Dit is een Linux-ontwikkelproef op Python 3.12, nog geen hosted-runnerbewijs.
+
+GitHub-vervolgproeven en hun definitieve uitkomsten worden hieronder toegevoegd.
+Bewijs: JSON-artifact `windows-baseline-<shop>-<lane>-<run_id>`, met product-URL,
+listingprijs, oude en gevalideerde EAN, response-hash, transportstatus,
+broncommit en nul databasewrites. De vierendertig tests en actionlint-controle
+van de zes gewijzigde workflowbestanden slagen.
 
 ## Eerder vastgelegde groene resultaten
 

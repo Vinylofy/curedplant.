@@ -1,0 +1,26 @@
+{
+  "repository": "Vinylofy/Vinylofy",
+  "commit": "c4b86b475c3af219b5f5dee77335c625af24605f",
+  "windows_runs": {
+    "northendhaarlem": 39015584821,
+    "soundsvenlo": 39029778437
+  },
+  "files": {
+    "refresh_northendhaarlem_listing_prices.py": {
+      "source": "scripts/scrapers/usf/jobs/refresh_northendhaarlem_listing_prices.py",
+      "sha256": "35d64d9d334b4a6e7c48ba7b5fef1bfdb04c6a3689c33e04d6e30e063d03a63b"
+    },
+    "detail_northendhaarlem.py": {
+      "source": "scripts/scrapers/usf/jobs/detail_northendhaarlem.py",
+      "sha256": "7b3e33cded4344ccd400d9d890ea243abc9399d10ed2a3fbe408c9821f6ed619"
+    },
+    "refresh_soundsvenlo_listing_prices.py": {
+      "source": "scripts/scrapers/usf/jobs/refresh_soundsvenlo_listing_prices.py",
+      "sha256": "3d766dfe8c5aca6c5f4e90aa264cab5e5590df3d20de01102424d32c19283d42"
+    },
+    "detail_soundsvenlo.py": {
+      "source": "scripts/scrapers/usf/jobs/detail_soundsvenlo.py",
+      "sha256": "19540300bf410d438a865a0705c5d78df196d44496229a90b299f2f0e44a43b7"
+    }
+  }
+}

@@ -7,7 +7,10 @@ import subprocess
 import sys
 
 
-def command_for(worker: str, limit: int) -> list[str]:
+def command_for(worker: str, limit: int, source_version: str = "current") -> list[str]:
+    if source_version == "windows-baseline":
+        from scripts.workers.run_windows_baseline import command_for as baseline_command
+        return baseline_command(worker, "price", limit)
     common = [sys.executable, "-u", "-m"]
     commands: dict[str, list[str]] = {
         "bobsvinyl": common + ["scripts.scrapers.usf.jobs.refresh_bobsvinyl_listing_prices", "--start-page", "1", "--max-pages", str(limit)],
@@ -50,10 +53,13 @@ def main() -> int:
     parser.add_argument("--worker", required=True)
     parser.add_argument("--limit", type=int, default=1)
     parser.add_argument("--write", action="store_true")
+    parser.add_argument("--source-version", choices=("current", "windows-baseline"), default="current")
     args = parser.parse_args()
     if args.limit < 1:
         parser.error("--limit must be >= 1")
-    command = command_for(args.worker, args.limit)
+    if args.source_version == "windows-baseline" and args.write:
+        parser.error("Windows baseline is read-only; write=true is not allowed")
+    command = command_for(args.worker, args.limit, args.source_version)
     if args.write and args.worker in {"atthemovies", "bestkeptrecords", "blackvinyl", "getbackmusic", "rockinoutrecords", "topnotch", "vinyleers", "vinylfreaks", "viprecords", "bobsvinyl", "everythingjazz", "fiftiesstore", "musiconvinyl", "myrecordstore", "northendhaarlem", "platenzaak", "platomania", "recordsonvinyl", "sounds", "soundshaarlem", "soundsvenlo", "variaworld", "cdhal", "colouredvinyl", "dgmoutlet", "imusic", "jpc"}:
         command.append("--write")
     print("[CUREDPLANT] catalog-price:", " ".join(command), flush=True)

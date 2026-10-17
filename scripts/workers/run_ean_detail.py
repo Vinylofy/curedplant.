@@ -7,7 +7,10 @@ import subprocess
 import sys
 
 
-def command_for(worker: str, limit: int, write: bool = False) -> list[str]:
+def command_for(worker: str, limit: int, write: bool = False, source_version: str = "current") -> list[str]:
+    if source_version == "windows-baseline":
+        from scripts.workers.run_windows_baseline import command_for as baseline_command
+        return baseline_command(worker, "detail", limit, write)
     common = [sys.executable, "-u", "-m"]
     reviewed = {"cdhal", "colouredvinyl", "dgmoutlet", "everythingjazz", "fiftiesstore",
                 "myrecordstore", "northendhaarlem", "shop3345", "soundshaarlem", "soundsvenlo"}
@@ -71,9 +74,14 @@ def main() -> int:
     parser.add_argument("--worker", required=True)
     parser.add_argument("--limit", type=int, default=25)
     parser.add_argument("--write", action="store_true")
+    parser.add_argument("--source-version", choices=("current", "windows-baseline"), default="current")
     args = parser.parse_args()
     if args.limit < 1:
         parser.error("--limit must be >= 1")
+    if args.source_version == "windows-baseline":
+        command = command_for(args.worker, args.limit, args.write, args.source_version)
+        print("[CUREDPLANT] Windows source on Linux:", " ".join(command), flush=True)
+        return subprocess.run(command, check=False).returncode
     preflight = preflight_command(args.worker, args.limit, args.write)
     if preflight:
         print("[CUREDPLANT] listing preflight:", " ".join(preflight), flush=True)

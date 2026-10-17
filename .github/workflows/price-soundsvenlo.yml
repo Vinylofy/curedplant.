@@ -3,6 +3,14 @@ name: "Curedplant | Price | Sounds Venlo"
 on:
   workflow_dispatch:
     inputs:
+      source_version:
+        description: "Linux source: Windows baseline is read-only (max 3 pages / 25 details)"
+        required: true
+        default: windows-baseline
+        type: choice
+        options:
+          - windows-baseline
+          - current
       limit:
         description: "Pages/products for this worker"
         required: true
@@ -18,6 +26,7 @@ jobs:
   worker:
     uses: ./.github/workflows/_catalog-price-worker.yml
     with:
+      source_version: ${{ inputs.source_version || 'current' }}
       worker: soundsvenlo
       limit: ${{ github.event_name == 'schedule' && '1' || inputs.limit }}
       write: ${{ github.event_name == 'schedule' || inputs.write }}
