@@ -2,8 +2,9 @@
   "version": 1,
   "shop": "soundshaarlem",
   "cursor": {
-    "page": 1,
-    "seed": 0
+    "page": 2,
+    "seed": 0,
+    "signature": "3338959b38c6abde1501818b6e27839298cc806e04a26c2516433ff204047f32"
   },
   "budget": {
     "date": "2026-10-18",
