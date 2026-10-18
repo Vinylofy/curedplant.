@@ -218,16 +218,24 @@ def split_og_title(value: str | None) -> tuple[str | None, str | None]:
 
 
 def extract_title_artist(soup: BeautifulSoup, lines: list[str]) -> tuple[str | None, str | None]:
+    # Self-titled albums omit the artist from og:title. Only use the primary
+    # product heading, never artist links from recommendations or navigation.
+    heading_artists = {
+        normalize_text(node.get_text(" ", strip=True))
+        for node in soup.select('h1 .artist a[href^="/artist/"]')
+        if normalize_text(node.get_text(" ", strip=True))
+    }
+    heading_artist = next(iter(heading_artists)) if len(heading_artists) == 1 else None
     og_title = meta_content(soup, "og:title", "twitter:title")
     artist, title = split_og_title(og_title)
 
     if title:
-        return title, artist
+        return title, artist or heading_artist
 
     if soup.title and soup.title.string:
         artist, title = split_og_title(soup.title.string)
         if title:
-            return title, artist
+            return title, artist or heading_artist
 
     heading_lines = [
         line
@@ -235,7 +243,7 @@ def extract_title_artist(soup: BeautifulSoup, lines: list[str]) -> tuple[str | N
         if line not in {"#", "##", "* * *"} and len(line) <= 120
     ]
     fallback_title = heading_lines[0] if heading_lines else None
-    return fallback_title, None
+    return fallback_title, heading_artist
 
 
 def extract_format(lines: list[str], title: str | None) -> str | None:

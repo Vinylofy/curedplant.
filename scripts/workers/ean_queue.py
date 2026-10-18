@@ -10,6 +10,30 @@ from scripts.scrapers.usf.core.db import db_connection
 
 
 class EanQueue:
+    def requeue_fifties_layout_misses(self):
+        """Repair only the false misses from the 18 October layout regression.
+
+        Old raw evidence and the previous detail result stay intact. Version 2
+        misses never requeue themselves. This does not reset the daily budget.
+        """
+        with db_connection() as conn, conn.cursor() as cur:
+            cur.execute("""
+                update public.shop_product_links
+                set last_detail_scraped_at=null, ean_enrichment_status='pending',
+                    ean_next_attempt_at=null, ean_last_result='fifties_layout_requeued',
+                    payload=payload || jsonb_build_object('ean_layout_repair',
+                        jsonb_build_object('parser_version',2,'requeued_at',now(),
+                                           'reason','fifties_hyva_layout_2026_10_18'))
+                where shop_id='fiftiesstore' and status='active'
+                  and ean_enrichment_status='not_found'
+                  and payload->'curedplant_daily_ean'->>'day'='2026-10-18'
+                  and payload->'curedplant_daily_ean'->>'ean_parser_version' is null
+                  and nullif(payload->'curedplant_daily_ean'->>'ean','') is null
+                  and nullif(payload->'curedplant_daily_ean'->>'error','') is null
+                  and nullif(payload->'curedplant_daily_ean'->>'detail_sha256','') is not null
+            """)
+            return cur.rowcount
+
     def fresh_catalog_rows(self, shop, rows):
         if not rows:
             return []
@@ -77,7 +101,13 @@ class EanQueue:
 
     def finish(self, shop, row, result):
         ean = result.get("ean")
-        outcome = "technical_error" if result.get("error") else "found" if ean else "not_found"
+        outcome = "technical_error" if result.get("error") else "not_applicable" if result.get("unavailable") or result.get("excluded_reason") else "found" if ean else "not_found"
+        data = row.get("payload") or {}
+        artist, title = infer_artist_title(result.get("artist") or data.get("artist_raw") or data.get("artist"), result.get("title"))
+        if ean and (not artist or not title):
+            # Keep the observed EAN, but never send incomplete identity to the
+            # canonical helper: blank + blank currently becomes SQL NULL there.
+            result["metadata_deferred"] = "missing_artist" if not artist else "missing_title"
         payload = {"curedplant_daily_ean": result}
         if ean:
             payload.update(last_successful_ean=ean, last_successful_ean_at=datetime.now(timezone.utc).isoformat())
@@ -99,9 +129,7 @@ class EanQueue:
             # EAN updates may create/enrich product identity, never an offer,
             # price, availability or price-history row. Price is an unused
             # CanonicalRecord field in this metadata-only call.
-            if ean and result.get("title"):
-                data = row.get("payload") or {}
-                artist, title = infer_artist_title(data.get("artist_raw") or data.get("artist"), result["title"])
+            if ean and artist and title:
                 record = CanonicalRecord(source_row_number=0, shop_name=shop,
                     shop_domain=result["domain"], shop_country="NL", ean=ean, artist=artist, title=title,
                     format_label=data.get("format") or data.get("carrier"), cover_url=result.get("image_url"),

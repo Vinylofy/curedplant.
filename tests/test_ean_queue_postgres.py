@@ -60,7 +60,7 @@ class QueuePostgresTests(unittest.TestCase):
             conn.execute('truncate public.raw_shop_scrapes, public.shop_product_links')
 
     def seed(self, count=250):
-        rows = [{'source_url': f'https://test.invalid/product/{i}', 'payload': {'title': 'Test record', 'price': '25.00'}} for i in range(count)]
+        rows = [{'source_url': f'https://test.invalid/product/{i}', 'payload': {'title': 'Test record', 'artist': 'Test artist', 'price': '25.00'}} for i in range(count)]
         self.queue.register('testshop', rows)
         return rows
 
@@ -113,3 +113,41 @@ class QueuePostgresTests(unittest.TestCase):
         with psycopg.connect(DSN) as conn:
             self.assertEqual(conn.execute('select count(*) from public.raw_shop_scrapes').fetchone()[0], 0)
             self.assertIsNone(conn.execute('select last_detail_scraped_at from public.shop_product_links').fetchone()[0])
+
+    def test_incomplete_imusic_identity_preserves_raw_ean_without_canonical_write(self):
+        self.seed(1)
+        row = self.queue.candidates('testshop', 1)[0]
+        row['payload'] = {}
+        self.queue.claim('testshop', row)
+        with patch('scripts.workers.ean_queue.upsert_product') as product:
+            self.queue.finish('testshop', row, {'ean': '00603497810826', 'title': 'Love (LP)', 'domain': 'imusic.nl'})
+            product.assert_not_called()
+        with psycopg.connect(DSN) as conn:
+            saved = conn.execute('select ean_raw, payload from public.raw_shop_scrapes').fetchone()
+            self.assertEqual(saved[0], '00603497810826')
+            self.assertEqual(saved[1]['metadata_deferred'], 'missing_artist')
+            self.assertEqual(conn.execute('select ean_enrichment_status from public.shop_product_links').fetchone()[0], 'found')
+
+    def test_removed_product_completes_queue_as_not_applicable(self):
+        self.seed(1)
+        row = self.queue.candidates('testshop', 1)[0]
+        self.queue.claim('testshop', row)
+        self.queue.finish('testshop', row, {'ean': None, 'unavailable': True, 'http_status': 404})
+        self.assertEqual(self.queue.candidates('testshop', 1), [])
+        with psycopg.connect(DSN) as conn:
+            self.assertEqual(conn.execute('select ean_enrichment_status from public.shop_product_links').fetchone()[0], 'not_applicable')
+
+    def test_fifties_requeue_is_scoped_to_old_false_misses_and_idempotent(self):
+        from psycopg.types.json import Jsonb
+        for i, (shop, day, version) in enumerate([
+            ('fiftiesstore','2026-10-18',None), ('fiftiesstore','2026-10-18',2),
+            ('fiftiesstore','2026-10-17',None), ('bobsvinyl','2026-10-18',None)]):
+            result = {'day': day, 'detail_sha256': 'source-proof', 'ean': None}
+            if version: result['ean_parser_version'] = version
+            with psycopg.connect(DSN) as conn:
+                conn.execute("insert into public.shop_product_links (shop_id,source_url,last_detail_scraped_at,ean_enrichment_status,payload) values (%s,%s,now(),'not_found',%s)", (shop,f'https://test.invalid/{i}',Jsonb({'curedplant_daily_ean':result})))
+        self.assertEqual(self.queue.requeue_fifties_layout_misses(), 1)
+        self.assertEqual(self.queue.requeue_fifties_layout_misses(), 0)
+        with psycopg.connect(DSN) as conn:
+            self.assertEqual(conn.execute('select source_url from public.shop_product_links where last_detail_scraped_at is null').fetchall(), [('https://test.invalid/0',)])
+            self.assertEqual(conn.execute("select payload->'curedplant_daily_ean'->>'detail_sha256' from public.shop_product_links where source_url='https://test.invalid/0'").fetchone()[0], 'source-proof')

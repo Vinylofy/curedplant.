@@ -242,6 +242,8 @@ class EanSource:
         title = payload.get("title_raw") or payload.get("title") or payload.get("raw_name")
         result = {"title": title, "domain": urlparse(url).hostname.removeprefix("www."),
                   "is_secondhand": str(payload.get("is_secondhand", "false")).lower() in {"true", "yes", "ja", "1"}}
+        if shop == "fiftiesstore":
+            result["ean_parser_version"] = 2
         if shop in {"everythingjazz", "atthemovies", "recordsonvinyl"}:
             response = self.get(url.rstrip("/") + ".js")
             data = response.json()
@@ -259,7 +261,19 @@ class EanSource:
                 result["issue"] = None if raw else "missing_or_ambiguous_variant_gtin"
                 result["title"] = data.get("title") or title
         else:
-            response = self.get(url)
+            try:
+                response = self.get(url)
+            except requests.HTTPError as exc:
+                response = exc.response
+                # Confirmed stale product links in these three shop queues are
+                # terminal detail results, not three transport failures. Never
+                # apply this to discovery, access blocks, or other shops.
+                if shop not in {"bobsvinyl", "cdhal", "fiftiesstore"} or response is None or response.status_code not in {404, 410}:
+                    raise
+                return {**result, "ean": None, "unavailable": True,
+                        "http_status": response.status_code, "issue": "removed_product",
+                        "detail_url": response.url,
+                        "detail_sha256": hashlib.sha256(response.content).hexdigest()}
             html, soup = response.text, BeautifulSoup(response.text, "html.parser")
             if shop in REVIEWED:
                 # Only the reviewed parsers' source-scoped pure helpers below.
@@ -279,11 +293,23 @@ class EanSource:
                     parsed = native.parse_product_page(html, url, payload)
                     raw, result["title"] = parsed["ean_raw"], native.title_raw_from_detail(parsed, payload)
                 elif shop == "fiftiesstore":
-                    values = [payload.get("ean")]
-                    for tr in soup.select("table#product-attribute-specs-table tr"):
-                        label, value = tr.select_one("th"), tr.select_one("td")
-                        if label and value and re.search(r"\b(?:ean|barcode|gtin)\b", label.get_text(), re.I):
-                            values.append(value.get_text(strip=True))
+                    own = soup.select_one(".product-info-main")
+                    h1 = own.select_one("h1") if own else soup.select_one("h1")
+                    if h1:
+                        result["title"] = h1.get_text(" ", strip=True)
+                    if (re.search(r"\bposter\b", result.get("title") or "", re.I)
+                            and not re.search(r"\b(?:LP|vinyl)\b", result.get("title") or "", re.I)):
+                        return {**result, "ean": None, "excluded_reason": "non_vinyl_poster",
+                                "detail_url": response.url,
+                                "detail_sha256": hashlib.sha256(response.content).hexdigest()}
+                    values = [payload.get("ean"), payload.get("sku")]
+                    # The Hyva layout uses td/td EAN rows and div/div specs;
+                    # the old parser only recognized a Magento th/td table.
+                    for root in [node for node in (own, soup.select_one("#product-attribute-specs-table")) if node]:
+                        for block in root.select("tr, div"):
+                            cells = block.find_all(["th", "td", "div"], recursive=False)
+                            if len(cells) == 2 and re.fullmatch(r"(?:ean|barcode|gtin(?:-?1[234])?)\s*:?", cells[0].get_text(" ", strip=True), re.I):
+                                values.append(cells[1].get_text(" ", strip=True))
                     codes = {strict_normalize_gtin(v) for v in values} - {None}
                     raw = next(iter(codes)) if len(codes) == 1 else None
                 else:  # DGM's proved product SKU belongs to the same product URL.
@@ -292,6 +318,9 @@ class EanSource:
                 parsed = module(f"usf.jobs.detail_{shop}").parse_offer(html, final_url=response.url, status_code=response.status_code)
                 raw, result["title"] = parsed.ean, parsed.title_raw
                 result["image_url"] = parsed.image_url
+                if shop == "imusic":
+                    result.update(artist=parsed.artist, title=parsed.title or parsed.title_raw,
+                                  source_title_raw=parsed.title_raw)
             elif shop in {"sounds", "variaworld"}:
                 native = module(f"usf.jobs.detail_{shop}")
                 raw, result["title"] = native.extract_ean(html), native.extract_title(html) or title

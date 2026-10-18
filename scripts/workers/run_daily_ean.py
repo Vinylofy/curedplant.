@@ -31,8 +31,9 @@ def execute(shop, limit, write, *, progress=None, queue=None, source_factory=Ean
     today = today or day_key()
     summary = {"shop": shop, "day": today, "write": write, "requested": limit,
                "reserved": 0, "selected": 0, "attempted": 0, "valid_eans": 0,
-               "missing_ean": 0, "technical_errors": 0, "claim_skips": 0, "discovery_pages": 0,
-               "price_writes": 0, "records": [], "errors": []}
+               "missing_ean": 0, "unavailable": 0, "excluded_non_vinyl": 0,
+               "technical_errors": 0, "claim_skips": 0, "discovery_pages": 0,
+               "requeued_for_repair": 0, "price_writes": 0, "records": [], "errors": []}
     source, state = None, None
     try:
         state = copy.deepcopy(validate_state(progress.load(), shop))
@@ -45,6 +46,8 @@ def execute(shop, limit, write, *, progress=None, queue=None, source_factory=Ean
         if allocated == 0:
             summary["outcome"] = "daily_budget_exhausted"
             return summary
+        if write and shop == "fiftiesstore":
+            summary["requeued_for_repair"] = queue.requeue_fifties_layout_misses()
         selected = queue.candidates(shop, allocated)
         selected_by_url = {row["source_url"]: row for row in selected}
         cursor = state["cursor"]
@@ -95,7 +98,9 @@ def execute(shop, limit, write, *, progress=None, queue=None, source_factory=Ean
                 # together. A DB failure leaves an expiring claim, not a done row.
                 queue.finish(shop, row, result)
             summary["attempted"] += 1
-            counter = "technical_errors" if result.get("error") else "valid_eans" if result.get("ean") else "missing_ean"
+            counter = ("technical_errors" if result.get("error") else "unavailable" if result.get("unavailable")
+                       else "excluded_non_vinyl" if result.get("excluded_reason")
+                       else "valid_eans" if result.get("ean") else "missing_ean")
             summary[counter] += 1
             summary["records"].append(result)
             print("[DAILY-EAN]", json.dumps(result, ensure_ascii=False), flush=True)
@@ -117,7 +122,7 @@ def execute(shop, limit, write, *, progress=None, queue=None, source_factory=Ean
         summary["status"] = "red" if summary["errors"] else "waiting" if not summary["attempted"] else "green"
         if write and state is not None:
             state["last_result"] = {key: summary[key] for key in
-                ("day", "attempted", "valid_eans", "missing_ean", "technical_errors", "status", "outcome")}
+                ("day", "attempted", "valid_eans", "missing_ean", "unavailable", "excluded_non_vinyl", "technical_errors", "status", "outcome")}
             try:
                 progress.save(state)
             except Exception as exc:
@@ -132,6 +137,7 @@ def execute(shop, limit, write, *, progress=None, queue=None, source_factory=Ean
                 handle.write(f"### {shop}: {summary['status']} — {summary.get('outcome')}\n\n"
                     f"Nieuwe details: **{summary['attempted']}**; geldige GTIN: **{summary['valid_eans']}**; "
                     f"EAN ontbreekt: {summary['missing_ean']}; technische detailfouten: {summary['technical_errors']}; "
+                    f"verwijderde producten: {summary['unavailable']}; geen vinyl: {summary['excluded_non_vinyl']}; "
                     f"overige fouten: {len(summary['errors']) - summary['technical_errors']}.\n\n"
                     f"Gereserveerd vandaag: {summary.get('daily_reserved')}; prijswrites: **0**. "
                     f"Volgende cataloguspositie: `{summary.get('next_cursor')}`.\n\n"
