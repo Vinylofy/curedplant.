@@ -62,7 +62,7 @@ class PriceVerificationTests(unittest.TestCase):
             self.assertNotIn("--run-detail", command)
             self.assertNotIn("--mode", command, worker)
         self.assertIn("discover_imusic_genres", " ".join(command_for("imusic", 0)))
-        self.assertIn("discover_jpc_vinyl", " ".join(command_for("jpc", 0)))
+        self.assertIn("jpc_price_source", " ".join(command_for("jpc", 0)))
 
     def run_worker(self, write, source_exit=0):
         with tempfile.TemporaryDirectory() as directory, \
