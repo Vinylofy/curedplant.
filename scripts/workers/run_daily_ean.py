@@ -30,23 +30,24 @@ def execute(shop, limit, write, *, progress=None, queue=None, source_factory=Ean
     progress, queue = progress or GitHubProgress(shop), queue or EanQueue()
     today = today or day_key()
     summary = {"shop": shop, "day": today, "write": write, "requested": limit,
-               "reserved": 0, "selected": 0, "attempted": 0, "valid_eans": 0,
+               "reserved": 0, "selected": 0, "attempted": 0, "details_started": 0, "valid_eans": 0,
                "missing_ean": 0, "unavailable": 0, "excluded_non_vinyl": 0,
                "technical_errors": 0, "claim_skips": 0, "discovery_pages": 0,
-               "requeued_for_repair": 0, "price_writes": 0, "records": [], "errors": []}
+               "requeued_for_repair": 0, "refunded_reservations": 0,
+               "price_writes": 0, "records": [], "errors": []}
     source, state, reservation_saved = None, None, False
     try:
         state = copy.deepcopy(validate_state(progress.load(), shop))
         allocated = reserve(state, limit, today) if write else limit
         summary["reserved"] = allocated if write else 0
+        if allocated == 0:
+            summary["outcome"] = "daily_budget_exhausted"
+            return summary
         if write:
             # Reserve before any source requests. A repeated manual run cannot
             # exceed 100 slots on the same Europe/Amsterdam calendar day.
             progress.save(state)
             reservation_saved = True
-        if allocated == 0:
-            summary["outcome"] = "daily_budget_exhausted"
-            return summary
         if write and shop == "fiftiesstore":
             summary["requeued_for_repair"] = queue.requeue_fifties_layout_misses()
         selected = queue.candidates(shop, allocated)
@@ -87,6 +88,9 @@ def execute(shop, limit, write, *, progress=None, queue=None, source_factory=Ean
                 continue
             result = {"source_url": row["source_url"], "day": today}
             stop = False
+            # Count before fetch/commit: a failed product write still used its
+            # detail slot, but a skipped claim or unused batch did not.
+            summary["details_started"] += 1
             try:
                 result.update(source.detail(row))
             except Exception as exc:
@@ -122,10 +126,14 @@ def execute(shop, limit, write, *, progress=None, queue=None, source_factory=Ean
             summary["daily_reserved"] = state["budget"]["reserved"] if write else None
         summary["status"] = "red" if summary["errors"] else "waiting" if not summary["attempted"] else "green"
         if write and state is not None and reservation_saved:
+            unused = allocated - summary["details_started"]
+            state["budget"]["reserved"] -= unused
             state["last_result"] = {key: summary[key] for key in
-                ("day", "attempted", "valid_eans", "missing_ean", "unavailable", "excluded_non_vinyl", "technical_errors", "status", "outcome")}
+                ("day", "attempted", "details_started", "valid_eans", "missing_ean", "unavailable", "excluded_non_vinyl", "technical_errors", "status", "outcome")}
             try:
                 progress.save(state)
+                summary["refunded_reservations"] = unused
+                summary["daily_reserved"] = state["budget"]["reserved"]
             except Exception as exc:
                 summary["errors"].append({"error": error_text(exc)})
                 summary["status"] = "red"

@@ -106,6 +106,34 @@ class DailyEanTests(unittest.TestCase):
         self.assertEqual(results[-1]["outcome"], "daily_budget_exhausted")
         self.assertEqual(len(queue.done), 100)
 
+    def test_exhausted_budget_does_not_write_or_overwrite_previous_result(self):
+        progress = Progress()
+        progress.state['budget'] = {'date': '2026-10-18', 'reserved': 100}
+        progress.state['last_result'] = {'status': 'green', 'valid_eans': 100}
+        before = copy.deepcopy(progress.state)
+        source = Mock()
+        result = daily.execute('everythingjazz', 100, True, progress=progress, queue=Queue(), source_factory=source, today='2026-10-18')
+        self.assertEqual(result['outcome'], 'daily_budget_exhausted')
+        self.assertEqual(progress.saves, 0)
+        self.assertEqual(progress.state, before)
+        source.assert_not_called()
+
+    def test_empty_batch_returns_unused_reservations(self):
+        progress = Progress()
+        result = daily.execute('everythingjazz', 100, True, progress=progress, queue=Queue(0), source_factory=Source)
+        self.assertEqual(result['details_started'], 0)
+        self.assertEqual(result['refunded_reservations'], 100)
+        self.assertEqual(progress.state['budget']['reserved'], 0)
+
+    def test_failed_database_write_still_consumes_the_fetched_detail(self):
+        progress, queue = Progress(), Queue(100)
+        queue.finish = Mock(side_effect=RuntimeError('database failure after detail fetched'))
+        result = daily.execute('everythingjazz', 100, True, progress=progress, queue=queue, source_factory=Source)
+        self.assertEqual(result['details_started'], 1)
+        self.assertEqual(result['attempted'], 0)
+        self.assertEqual(result['refunded_reservations'], 99)
+        self.assertEqual(progress.state['budget']['reserved'], 1)
+
     def test_dry_run_does_not_advance_or_claim(self):
         progress, queue = Progress(), Queue()
         before = copy.deepcopy(progress.state)
