@@ -305,10 +305,39 @@ class EanSource:
                 response = self.get(url)
             except requests.HTTPError as exc:
                 response = exc.response
+                if shop == 'musiconvinyl' and response is not None and response.status_code == 404:
+                    # Some current MOV products return HTML 404 specifically
+                    # from hosted runners. This is not proof of removal. Try
+                    # the ordinary public product JSON once; never on 403/429.
+                    alternate = self.get(url.rstrip('/') + '.js')
+                    data = alternate.json()
+                    expected = payload.get('shopify_product_id')
+                    if expected and str(data.get('id')) != str(expected):
+                        raise ValueError('Music On Vinyl fallback product identity mismatch')
+                    if str(data.get('type') or data.get('product_type') or '').casefold() != 'vinyl':
+                        return {**result, 'ean': None, 'excluded_reason': 'format_not_proven_vinyl',
+                                'detail_url': alternate.url,
+                                'detail_sha256': hashlib.sha256(alternate.content).hexdigest()}
+                    variants = data.get('variants') or []
+                    variant_id = payload.get('shopify_variant_id')
+                    if variant_id:
+                        variants = [v for v in variants if str(v.get('id')) == str(variant_id)]
+                        if not variants:
+                            raise ValueError('Music On Vinyl fallback variant identity mismatch')
+                    codes = {strict_normalize_gtin(v.get('barcode')) for v in variants} - {None}
+                    listing_code = strict_normalize_gtin(payload.get('ean') or payload.get('barcode'))
+                    if listing_code:
+                        codes.add(listing_code)
+                    return {**result, 'ean': next(iter(codes)) if len(codes) == 1 else None,
+                            'title': data.get('title') or title, 'artist': data.get('vendor') or payload.get('artist'),
+                            'issue': None if len(codes) == 1 else 'missing_or_conflicting_product_gtins',
+                            'ean_source': 'shopify_product_js', 'ean_parser_version': 2,
+                            'html_http_status': 404, 'detail_url': alternate.url,
+                            'detail_sha256': hashlib.sha256(alternate.content).hexdigest()}
                 # Confirmed stale product links in these shop queues are
                 # terminal detail results, not three transport failures. Never
                 # apply this to discovery, access blocks, or other shops.
-                if shop not in {"bobsvinyl", "cdhal", "fiftiesstore", "soundshaarlem", "musiconvinyl"} or response is None or response.status_code not in {404, 410}:
+                if shop not in {"bobsvinyl", "cdhal", "fiftiesstore", "soundshaarlem"} or response is None or response.status_code not in {404, 410}:
                     raise
                 return {**result, "ean": None, "unavailable": True,
                         "http_status": response.status_code, "issue": "removed_product",

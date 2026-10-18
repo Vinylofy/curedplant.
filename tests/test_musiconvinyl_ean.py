@@ -1,6 +1,7 @@
 import json
 import unittest
 from unittest.mock import Mock
+import requests
 
 from scripts.scrapers.musiconvinyl import extract_detail_metadata_from_html
 from scripts.workers.ean_sources import EanSource
@@ -81,6 +82,45 @@ class MusicOnVinylEanTests(unittest.TestCase):
                                 'payload': {'title': 'Album CD', 'product_type': 'CD'}})
         self.assertIsNone(result['ean'])
         self.assertEqual(result['excluded_reason'], 'format_not_proven_vinyl')
+
+    def fallback_source(self, data, status=404):
+        source = self.source('')
+        missing = response('not found'); missing.status_code = status
+        source.get.side_effect = [requests.HTTPError(response=missing), response(data)]
+        row = {'source_url': 'https://www.musiconvinyl.com/products/own', 'payload': {
+            'product_type': 'Vinyl', 'shopify_product_id': '123', 'shopify_variant_id': '456'}}
+        return source, row
+
+    def test_runner_html_404_can_use_matching_public_product_json(self):
+        source, row = self.fallback_source({'id': 123, 'title': 'Album', 'type': 'Vinyl',
+                                           'vendor': 'Artist', 'variants': [{'id': 456, 'barcode': GTIN}]})
+        result = source.detail(row)
+        self.assertEqual(result['ean'], GTIN)
+        self.assertEqual(result['ean_source'], 'shopify_product_js')
+        self.assertEqual(result['html_http_status'], 404)
+        self.assertNotIn('unavailable', result)
+        self.assertNotIn('price', result)
+        source.get.assert_called_with(row['source_url'] + '.js')
+
+    def test_json_fallback_rejects_wrong_product_or_variant(self):
+        for data in [{'id': 999}, {'id': 123, 'type': 'Vinyl', 'variants': [{'id': 999, 'barcode': GTIN}]}]:
+            source, row = self.fallback_source(data)
+            with self.assertRaises(ValueError):
+                source.detail(row)
+
+    def test_json_fallback_never_attempted_after_access_denial(self):
+        for status in [403, 429]:
+            source, row = self.fallback_source({}, status=status)
+            with self.assertRaises(requests.HTTPError):
+                source.detail(row)
+            self.assertEqual(source.get.call_count, 1)
+
+    def test_second_404_is_technical_error_not_confirmed_removal(self):
+        source, row = self.fallback_source({})
+        missing = response('not found'); missing.status_code = 404
+        source.get.side_effect = [requests.HTTPError(response=missing), requests.HTTPError(response=missing)]
+        with self.assertRaises(requests.HTTPError):
+            source.detail(row)
 
 
 if __name__ == '__main__':
