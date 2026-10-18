@@ -126,6 +126,49 @@ begrensde conflict-retries, bescherming tegen overschrijven van een gelijktijdig
 gewijzigd shopbestand, reserveringen bij een lege batch en behoud van een
 verbruikte plaats na databasefalen. Actionlint en Python-compilatie slagen.
 
+### Uitkomst eerste extra starts en gecontroleerde hervatting
+
+De acht geslaagde productieruns verwerkten samen **800 details en 710 geldige
+EAN's**, zonder technische fouten:
+
+| Shop | Geldige EAN / details | Bewijs |
+| --- | --- | --- |
+| Shop3345 | 100 / 100 | [39106431657](https://github.com/Vinylofy/curedplant./actions/runs/39106431657) |
+| Sounds | 98 / 100 | [39106434877](https://github.com/Vinylofy/curedplant./actions/runs/39106434877) |
+| Suburban | 98 / 100 | [39106438019](https://github.com/Vinylofy/curedplant./actions/runs/39106438019) |
+| Topnotch | 100 / 100 | [39106439325](https://github.com/Vinylofy/curedplant./actions/runs/39106439325) |
+| Variaworld | 88 / 100 | [39106441042](https://github.com/Vinylofy/curedplant./actions/runs/39106441042) |
+| Vinyleers | 92 / 100 | [39106442282](https://github.com/Vinylofy/curedplant./actions/runs/39106442282) |
+| Vinylfreaks | 36 / 100 | [39106444078](https://github.com/Vinylofy/curedplant./actions/runs/39106444078) |
+| Viprecords | 98 / 100 | [39106445717](https://github.com/Vinylofy/curedplant./actions/runs/39106445717) |
+
+Na verificatie van alle productie-artifacts per betrokken shop zijn uitsluitend
+**534 ongebruikte reserveringen** teruggegeven. De correctie is onafhankelijk
+teruggelezen uit GitHub en per checkpoint geaudit onder
+`reservation_recovery_20261018`, inclusief bronrun-ID's en werkelijk gestarte
+details. Hierbij telt ook het iMusic-detail mee dat werd opgehaald maar door de
+databasefout nog niet kon worden opgeslagen. Er is geen verbruikt record vrijgegeven.
+
+Daarna zijn op de geteste code `89fedac` om **09:20 Nederlandse tijd** de
+volgende vervolgruns gestart. Deze vullen alleen het ongebruikte deel van het
+dagmaximum; ze verhogen de limiet niet.
+
+| Shop | Eerder gestarte details | Resterend maximum deze run | Vervolgrun |
+| --- | --- | --- | --- |
+| Bob's Vinyl | 45 | 55 | [39107291696](https://github.com/Vinylofy/curedplant./actions/runs/39107291696) |
+| Cdhal | 44 | 56 | [39107293642](https://github.com/Vinylofy/curedplant./actions/runs/39107293642) |
+| Everything Jazz | 0 | 100 | [39107295544](https://github.com/Vinylofy/curedplant./actions/runs/39107295544) |
+| iMusic | 6 | 94 | [39107297162](https://github.com/Vinylofy/curedplant./actions/runs/39107297162) |
+| Recordsonvinyl | 67 | 33 | [39107298921](https://github.com/Vinylofy/curedplant./actions/runs/39107298921) |
+| Rockinoutrecords | 0 | 100 | [39107300680](https://github.com/Vinylofy/curedplant./actions/runs/39107300680) |
+| Sounds Haarlem | 4 | 96 | [39107302513](https://github.com/Vinylofy/curedplant./actions/runs/39107302513) |
+
+FiftiesStore had al 100 echte details gestart en krijgt daarom geen extra
+productierun boven die daglimiet. De voorbereid herstelde EAN-controle van de
+98 eerdere missers blijft beschikbaar voor het volgende dagbudget. De gewone
+dagelijkse planning blijft actief. De twee geblokkeerde shops blijven buiten
+het extra-startverzoek.
+
 ## Herstel rode geplande runs van 18 oktober 2026
 
 Vijf rode EAN-runs aangetroffen tijdens deze controle. Het gaat om de volgende
