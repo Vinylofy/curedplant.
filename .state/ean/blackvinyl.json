@@ -9,5 +9,14 @@
   "budget": {
     "date": "2026-10-18",
     "reserved": 100
+  },
+  "last_result": {
+    "day": "2026-10-18",
+    "attempted": 100,
+    "valid_eans": 89,
+    "missing_ean": 11,
+    "technical_errors": 0,
+    "status": "green",
+    "outcome": "completed"
   }
 }
