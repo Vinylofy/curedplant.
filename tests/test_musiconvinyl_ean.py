@@ -1,6 +1,6 @@
 import json
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 import requests
 
 from scripts.scrapers.musiconvinyl import extract_detail_metadata_from_html
@@ -9,6 +9,38 @@ from test_ean_sources import response, GTIN, OTHER_GTIN
 
 
 class MusicOnVinylEanTests(unittest.TestCase):
+    def test_native_transport_identity(self):
+        source = EanSource('musiconvinyl', sleeper=lambda _: None)
+        self.addCleanup(source.close)
+        self.assertEqual(source.session.headers['User-Agent'],
+                         'Mozilla/5.0 VinylofyBot/1.0 (+https://vinylofy.com)')
+        self.assertEqual(source.session.headers['Accept'], 'application/json,text/html;q=0.9,*/*;q=0.8')
+        self.assertNotIn('Accept-Language', source.session.headers)
+
+    def test_details_use_fresh_sessions_without_catalog_cookies(self):
+        sessions = []
+        def factory():
+            session = requests.Session()
+            session.get = Mock(return_value=response('ok'))
+            session.close = Mock()
+            sessions.append(session)
+            return session
+        with patch('scripts.scrapers.musiconvinyl.make_session', side_effect=factory):
+            source = EanSource('musiconvinyl', sleeper=lambda _: None)
+            source.session.cookies.set('catalog-context', 'must-not-reach-details')
+            catalog = 'https://www.musiconvinyl.com/products.json?limit=100&page=1'
+            source.get(catalog)
+            source.get('https://www.musiconvinyl.com/products/own')
+            source.get('https://www.musiconvinyl.com/products/other.js')
+            self.assertEqual(len(sessions), 3)
+            sessions[0].get.assert_called_once_with(catalog, timeout=(10, 30))
+            for detail in sessions[1:]:
+                self.assertEqual(len(detail.cookies), 0)
+                detail.get.assert_called_once()
+                detail.close.assert_called_once()
+            source.close()
+            sessions[0].close.assert_called_once()
+
     def source(self, body):
         source = EanSource('musiconvinyl', sleeper=lambda _: None)
         self.addCleanup(source.close)

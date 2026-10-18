@@ -50,6 +50,8 @@ class EanSource:
         self.session = self._session()
 
     def _session(self):
+        if self.shop == "musiconvinyl":
+            return module("musiconvinyl").make_session()
         if self.shop == "bobsvinyl":
             return module("bobsvinyl").make_detail_session()
         if self.shop == "platenzaak":
@@ -79,7 +81,14 @@ class EanSource:
                 self.sleeper(remaining)
         self.last_request = time.monotonic()
         # Retain CDHal's already verified ordinary rendering/429 policy.
-        response = get_with_browser(self.session, url, timeout=(10, 30)) if self.shop == "cdhal" else self.session.get(url, timeout=(10, 30))
+        if self.shop == "musiconvinyl" and urlparse(url).path.startswith("/products/"):
+            # Match the native worker: detail responses must not inherit catalog
+            # cookies/context. A controlled hosted-runner comparison reproduced
+            # false 404s with the generic shared session, but not this profile.
+            with self._session() as detail_session:
+                response = detail_session.get(url, timeout=(10, 30))
+        else:
+            response = get_with_browser(self.session, url, timeout=(10, 30)) if self.shop == "cdhal" else self.session.get(url, timeout=(10, 30))
         if self.shop == "cdhal" and response.status_code == 429:
             self.events.append({"url": url, "status": 429, "retry": "native bounded Retry-After policy"})
             response = module("usf.jobs.detail_cdhal").request_detail_page(self.session, url, max_attempts=2)
