@@ -12,6 +12,20 @@ from scripts.workers.run_catalog_price import main
 
 
 class ApprovedPriceSourceTests(unittest.TestCase):
+    def test_read_only_revalidation_can_recheck_complete_failed_source_without_writing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source=Path(directory)/'approved'
+            self.fixture(source,status='red',errors=[{'reason':'old_validator_conflict'}])
+            argv=['worker','--worker','suburban','--limit','0',
+                  '--approved-source-dir',str(source),'--approved-source-run','1234']
+            with patch('sys.argv',argv), \
+                 patch('scripts.workers.run_catalog_price.Path',side_effect=lambda p:Path(directory)/p), \
+                 patch('scripts.workers.run_catalog_price.subprocess.run',side_effect=AssertionError('refetch forbidden')), \
+                 patch('scripts.workers.price_database.update_existing',side_effect=AssertionError('writes forbidden')), \
+                 contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(main(),0)
+            summary=json.loads((Path(directory)/'output/price-verification/suburban/summary.json').read_text())
+            self.assertEqual((summary['write'],summary['database_writes']),(False,0))
     def fixture(self, directory, **changes):
         now = datetime.now(timezone.utc)
         summary = dict(worker='suburban', run_id='1234', limit=0, write=False,

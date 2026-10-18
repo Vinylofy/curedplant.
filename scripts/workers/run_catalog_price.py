@@ -66,8 +66,8 @@ def main() -> int:
     args = parser.parse_args()
     if bool(args.approved_source_dir) != bool(args.approved_source_run):
         parser.error("Approved source directory and run ID are both required")
-    if args.approved_source_run and (not args.write or args.source_version != "current"):
-        parser.error("Approved source reuse is only allowed for current write=true runs")
+    if args.approved_source_run and args.source_version != "current":
+        parser.error("Source evidence reuse is only allowed for the current source")
     if args.limit < 0:
         parser.error("--limit must be >= 0; 0 follows native pagination stop conditions")
     if args.source_version == "windows-baseline":
@@ -84,10 +84,10 @@ def main() -> int:
     evidence.write_text("")
     if args.approved_source_run:
         from scripts.workers.approved_price_source import load_approved_source
-        records, started = load_approved_source(args.approved_source_dir, args.worker, args.limit, args.approved_source_run)
+        records, started = load_approved_source(args.approved_source_dir, args.worker, args.limit, args.approved_source_run, require_green=args.write)
         evidence.write_text("".join(json.dumps(record, ensure_ascii=False) + "\n" for record in records))
         source_returncode = 0
-        print(f"[CUREDPLANT] reviewed source run {args.approved_source_run}; no second catalogue fetch", flush=True)
+        print(f"[CUREDPLANT] revalidate source run {args.approved_source_run}; no second catalogue fetch", flush=True)
     else:
         env = dict(os.environ, DATABASE_URL="", CUREDPLANT_PRICE_EVIDENCE=str(evidence.resolve()),
                    PGOPTIONS="-c default_transaction_read_only=on")

@@ -64,7 +64,7 @@ def amount(value):
 
 
 def assess(records):
-    by_url, errors = {}, []
+    by_url, errors, conflicts = {}, [], {}
     for record in records:
         if record.get("kind") == "source_error":
             errors.append(record)
@@ -83,9 +83,19 @@ def assess(records):
             errors.append({"url": url, "reason": "possible_thousands_separator_truncation_requires_review"})
         previous = by_url.get(url_key(url))
         if previous and previous["price"] != normalized["price"]:
-            errors.append({"url": url, "reason": "conflicting_listing_prices",
-                           "prices": [previous["price"], normalized["price"]]})
+            conflicts.setdefault(url_key(url), {"url": url, "reason": "conflicting_listing_prices", "prices": set()})
+            conflicts[url_key(url)]["prices"].update([previous["price"], normalized["price"]])
         by_url[url_key(url)] = normalized
+    quarantined = []
+    isolated_conflicts = bool(by_url) and len(conflicts) / len(by_url) <= .01
+    for key, conflict in conflicts.items():
+        conflict["prices"] = sorted(conflict["prices"])
+        if isolated_conflicts:
+            quarantined.append(conflict)
+        else:
+            errors.append(conflict)
+        # No conflicted product price is ever eligible for a database write.
+        by_url.pop(key, None)
     rows = list(by_url.values())
     counts = Counter(row["price"] for row in rows)
     dominant = counts.most_common(1)[0] if counts else (None, 0)
@@ -99,4 +109,5 @@ def assess(records):
                   "priced_products": len(rows), "missing_or_invalid_price": len(records) - sum(amount(r.get("price")) is not None for r in records),
                   "distinct_prices": len(counts), "dominant_price": dominant[0],
                   "dominant_count": dominant[1], "error_count": len(errors),
-                  "errors": errors[:25], "samples": rows[:12]}
+                  "errors": errors[:25], "quarantined_source_prices": quarantined,
+                  "source_quarantine_count": len(quarantined), "samples": rows[:12]}

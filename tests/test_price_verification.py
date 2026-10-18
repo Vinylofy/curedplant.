@@ -44,6 +44,12 @@ class PriceVerificationTests(unittest.TestCase):
         for records in ([], [row(0, None)], [row(0), row(0, "26.00")], [row(i, None) for i in range(20)] + [row(21)]):
             self.assertEqual(assess(records)[1]["status"], "red")
 
+    def test_isolated_source_conflict_is_excluded_instead_of_picking_a_price(self):
+        records=[row(i,str(i+10)) for i in range(200)] + [row(0,'99.95')]
+        rows, summary=assess(records)
+        self.assertEqual((summary['status'],len(rows),summary['source_quarantine_count']),('green',199,1))
+        self.assertNotIn(records[0]['source_url'],[r['source_url'] for r in rows])
+
     def test_partial_catalogue_after_rate_limit_is_not_green(self):
         records = [row(0), {"kind": "source_error", "reason": "HTTP 429"}]
         self.assertEqual(assess(records)[1]["status"], "red")

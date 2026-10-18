@@ -23,7 +23,7 @@ on:
         default: false
         type: boolean
       approved_dry_run_id:
-        description: "Optional: reviewed write=false run ID, only for write=true (max 6 hours old)"
+        description: "Optional source run ID: false=recheck, true=write reviewed prices; max 6 hours"
         required: false
         default: ""
         type: string

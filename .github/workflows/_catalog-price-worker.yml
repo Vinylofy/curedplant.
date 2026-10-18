@@ -46,7 +46,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: ${{ inputs.source_version == 'windows-baseline' && '3.11' || '3.12' }}
-      - name: Verify approved source run provenance
+      - name: Verify source evidence provenance
         if: inputs.approved_dry_run_id != ''
         uses: actions/github-script@v8
         env:
@@ -57,12 +57,13 @@ jobs:
         with:
           script: |
             const id = Number(process.env.SOURCE_RUN);
-            if (!Number.isSafeInteger(id) || id <= 0 || process.env.WRITE !== 'true' || process.env.SOURCE_VERSION !== 'current') {
-              throw new Error('Source reuse requires a positive run ID and current write=true');
+            if (!Number.isSafeInteger(id) || id <= 0 || process.env.SOURCE_VERSION !== 'current') {
+              throw new Error('Source reuse requires a positive run ID and the current source');
             }
             const {data: run} = await github.rest.actions.getWorkflowRun({...context.repo, run_id: id});
             if (run.head_repository.full_name !== `${context.repo.owner}/${context.repo.repo}` ||
-                run.head_branch !== 'main' || run.event !== 'workflow_dispatch' || run.conclusion !== 'success' ||
+                run.head_branch !== 'main' || run.event !== 'workflow_dispatch' ||
+                !(process.env.WRITE === 'true' ? ['success'] : ['success','failure']).includes(run.conclusion) ||
                 run.path !== `.github/workflows/price-${process.env.WORKER}.yml` ||
                 Date.now() - Date.parse(run.created_at) > 6 * 3600000) {
               throw new Error('Source run must be a recent successful manual price run from this repository main');
