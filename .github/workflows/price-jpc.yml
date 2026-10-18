@@ -2,6 +2,8 @@ name: "Curedplant | Price | Jpc"
 run-name: "Price | Jpc | ${{ github.event_name == 'schedule' && 'scheduled write' || (inputs.write && 'write=true' || 'write=false') }} | limit=${{ github.event_name == 'schedule' && '0' || inputs.limit }}"
 
 on:
+  schedule:
+    - cron: "17 3 * * *"
   workflow_dispatch:
     inputs:
       limit:
@@ -31,5 +33,5 @@ jobs:
       approved_dry_run_id: ${{ inputs.approved_dry_run_id || '' }}
       worker: jpc
       limit: ${{ github.event_name == 'schedule' && '0' || inputs.limit }}
-      write: ${{ inputs.write }}
+      write: ${{ github.event_name == 'schedule' || inputs.write }}
     secrets: inherit

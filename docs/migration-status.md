@@ -42,7 +42,7 @@ All 28 price workers follow `write=false` first, then reviewed `write=true`,
 then independent price scheduling and Windows retirement. Pending or blocked
 price workers remain unscheduled. EAN schedules are unchanged.
 Only a verified dry-run may proceed to `write=true`. Only a successful write
-with committed database price verification may enable its two-day schedule
+with committed database price verification may enable its daily schedule
 and retire the corresponding Windows price execution.
 
 Native listing parsers remain shop-specific. Price runs fetch live listings,
@@ -66,7 +66,7 @@ It never creates products/offers, writes EANs or publishes covers.
 | fiftiesstore | [success](https://github.com/Vinylofy/curedplant./actions/runs/39108813336); 337 priced | [success](https://github.com/Vinylofy/curedplant./actions/runs/39109094961); 222 DB verified | `56 2 * * *` | schedule stopped; manual backup retained |
 | getbackmusic | [success](https://github.com/Vinylofy/curedplant./actions/runs/39108336474); 6431 priced | [success](https://github.com/Vinylofy/curedplant./actions/runs/39108676808); 4485 DB verified | `3 3 * * *` | schedule stopped; manual backup retained |
 | imusic | [success](https://github.com/Vinylofy/curedplant./actions/runs/39109544608); 5925 priced | [success](); 2769 DB verified | `10 3 * * *` | schedule stopped; manual backup retained |
-| jpc | [in_progress](https://github.com/Vinylofy/curedplant./actions/runs/39111222968) | not started | off; pending verification | unchanged |
+| jpc | [success](https://github.com/Vinylofy/curedplant./actions/runs/39111222968) | [success](https://github.com/Vinylofy/curedplant./actions/runs/39146564774); 14,848 DB verified, 2,961 changed; 7,945 unmatched skipped | `17 3 * * *` daily write | listing/price cron stopped; manual backup retained |
 | musiconvinyl | [success](https://github.com/Vinylofy/curedplant./actions/runs/39108338648); 1021 priced | [success](https://github.com/Vinylofy/curedplant./actions/runs/39108676893); 852 DB verified | `24 3 * * *` | price cron stopped; separate Windows detail cron retained |
 | myrecordstore | [success](https://github.com/Vinylofy/curedplant./actions/runs/39108339208); 282 priced | [success](https://github.com/Vinylofy/curedplant./actions/runs/39108677067); 32 DB verified | `31 3 * * *` | schedule stopped; manual backup retained |
 | northendhaarlem | [failure](https://github.com/Vinylofy/curedplant./actions/runs/39108339265); 0 priced; HTTP403 on first category coloured-vinyl; native transport stops on access denial | not started | off; pending verification | unchanged |
