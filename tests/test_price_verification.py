@@ -48,6 +48,12 @@ class PriceVerificationTests(unittest.TestCase):
         records = [row(0), {"kind": "source_error", "reason": "HTTP 429"}]
         self.assertEqual(assess(records)[1]["status"], "red")
 
+    def test_four_digit_source_amount_cannot_silently_become_one_euro(self):
+        record = dict(row(0, '1.03'), raw={'listing_text': 'Regular price €1.035,99 Sale price €1.035,99'})
+        self.assertEqual(assess([record])[1]['status'], 'red')
+        record['price'] = '1035.99'
+        self.assertEqual(assess([record])[1]['status'], 'green')
+
     def test_source_commands_never_enable_details_or_native_writes(self):
         for file in Path(".github/workflows").glob("price-*.yml"):
             worker = file.stem.removeprefix("price-")

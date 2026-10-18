@@ -78,6 +78,9 @@ def assess(records):
             # Missing listing amounts are counted, never converted to prices.
             continue
         normalized = dict(record, price=str(value), currency=record.get("currency") or "EUR")
+        listing_text = str((record.get("raw") or {}).get("listing_text") or "")
+        if value < 5 and re.search(r"€\s*[0-9]{1,3}[.,][0-9]{3}[.,][0-9]{2}", listing_text):
+            errors.append({"url": url, "reason": "possible_thousands_separator_truncation_requires_review"})
         previous = by_url.get(url_key(url))
         if previous and previous["price"] != normalized["price"]:
             errors.append({"url": url, "reason": "conflicting_listing_prices",
