@@ -7,7 +7,7 @@
   },
   "budget": {
     "date": "2026-10-18",
-    "reserved": 100
+    "reserved": 45
   },
   "last_result": {
     "day": "2026-10-18",
@@ -19,5 +19,22 @@
     "technical_errors": 0,
     "status": "waiting",
     "outcome": "daily_budget_exhausted"
+  },
+  "reservation_recovery_20261018": {
+    "previous_reserved": 100,
+    "actual_details_started": 45,
+    "released_unused_slots": 55,
+    "source_runs": [
+      {
+        "run": 39099344723,
+        "details_started": 45
+      },
+      {
+        "run": 39106412701,
+        "details_started": 0
+      }
+    ],
+    "recovered_at": "2026-10-18T07:19:35.810813+00:00",
+    "reason": "Unused reservations verified against all production run artifacts; daily limit remains 100 started product details"
   }
 }
