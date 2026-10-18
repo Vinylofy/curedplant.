@@ -10,8 +10,9 @@ operationele kleur hieronder: handmatig groen is nog geen automatisch groen.
 
 ## Actuele operationele kleuren volgens de gebruiker
 
-Gecontroleerd: **18-10-2026 09:03 Nederlandse tijd**. Alleen EAN/detail in `curedplant.`.
-**2 rood, 16 oranje, 10 groen.**
+Basismeting: **18-10-2026 09:03 Nederlandse tijd**. Alleen EAN/detail in `curedplant.`.
+MOV is later toegevoegd en na bronherstel bijgewerkt: **2 rood, 17 oranje, 10 groen**
+in deze tabel. Overige shops zijn bij deze MOV-reparatie niet opnieuw beoordeeld.
 
 - Groen: een automatische run heeft echte records succesvol verwerkt.
 - Oranje: bron/code goedgekeurd of handmatig getest; de automatische datarun
@@ -25,7 +26,7 @@ hun actuele reparatiestatus is oranje totdat de automatische run slaagt.
 
 | Kleur | Shop | Bevinding | Laatste automatische run |
 | --- | --- | --- | --- |
-| Rood | Music On Vinyl | Parser en eigen discovery hersteld, maar een deel van de actuele producten geeft vanuit GitHub HTML én product-JSON HTTP 404. Laatste bronproef stopt na drie technische fouten; geen productieovername. Windows-detailplanning blijft actief. | [Read-only bronproef 39151350374](https://github.com/Vinylofy/curedplant./actions/runs/39151350374) |
+| Oranje | Music On Vinyl | Native sessies hersteld: Linux-bronproef 25/25 geldige EAN’s, alle verzoeken HTTP 200, nul fouten. Write-proef zonder fouten maar 0 nieuwe details na 10 cataloguspagina’s (waiting); hervatten op pagina 11. Windows-detailplanning blijft actief tot echte succesvolle writes. | [Read-only bronproef 39152893138](https://github.com/Vinylofy/curedplant./actions/runs/39152893138) |
 | Rood | North End Haarlem | Producttoegang vanuit GitHub geblokkeerd; geen planning. | Nog geen automatische run |
 | Rood | Sounds Venlo | Producttoegang vanuit GitHub geblokkeerd; geen planning. | Nog geen automatische run |
 | Oranje | Bob’s Vinyl | Hersteld en handmatig getest; automatische bevestiging van reparatie ontbreekt. | [run 39099344723](https://github.com/Vinylofy/curedplant./actions/runs/39099344723) |

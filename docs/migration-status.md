@@ -118,15 +118,44 @@ to the original Vinylofy repository; the Windows detail cron is retained.
 The public `.js` fallback is attempted only after HTML 404, not after 403/429.
 It verifies the listing product ID and selected variant ID before accepting a
 barcode. If the fallback also fails, this remains a technical failure, never
-a successful missing-EAN result. The exact reason for differing responses
-between the local environment and hosted runner is still unknown; no access
-restriction bypass is attempted. All 41 targeted local tests pass (12 MOV EAN,
-17 daily orchestration, 5 existing source adapters, 7 original scraper tests),
-and workflow/diff validation passes. These tests do not turn the failed hosted
-source proof green.
+a successful missing-EAN result.
 
-No new daily EAN schedule or production write was enabled for Music On Vinyl.
-Further migration requires resolving the runner/source accessibility difference
-or verifying the replacement from the existing Windows environment, followed
-by an explicit successful write verification. Existing prices remain on their
-independent Curedplant daily price schedule.
+### Native transport restored and verified: 18 October 2026
+
+The controlled Linux/Windows comparison used the same three vinyl URLs and
+requests 2.34.2. Native MOV headers with a fresh session per detail returned
+three HTTP 200 responses and all three visible barcodes on both runners. The
+Linux generic shared catalog/detail session returned two false 404s. Keeping
+the generic headers but isolating sessions returned 200s with differing HTML.
+This proves the native profile/session combination works; the individual
+cookie/header responsible was not isolated. Evidence:
+[Linux comparison](https://github.com/Vinylofy/curedplant./actions/runs/39152045638)
+and [Windows comparison](https://github.com/Vinylofy/curedplant./actions/runs/39152285395).
+The Linux comparison job succeeded; its overall run failed during the first
+Windows bootstrap, corrected in the separate successful Windows comparison.
+
+Commit `6892d87` restores `musiconvinyl.make_session()` and opens/closes a fresh
+native session for every product HTML/JSON request. Catalog requests retain
+their separate native session. Request spacing and explicit error reporting
+are preserved; the other shop transports are unchanged.
+
+[Hosted 25-product source proof](https://github.com/Vinylofy/curedplant./actions/runs/39152893138):
+**25 attempted, 25 valid GTINs, zero missing EANs, zero technical errors**.
+All 26 HTTP requests returned 200. Every accepted EAN came from the visible
+own-product Barcode (EAN) field, scoped and check-digit validated. No database
+or progress writes were performed. Targeted local validation: 36 passing tests
+(14 MOV, 17 orchestration, 5 other adapters), plus actionlint and diff checks.
+
+The bounded normal new-only write verification
+[39153045523](https://github.com/Vinylofy/curedplant./actions/runs/39153045523)
+completed without errors: 10 catalog pages, all HTTP 200, but zero eligible
+unfinished products. Its actual outcome is **waiting / discovery_continues_next_run**,
+not proof of production EAN writes. Discovery registrations and the checkpoint
+were saved; there were no detail/product/price writes. All 25 unused detail
+slots were refunded, daily usage is zero, and the next cursor is page 11.
+Known records were not reset or replayed to manufacture write evidence.
+
+The source/transport repair is proven and pushed to main. The remaining gate
+is an actual new-product write verification; scheduling and Windows retirement
+remain conditional on that gate. The Windows detail cron is retained. Existing
+prices remain on their independent daily schedule.
