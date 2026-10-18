@@ -1,4 +1,5 @@
 name: "Curedplant | Price | Imusic"
+run-name: "Price | Imusic | ${{ github.event_name == 'schedule' && 'scheduled write' || (inputs.write && 'write=true' || 'write=false') }} | limit=${{ github.event_name == 'schedule' && '0' || inputs.limit }}"
 
 on:
   workflow_dispatch:

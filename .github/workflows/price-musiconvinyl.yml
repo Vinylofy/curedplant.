@@ -1,4 +1,5 @@
 name: "Curedplant | Price | Music On Vinyl"
+run-name: "Price | Music On Vinyl | ${{ github.event_name == 'schedule' && 'scheduled write' || (inputs.write && 'write=true' || 'write=false') }} | limit=${{ github.event_name == 'schedule' && '0' || inputs.limit }}"
 
 on:
   schedule:

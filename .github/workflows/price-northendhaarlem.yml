@@ -1,4 +1,5 @@
 name: "Curedplant | Price | North End Haarlem"
+run-name: "Price | North End Haarlem | ${{ github.event_name == 'schedule' && 'scheduled write' || (inputs.write && 'write=true' || 'write=false') }} | limit=${{ github.event_name == 'schedule' && '0' || inputs.limit }}"
 
 on:
   workflow_dispatch:
