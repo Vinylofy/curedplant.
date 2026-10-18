@@ -3,7 +3,7 @@ run-name: "Price | Vinyleers | ${{ github.event_name == 'schedule' && 'scheduled
 
 on:
   schedule:
-    - cron: "55 4 */2 * *"
+    - cron: "55 4 * * *"
   workflow_dispatch:
     inputs:
       limit:

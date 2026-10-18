@@ -3,7 +3,7 @@ run-name: "Price | Dgmoutlet | ${{ github.event_name == 'schedule' && 'scheduled
 
 on:
   schedule:
-    - cron: "42 2 */2 * *"
+    - cron: "42 2 * * *"
   workflow_dispatch:
     inputs:
       limit:

@@ -3,7 +3,7 @@ run-name: "Price | Topnotch | ${{ github.event_name == 'schedule' && 'scheduled 
 
 on:
   schedule:
-    - cron: "41 4 */2 * *"
+    - cron: "41 4 * * *"
   workflow_dispatch:
     inputs:
       limit:

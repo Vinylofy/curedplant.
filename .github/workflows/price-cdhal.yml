@@ -3,7 +3,7 @@ run-name: "Price | Cdhal | ${{ github.event_name == 'schedule' && 'scheduled wri
 
 on:
   schedule:
-    - cron: "28 2 */2 * *"
+    - cron: "28 2 * * *"
   workflow_dispatch:
     inputs:
       limit:
