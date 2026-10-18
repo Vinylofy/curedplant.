@@ -86,6 +86,17 @@ class PriceDatabaseTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "variant review"):
             update_existing("test", self.records(), self.started)
 
+    def test_isolated_ambiguous_url_is_quarantined_without_writing_its_products(self):
+        for i in range(20):
+            self.seed(i)
+        self.seed(0, price=99)
+        stats = update_existing("test", self.records(20), self.started)
+        self.assertEqual((stats["updated"], stats["verified"]), (19, 19))
+        self.assertEqual(stats["quarantined_urls"], ["https://test.invalid/record/0"])
+        with psycopg.connect(DSN) as conn:
+            prices = conn.execute("select price from public.prices where product_url like '%record/0/%' order by price").fetchall()
+            self.assertEqual([str(r[0]) for r in prices], ["20", "99"])
+
     def test_unchanged_price_refresh_has_no_duplicate_history(self):
         self.seed(0, price="24.95")
         stats = update_existing("test", self.records(), self.started)

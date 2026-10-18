@@ -28,7 +28,8 @@ def update_existing(worker, records, started_at):
     domain = shop_domain(worker, records)
     expected = {url_key(r["source_url"]): r for r in records}
     stats = {"shop_domain": domain, "matched": 0, "updated": 0, "changed": 0,
-             "skipped_newer": 0, "unmatched": 0, "verified": 0, "samples": []}
+             "skipped_newer": 0, "unmatched": 0, "verified": 0, "samples": [],
+             "quarantined_urls": []}
     written = []
     with psycopg.connect(os.environ["DATABASE_URL"], prepare_threshold=None) as conn:
         with conn.cursor(row_factory=dict_row) as cur:
@@ -49,8 +50,15 @@ def update_existing(worker, records, started_at):
             targets = cur.fetchall()
             matched_keys = set()
             keys = [url_key(t["product_url"]) for t in targets]
-            if len(keys) != len(set(keys)):
-                raise RuntimeError("Multiple existing products share a listing URL; variant review required")
+            from collections import Counter
+            counts = Counter(keys)
+            ambiguous = {key for key, count in counts.items() if count > 1}
+            stats["quarantined_urls"] = [expected[key]["source_url"] for key in sorted(ambiguous)]
+            # No arbitrary product choice: ambiguous URLs get no write. A
+            # widespread identity problem still stops the entire shop.
+            if ambiguous and len(ambiguous) / len(counts) > .1:
+                raise RuntimeError(f"More than 10% of matched URLs need variant review: {stats['quarantined_urls'][:12]}")
+            targets = [target for target in targets if url_key(target["product_url"]) not in ambiguous]
             changes = []
             for target in targets:
                 key = url_key(target["product_url"])
