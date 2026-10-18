@@ -52,33 +52,37 @@ existing offers by the registered shop and product URL, preserves unknown
 availability, records price changes in history and verifies committed values.
 It never creates products/offers, writes EANs or publishes covers.
 
-| Shop | Dry-run | Write verification | Price schedule | Windows price |
+| Shop | Dry-run | Write verification | Price schedule UTC | Windows price |
 |---|---|---|---|---|
-| atthemovies | pending | not started | paused | unchanged |
-| bestkeptrecords | pending | not started | paused | unchanged |
-| blackvinyl | pending | not started | paused | unchanged |
-| bobsvinyl | pending | not started | paused | unchanged |
-| cdhal | pending | not started | paused | unchanged |
-| colouredvinyl | pending | not started | paused | unchanged |
-| dgmoutlet | pending | not started | paused | unchanged |
-| everythingjazz | pending | not started | paused | unchanged |
-| fiftiesstore | pending | not started | paused | unchanged |
-| getbackmusic | pending | not started | paused | unchanged |
-| imusic | pending | not started | paused | unchanged |
-| jpc | pending | not started | paused | unchanged |
-| musiconvinyl | pending | not started | paused | unchanged |
-| myrecordstore | pending | not started | paused | unchanged |
-| northendhaarlem | pending | not started | paused | unchanged |
-| platenzaak | pending | not started | paused | unchanged |
-| platomania | pending | not started | paused | unchanged |
-| recordsonvinyl | pending | not started | paused | unchanged |
-| rockinoutrecords | pending | not started | paused | unchanged |
-| sounds | pending | not started | paused | unchanged |
-| soundshaarlem | pending | not started | paused | unchanged |
-| soundsvenlo | pending | not started | paused | unchanged |
-| suburban | pending | not started | paused | unchanged |
-| topnotch | pending | not started | paused | unchanged |
-| variaworld | pending | not started | paused | unchanged |
-| vinyleers | pending | not started | paused | unchanged |
-| vinylfreaks | pending | not started | paused | unchanged |
-| viprecords | pending | not started | paused | unchanged |
+| atthemovies | [success](https://github.com/Vinylofy/curedplant./actions/runs/39108332388); 821 priced | [success](https://github.com/Vinylofy/curedplant./actions/runs/39108901216); 801 DB verified; 2 ambiguous URLs excluded | `0 2 */2 * *` | already retired; no scheduled Windows counterpart |
+| bestkeptrecords | [success](https://github.com/Vinylofy/curedplant./actions/runs/39108332586); 21534 priced | not started | off; pending verification | unchanged |
+| blackvinyl | [success](https://github.com/Vinylofy/curedplant./actions/runs/39108333047); 239 priced | [success](https://github.com/Vinylofy/curedplant./actions/runs/39108675172); 182 DB verified | `14 2 */2 * *` | already retired; no scheduled Windows counterpart |
+| bobsvinyl | [success](https://github.com/Vinylofy/curedplant./actions/runs/39108332554); 9678 priced | [in_progress](https://github.com/Vinylofy/curedplant./actions/runs/39109091812) | off; pending verification | unchanged |
+| cdhal | [success](https://github.com/Vinylofy/curedplant./actions/runs/39108538895); 3579 priced | not started | off; pending verification | unchanged |
+| colouredvinyl | [success](https://github.com/Vinylofy/curedplant./actions/runs/39108334616); 1160 priced | [success](https://github.com/Vinylofy/curedplant./actions/runs/39108674956); 943 DB verified | `35 2 */2 * *` | schedule stopped; manual backup retained |
+| dgmoutlet | [in_progress](https://github.com/Vinylofy/curedplant./actions/runs/39109118972) | not started | off; pending verification | unchanged |
+| everythingjazz | [success](https://github.com/Vinylofy/curedplant./actions/runs/39108335262); 1468 priced | [success](https://github.com/Vinylofy/curedplant./actions/runs/39108675352); 1299 DB verified | `49 2 */2 * *` | schedule stopped; manual backup retained |
+| fiftiesstore | [success](https://github.com/Vinylofy/curedplant./actions/runs/39108813336); 337 priced | [success](https://github.com/Vinylofy/curedplant./actions/runs/39109094961); 222 DB verified | `56 2 */2 * *` | schedule stopped; manual backup retained |
+| getbackmusic | [success](https://github.com/Vinylofy/curedplant./actions/runs/39108336474); 6431 priced | [success](https://github.com/Vinylofy/curedplant./actions/runs/39108676808); 4485 DB verified | `3 3 */2 * *` | schedule stopped; manual backup retained |
+| imusic | [in_progress](https://github.com/Vinylofy/curedplant./actions/runs/39108336943) | not started | off; pending verification | unchanged |
+| jpc | [in_progress](https://github.com/Vinylofy/curedplant./actions/runs/39108540943) | not started | off; pending verification | unchanged |
+| musiconvinyl | [success](https://github.com/Vinylofy/curedplant./actions/runs/39108338648); 1021 priced | [success](https://github.com/Vinylofy/curedplant./actions/runs/39108676893); 852 DB verified | `24 3 */2 * *` | price cron stopped; separate Windows detail cron retained |
+| myrecordstore | [success](https://github.com/Vinylofy/curedplant./actions/runs/39108339208); 282 priced | [success](https://github.com/Vinylofy/curedplant./actions/runs/39108677067); 32 DB verified | `31 3 */2 * *` | schedule stopped; manual backup retained |
+| northendhaarlem | [failure](https://github.com/Vinylofy/curedplant./actions/runs/39108339265); 0 priced | not started | off; pending verification | unchanged |
+| platenzaak | [success](https://github.com/Vinylofy/curedplant./actions/runs/39108339714); 4830 priced | [success](https://github.com/Vinylofy/curedplant./actions/runs/39108676960); 3571 DB verified | `45 3 */2 * *` | schedule stopped; manual backup retained |
+| platomania | [success](https://github.com/Vinylofy/curedplant./actions/runs/39108340524); 5670 priced | [success](https://github.com/Vinylofy/curedplant./actions/runs/39108678248); 5551 DB verified | `52 3 */2 * *` | schedule stopped; manual backup retained |
+| recordsonvinyl | [in_progress](https://github.com/Vinylofy/curedplant./actions/runs/39108341425) | not started | off; pending verification | unchanged |
+| rockinoutrecords | [success](https://github.com/Vinylofy/curedplant./actions/runs/39108341645); 329 priced | [success](https://github.com/Vinylofy/curedplant./actions/runs/39108678475); 114 DB verified | `6 4 */2 * *` | schedule stopped; manual backup retained |
+| sounds | [in_progress](https://github.com/Vinylofy/curedplant./actions/runs/39108341612) | not started | off; pending verification | unchanged |
+| soundshaarlem | [in_progress](https://github.com/Vinylofy/curedplant./actions/runs/39108342645) | not started | off; pending verification | unchanged |
+| soundsvenlo | [failure](https://github.com/Vinylofy/curedplant./actions/runs/39108343561); 50 priced | not started | off; pending verification | unchanged |
+| suburban | [success](https://github.com/Vinylofy/curedplant./actions/runs/39108343856); 2994 priced | [in_progress](https://github.com/Vinylofy/curedplant./actions/runs/39109093465) | off; pending verification | unchanged |
+| topnotch | [success](https://github.com/Vinylofy/curedplant./actions/runs/39108343715); 384 priced | [success](https://github.com/Vinylofy/curedplant./actions/runs/39108678776); 299 DB verified | `41 4 */2 * *` | schedule stopped; manual backup retained |
+| variaworld | [in_progress](https://github.com/Vinylofy/curedplant./actions/runs/39108344807) | not started | off; pending verification | unchanged |
+| vinyleers | [success](https://github.com/Vinylofy/curedplant./actions/runs/39108345614); 2840 priced | [success](https://github.com/Vinylofy/curedplant./actions/runs/39108678694); 654 DB verified | `55 4 */2 * *` | schedule stopped; manual backup retained |
+| vinylfreaks | [success](https://github.com/Vinylofy/curedplant./actions/runs/39108345743); 1022 priced | [success](https://github.com/Vinylofy/curedplant./actions/runs/39108679668); 227 DB verified | `2 5 */2 * *` | schedule stopped; manual backup retained |
+| viprecords | [success](https://github.com/Vinylofy/curedplant./actions/runs/39108346093); 2827 priced | [success](https://github.com/Vinylofy/curedplant./actions/runs/39108903024); 2610 DB verified; 1 ambiguous URLs excluded | `9 5 */2 * *` | schedule stopped; manual backup retained |
+
+Schedules follow the existing two-day cron convention (`*/2` day of month). UTC times are shown above. A green price run means the current listing source passed validation and the listed existing price rows were independently read back after commit. New/unmatched offers are left to the separate EAN/product pipeline; no products are created by this price worker. Isolated ambiguous URL-to-product mappings are quarantined without modifying their prices; over 10% ambiguous matched URLs stops the shop.
+
+Mixed Windows pipelines are retired only for shops whose daily Ubuntu EAN lane is already approved. Dedicated Windows EAN workflows remain unchanged. Music On Vinyl keeps its Windows detail cron because it has no Curedplant EAN replacement. Manual Windows backups remain available.

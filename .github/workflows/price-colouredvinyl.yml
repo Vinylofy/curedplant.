@@ -1,6 +1,8 @@
 name: "Curedplant | Price | Colouredvinyl"
 
 on:
+  schedule:
+    - cron: "35 2 */2 * *"
   workflow_dispatch:
     inputs:
       limit:
