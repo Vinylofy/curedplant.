@@ -54,6 +54,40 @@ hun actuele reparatiestatus is oranje totdat de automatische run slaagt.
 | Groen | Platenzaak | Automatisch geslaagd: 5 geldige EAN’s uit 5 details. | [run 39104705803](https://github.com/Vinylofy/curedplant./actions/runs/39104705803) |
 | Groen | Platomania | Automatisch geslaagd: 98 geldige EAN’s uit 100 details. | [run 39105403655](https://github.com/Vinylofy/curedplant./actions/runs/39105403655) |
 
+## Extra starts van alle 16 oranje EAN-workers, 18 oktober 2026
+
+Op verzoek zijn alle 16 oranje workers direct extra gestart vanuit `main`,
+tussen **09:06 en 09:07 Nederlandse tijd**. Inputs: `limit=100`, `write=true`.
+Dit zijn productieruns van de bestaande EAN-workflows, gestart via
+`workflow_dispatch`; het zijn geen nieuwe cronregistraties. De dagelijkse
+cronplanningen blijven behouden. De twee rode workers zijn niet gestart.
+
+Zes shops hadden vandaag al 100 plaatsen gereserveerd en stoppen daardoor
+op `daily_budget_exhausted`: nul extra details en geen automatische
+inhoudelijke goedkeuring. Het budget of de voortgang is niet teruggezet.
+Voor de overige tien shops is een echte verwerkingsrun gestart; de uitkomst
+volgt in de gekoppelde run. Een groene GitHub-run zonder verwerkte records
+verandert de operationele kleur niet in groen.
+
+| Shop | Extra run | Dagbudget bij start |
+| --- | --- | --- |
+| Bob's Vinyl | [39106412701](https://github.com/Vinylofy/curedplant./actions/runs/39106412701) | Al volledig gereserveerd; deze extra start verwerkt niets |
+| Cdhal | [39106414307](https://github.com/Vinylofy/curedplant./actions/runs/39106414307) | Al volledig gereserveerd; deze extra start verwerkt niets |
+| Everything Jazz | [39106415950](https://github.com/Vinylofy/curedplant./actions/runs/39106415950) | Al volledig gereserveerd; deze extra start verwerkt niets |
+| FiftiesStore | [39106417456](https://github.com/Vinylofy/curedplant./actions/runs/39106417456) | Al volledig gereserveerd; deze extra start verwerkt niets |
+| iMusic | [39106419014](https://github.com/Vinylofy/curedplant./actions/runs/39106419014) | Al volledig gereserveerd; deze extra start verwerkt niets |
+| Recordsonvinyl | [39106426205](https://github.com/Vinylofy/curedplant./actions/runs/39106426205) | Al volledig gereserveerd; deze extra start verwerkt niets |
+| Rockinoutrecords | [39106429362](https://github.com/Vinylofy/curedplant./actions/runs/39106429362) | Beschikbaar; verwerkingsrun gestart |
+| Shop3345 | [39106431657](https://github.com/Vinylofy/curedplant./actions/runs/39106431657) | Beschikbaar; verwerkingsrun gestart |
+| Sounds | [39106434877](https://github.com/Vinylofy/curedplant./actions/runs/39106434877) | Beschikbaar; verwerkingsrun gestart |
+| Sounds Haarlem | [39106436198](https://github.com/Vinylofy/curedplant./actions/runs/39106436198) | Beschikbaar; verwerkingsrun gestart |
+| Suburban | [39106438019](https://github.com/Vinylofy/curedplant./actions/runs/39106438019) | Beschikbaar; verwerkingsrun gestart |
+| Topnotch | [39106439325](https://github.com/Vinylofy/curedplant./actions/runs/39106439325) | Beschikbaar; verwerkingsrun gestart |
+| Variaworld | [39106441042](https://github.com/Vinylofy/curedplant./actions/runs/39106441042) | Beschikbaar; verwerkingsrun gestart |
+| Vinyleers | [39106442282](https://github.com/Vinylofy/curedplant./actions/runs/39106442282) | Beschikbaar; verwerkingsrun gestart |
+| Vinylfreaks | [39106444078](https://github.com/Vinylofy/curedplant./actions/runs/39106444078) | Beschikbaar; verwerkingsrun gestart |
+| Viprecords | [39106445717](https://github.com/Vinylofy/curedplant./actions/runs/39106445717) | Beschikbaar; verwerkingsrun gestart |
+
 ## Herstel rode geplande runs van 18 oktober 2026
 
 Vijf rode EAN-runs aangetroffen tijdens deze controle. Het gaat om de volgende
