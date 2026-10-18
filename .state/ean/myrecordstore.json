@@ -2,9 +2,9 @@
   "version": 1,
   "shop": "myrecordstore",
   "cursor": {
-    "page": 3,
+    "page": 4,
     "seed": 0,
-    "signature": "c8af00f746d187aeecaa9022f48c7a8d747f018daeab927c1484449cc4e3a10a"
+    "signature": "aec03ccfb92d543950ad3bd77bd879c9a357fce8f7e51463c40a383bf2e7111a"
   },
   "budget": {
     "date": "2026-10-18",
