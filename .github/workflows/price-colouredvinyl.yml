@@ -33,5 +33,5 @@ jobs:
       approved_dry_run_id: ${{ inputs.approved_dry_run_id || '' }}
       worker: colouredvinyl
       limit: ${{ github.event_name == 'schedule' && '0' || inputs.limit }}
-      write: ${{ inputs.write }}
+      write: ${{ github.event_name == 'schedule' || inputs.write }}
     secrets: inherit
