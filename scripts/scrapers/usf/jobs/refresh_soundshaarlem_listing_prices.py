@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from decimal import Decimal
 import re
 import time
 from datetime import datetime, timezone
@@ -37,7 +38,8 @@ VINYL_RE = re.compile(
     flags=re.I,
 )
 NON_VINYL_RE = re.compile(r"\b(?:CD|DVD|BLU[\s-]?RAY|CASSETTE|TAPE)\b", flags=re.I)
-PRICE_RE = re.compile(r"€\s*([0-9]+(?:[.,][0-9]{1,2})?)")
+PRICE_TOKEN = r"(?:[0-9]{1,3}(?:[.,][0-9]{3})+(?:[.,][0-9]{2})?|[0-9]+(?:[.,][0-9]{1,2})?)(?![0-9.,])"
+PRICE_RE = re.compile(r"€\s*(" + PRICE_TOKEN + r")")
 
 
 def clean(value: Any) -> str:
@@ -88,17 +90,27 @@ def source_product_id_from_url(url: str) -> str | None:
 def extract_prices(text: str) -> tuple[str | None, str | None]:
     text = clean(text)
 
-    sale_matches = re.findall(r"Sale price\s*€\s*([0-9]+(?:[.,][0-9]{1,2})?)", text, flags=re.I)
-    regular_matches = re.findall(r"Regular price\s*€\s*([0-9]+(?:[.,][0-9]{1,2})?)", text, flags=re.I)
+    def normalized(token):
+        if "," in token and "." in token:
+            decimal = "," if token.rfind(",") > token.rfind(".") else "."
+            token = token.replace("." if decimal == "," else ",", "").replace(decimal, ".")
+        elif "," in token or "." in token:
+            separator = "," if "," in token else "."
+            parts = token.split(separator)
+            token = "".join(parts) if len(parts[-1]) == 3 else "".join(parts[:-1]) + "." + parts[-1]
+        return str(Decimal(token).quantize(Decimal("0.01")))
+
+    sale_matches = re.findall(r"Sale price\s*€\s*(" + PRICE_TOKEN + r")", text, flags=re.I)
+    regular_matches = re.findall(r"Regular price\s*€\s*(" + PRICE_TOKEN + r")", text, flags=re.I)
 
     if sale_matches:
-        current_price = sale_matches[-1].replace(",", ".")
-        old_price = regular_matches[0].replace(",", ".") if regular_matches else None
+        current_price = normalized(sale_matches[-1])
+        old_price = normalized(regular_matches[0]) if regular_matches else None
         if old_price == current_price:
             old_price = None
         return current_price, old_price
 
-    all_prices = [price.replace(",", ".") for price in PRICE_RE.findall(text)]
+    all_prices = [normalized(price) for price in PRICE_RE.findall(text)]
 
     if not all_prices:
         return None, None
@@ -149,6 +161,8 @@ def extract_format(text: str) -> str | None:
 
 def is_vinyl_product(title: str, text: str) -> bool:
     haystack = f"{title} {text}"
+    if re.search(r"\bLP[-\s]SIZED\b.*\bCALENDAR\b", haystack, re.I):
+        return False
     if VINYL_RE.search(haystack):
         return True
     if NON_VINYL_RE.search(haystack):
