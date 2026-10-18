@@ -56,6 +56,19 @@ class SourceRepairTests(unittest.TestCase):
         with self.assertRaises(requests.HTTPError):
             s.detail({'source_url': 'https://test.invalid/missing'})
 
+    def test_recordsonvinyl_uses_canonical_product_api_and_handles_removed_handle(self):
+        s = self.source('recordsonvinyl', '')
+        s.get.side_effect = http_error(404)
+        result = s.detail({'source_url': 'https://recordsonvinyl.nl/collections/all/products/sick-of-it-all-sick-of-it-all-single-1'})
+        self.assertTrue(result['unavailable'])
+        s.get.assert_called_once_with('https://recordsonvinyl.nl/products/sick-of-it-all-sick-of-it-all-single-1.js')
+
+    def test_unreviewed_shopify_404_still_fails(self):
+        s = self.source('atthemovies', '')
+        s.get.side_effect = http_error(404)
+        with self.assertRaises(requests.HTTPError):
+            s.detail({'source_url': 'https://test.invalid/products/missing'})
+
     def test_fifties_hyva_td_and_div_specs_work_without_queue_ean(self):
         for row in ('<table><tr><td>EAN:</td><td>5060854800732</td></tr></table>',
                     '<div class="flex"><div class="font-bold">EAN</div><div>5060854800732</div></div>'):

@@ -245,7 +245,23 @@ class EanSource:
         if shop == "fiftiesstore":
             result["ean_parser_version"] = 2
         if shop in {"everythingjazz", "atthemovies", "recordsonvinyl"}:
-            response = self.get(url.rstrip("/") + ".js")
+            detail_url = url.rstrip("/") + ".js"
+            if shop == "recordsonvinyl":
+                detail_url = module(shop).shopify_product_js_url(url)
+                if not detail_url:
+                    raise ValueError(f"Invalid Records on Vinyl product URL: {url}")
+            try:
+                response = self.get(detail_url)
+            except requests.HTTPError as exc:
+                response = exc.response
+                # This shop's failed batch contains removed Shopify handles;
+                # their product.js and public product page both return 404.
+                if shop != "recordsonvinyl" or response is None or response.status_code not in {404, 410}:
+                    raise
+                return {**result, "ean": None, "unavailable": True,
+                        "http_status": response.status_code, "issue": "removed_product",
+                        "detail_url": response.url,
+                        "detail_sha256": hashlib.sha256(response.content).hexdigest()}
             data = response.json()
             variants = data.get("variants") or []
             if payload.get("variant_id"):

@@ -30,6 +30,14 @@ create table public.raw_shop_scrapes (
  price_raw text, availability_raw text, image_url_raw text, payload jsonb,
  scraped_at timestamptz default now(), parse_status text default 'raw'
 );
+create table public.products (
+ id uuid primary key default gen_random_uuid(), ean text unique,
+ gtin_normalized text unique, artist text not null, title text not null,
+ format_label text, cover_url text, canonical_key text, artist_normalized text,
+ title_normalized text, search_text text, metadata_source text, metadata_status text,
+ metadata_confidence numeric, metadata_needs_review boolean,
+ created_at timestamptz default now(), updated_at timestamptz default now()
+);
 """
 
 
@@ -45,7 +53,7 @@ class QueuePostgresTests(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         with psycopg.connect(DSN) as conn:
-            conn.execute('drop table public.raw_shop_scrapes, public.shop_product_links')
+            conn.execute('drop table public.raw_shop_scrapes, public.shop_product_links, public.products')
 
     def setUp(self):
         @contextlib.contextmanager
@@ -57,7 +65,7 @@ class QueuePostgresTests(unittest.TestCase):
         self.addCleanup(self.connection_patch.stop)
         self.queue = EanQueue()
         with psycopg.connect(DSN) as conn:
-            conn.execute('truncate public.raw_shop_scrapes, public.shop_product_links')
+            conn.execute('truncate public.raw_shop_scrapes, public.shop_product_links, public.products')
 
     def seed(self, count=250):
         rows = [{'source_url': f'https://test.invalid/product/{i}', 'payload': {'title': 'Test record', 'artist': 'Test artist', 'price': '25.00'}} for i in range(count)]
@@ -126,6 +134,17 @@ class QueuePostgresTests(unittest.TestCase):
             saved = conn.execute('select ean_raw, payload from public.raw_shop_scrapes').fetchone()
             self.assertEqual(saved[0], '00603497810826')
             self.assertEqual(saved[1]['metadata_deferred'], 'missing_artist')
+            self.assertEqual(conn.execute('select ean_enrichment_status from public.shop_product_links').fetchone()[0], 'found')
+
+    def test_imusic_real_canonical_upsert_fills_blank_artist_without_null_error(self):
+        self.queue.register('imusic', [{'source_url': 'https://imusic.nl/music/0603497810826', 'payload': {}}])
+        row = self.queue.candidates('imusic', 1)[0]
+        with psycopg.connect(DSN) as conn:
+            conn.execute("insert into public.products (ean,gtin_normalized,artist,title) values ('0603497810826','00603497810826','','Love (LP)')")
+        self.queue.claim('imusic', row)
+        self.queue.finish('imusic', row, {'ean': '00603497810826', 'artist': 'Love', 'title': 'Love (LP)', 'domain': 'imusic.nl'})
+        with psycopg.connect(DSN) as conn:
+            self.assertEqual(conn.execute('select artist,title from public.products').fetchall(), [('Love','Love (LP)')])
             self.assertEqual(conn.execute('select ean_enrichment_status from public.shop_product_links').fetchone()[0], 'found')
 
     def test_removed_product_completes_queue_as_not_applicable(self):
