@@ -7,7 +7,7 @@ import json
 import os
 from pathlib import Path
 import re
-from urllib.parse import urlsplit
+from urllib.parse import parse_qs, urlsplit
 
 
 def capture(record):
@@ -36,6 +36,10 @@ def url_key(value):
     parsed = urlsplit(str(value or ""))
     host = parsed.netloc.lower().removeprefix("www.")
     path = re.sub(r"^/collections/[^/]+/products/", "/products/", parsed.path).rstrip("/")
+    if host == "variaworld.nl" and path == "/artikel/detail.php":
+        article = parse_qs(parsed.query).get("at")
+        if article and len(article) == 1 and article[0].isdigit():
+            path += "?at=" + article[0]
     if host == "imusic.nl":
         match = re.match(r"/music/(\d{12,14})(?:/|$)", path)
         if match:
@@ -91,4 +95,5 @@ def assess(records):
     return rows, {"status": "red" if errors else "green", "observations": len(records),
                   "priced_products": len(rows), "missing_or_invalid_price": len(records) - sum(amount(r.get("price")) is not None for r in records),
                   "distinct_prices": len(counts), "dominant_price": dominant[0],
-                  "dominant_count": dominant[1], "errors": errors, "samples": rows[:12]}
+                  "dominant_count": dominant[1], "error_count": len(errors),
+                  "errors": errors[:25], "samples": rows[:12]}

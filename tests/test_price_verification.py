@@ -23,6 +23,13 @@ class PriceVerificationTests(unittest.TestCase):
             ("https://www.jpc.de/jpcng/poprock/detail/-/art/album/hnum/123456", "https://jpc.de/jpcng/jazz/detail/-/hnum/123456"),
         ]:
             self.assertEqual(url_key(left), url_key(right))
+
+    def test_variaworld_article_query_parameter_is_part_of_product_identity(self):
+        first = "https://www.variaworld.nl/artikel/detail.php?at=9077073000"
+        second = "https://www.variaworld.nl/artikel/detail.php?at=9085033900"
+        self.assertNotEqual(url_key(first), url_key(second))
+        rows, summary = assess([dict(row(0), source_url=first), dict(row(1, "29.90"), source_url=second)])
+        self.assertEqual((len(rows), summary["status"]), (2, "green"))
     def test_shipping_text_and_ambiguous_prices_are_never_amounts(self):
         for value in ("shipping 4.95", "25.00 + 4.95", "free", "NaN", "0", "-1", None):
             self.assertIsNone(amount(value))

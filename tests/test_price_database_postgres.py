@@ -103,3 +103,18 @@ class PriceDatabaseTests(unittest.TestCase):
         self.assertEqual((stats["updated"], stats["changed"], stats["verified"]), (1, 0, 1))
         with psycopg.connect(DSN) as conn:
             self.assertEqual(conn.execute("select count(*) from public.price_history").fetchone()[0], 0)
+
+    def test_variaworld_query_article_ids_update_distinct_existing_prices(self):
+        urls = ['https://www.variaworld.nl/artikel/detail.php?at=9077073000',
+                'https://www.variaworld.nl/artikel/detail.php?at=9085033900']
+        with psycopg.connect(DSN) as conn:
+            shop = conn.execute("insert into public.shops(domain) values ('variaworld.nl') returning id").fetchone()[0]
+            for url in urls:
+                conn.execute("insert into public.prices(shop_id,product_url,price) values (%s,%s,10)", (shop,url))
+        records = [dict(r, source_url=url, shop_domain='variaworld.nl', price=value)
+                   for r,url,value in zip(self.records(2),urls,['24.95','39.90'])]
+        stats = update_existing('variaworld', records, self.started)
+        self.assertEqual(stats['verified'], 2)
+        with psycopg.connect(DSN) as conn:
+            actual = conn.execute('select price from public.prices where shop_id=%s order by product_url', (shop,)).fetchall()
+        self.assertEqual([str(r[0]) for r in actual], ['24.95','39.90'])
