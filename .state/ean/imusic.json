@@ -3,7 +3,8 @@
   "shop": "imusic",
   "cursor": {
     "page": 1,
-    "seed": 0
+    "seed": 0,
+    "registry_only": true
   },
   "budget": {
     "date": "2026-10-18",
