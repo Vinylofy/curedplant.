@@ -2,13 +2,57 @@
 
 Bijgewerkt: 2026-10-18. Repository: `Vinylofy/curedplant.`.
 
-Dit is het centrale document voor de EAN/detail-kwaliteitscontrole. De review
-hieronder betreft de tien eerder rode actions. De achttien eerder groene shops
-zijn tijdens deze review niet opnieuw getest.
+Dit is het centrale document voor de EAN/detail-kwaliteitscontrole.
+De oorspronkelijke bronreview telt 26 goedgekeurde en twee geblokkeerde shops.
+Daarvan zijn achttien eerdere goedkeuringen tijdens de review van tien rode
+shops niet opnieuw getest. Deze bronkwalificatie is afzonderlijk van de actuele
+operationele kleur hieronder: handmatig groen is nog geen automatisch groen.
 
-Uitkomst van deze tien: **acht groen, nul oranje, twee rood**. Samen met de
-achttien eerder groene beoordelingen is de geregistreerde stand 26 groen en
-twee rood; die eerdere achttien zijn geen nieuwe testresultaten.
+## Actuele operationele kleuren volgens de gebruiker
+
+Gecontroleerd: **18-10-2026 09:03 Nederlandse tijd**. Alleen EAN/detail in `curedplant.`.
+**2 rood, 16 oranje, 10 groen.**
+
+- Groen: een automatische run heeft echte records succesvol verwerkt.
+- Oranje: bron/code goedgekeurd of handmatig getest; de automatische datarun
+  moet dit nog bevestigen. De vijf gerepareerde shops tellen dus als oranje.
+- Rood: er staat nog een onopgeloste technische of inhoudelijke blokkade open.
+
+Everything Jazz blijft oranje: GitHub geeft success, maar het eigen resultaat
+is `waiting` met nul nieuwe records. Dat is nog geen automatische databevestiging.
+De oude rode runs van de vijf gerepareerde shops blijven in Actions staan;
+hun actuele reparatiestatus is oranje totdat de automatische run slaagt.
+
+| Kleur | Shop | Bevinding | Laatste automatische run |
+| --- | --- | --- | --- |
+| Rood | North End Haarlem | Producttoegang vanuit GitHub geblokkeerd; geen planning. | Nog geen automatische run |
+| Rood | Sounds Venlo | Producttoegang vanuit GitHub geblokkeerd; geen planning. | Nog geen automatische run |
+| Oranje | Bob’s Vinyl | Hersteld en handmatig getest; automatische bevestiging van reparatie ontbreekt. | [run 39099344723](https://github.com/Vinylofy/curedplant./actions/runs/39099344723) |
+| Oranje | CDHal | Hersteld en handmatig getest; automatische bevestiging van reparatie ontbreekt. | [run 39099405288](https://github.com/Vinylofy/curedplant./actions/runs/39099405288) |
+| Oranje | Everything Jazz | Automatische run zonder fouten, maar nul nieuwe records; uitkomst waiting. | [run 39101255623](https://github.com/Vinylofy/curedplant./actions/runs/39101255623) |
+| Oranje | FiftiesStore | Hersteld en handmatig getest; automatische bevestiging van reparatie ontbreekt. | [run 39101835680](https://github.com/Vinylofy/curedplant./actions/runs/39101835680) |
+| Oranje | Records on Vinyl | Hersteld en handmatig getest; automatische bevestiging van reparatie ontbreekt. | [run 39105403941](https://github.com/Vinylofy/curedplant./actions/runs/39105403941) |
+| Oranje | Rockin Out Records | Goedgekeurde bron; nog geen geslaagde automatische datarun. | Nog geen automatische run |
+| Oranje | Shop3345 | Goedgekeurde bron; nog geen geslaagde automatische datarun. | Nog geen automatische run |
+| Oranje | Sounds | Goedgekeurde bron; nog geen geslaagde automatische datarun. | Nog geen automatische run |
+| Oranje | Sounds Haarlem | Goedgekeurde bron; nog geen geslaagde automatische datarun. | Nog geen automatische run |
+| Oranje | Suburban | Goedgekeurde bron; nog geen geslaagde automatische datarun. | Nog geen automatische run |
+| Oranje | TopNotch | Goedgekeurde bron; nog geen geslaagde automatische datarun. | Nog geen automatische run |
+| Oranje | VIP Records | Goedgekeurde bron; nog geen geslaagde automatische datarun. | Nog geen automatische run |
+| Oranje | Variaworld | Goedgekeurde bron; nog geen geslaagde automatische datarun. | Nog geen automatische run |
+| Oranje | Vinyl Freaks | Goedgekeurde bron; nog geen geslaagde automatische datarun. | Nog geen automatische run |
+| Oranje | Vinyleers | Goedgekeurde bron; nog geen geslaagde automatische datarun. | Nog geen automatische run |
+| Oranje | iMusic | Hersteld en handmatig getest; automatische bevestiging van reparatie ontbreekt. | [run 39102779912](https://github.com/Vinylofy/curedplant./actions/runs/39102779912) |
+| Groen | At the Movies | Automatisch geslaagd: 100 geldige EAN’s uit 100 details. | [run 39097981243](https://github.com/Vinylofy/curedplant./actions/runs/39097981243) |
+| Groen | Best Kept Records | Automatisch geslaagd: 100 geldige EAN’s uit 100 details. | [run 39098136897](https://github.com/Vinylofy/curedplant./actions/runs/39098136897) |
+| Groen | Black Vinyl | Automatisch geslaagd: 89 geldige EAN’s uit 100 details. | [run 39098994515](https://github.com/Vinylofy/curedplant./actions/runs/39098994515) |
+| Groen | Coloured Vinyl | Automatisch geslaagd: 100 geldige EAN’s uit 100 details. | [run 39099793727](https://github.com/Vinylofy/curedplant./actions/runs/39099793727) |
+| Groen | DGM Outlet | Automatisch geslaagd: 1 geldige EAN’s uit 1 details. | [run 39100446034](https://github.com/Vinylofy/curedplant./actions/runs/39100446034) |
+| Groen | Get Back Music | Automatisch geslaagd: 100 geldige EAN’s uit 100 details. | [run 39102576354](https://github.com/Vinylofy/curedplant./actions/runs/39102576354) |
+| Groen | JPC | Automatisch geslaagd: 100 geldige EAN’s uit 100 details. | [run 39104215856](https://github.com/Vinylofy/curedplant./actions/runs/39104215856) |
+| Groen | My Record Store | Automatisch geslaagd: 100 geldige EAN’s uit 100 details. | [run 39104631185](https://github.com/Vinylofy/curedplant./actions/runs/39104631185) |
+| Groen | Platenzaak | Automatisch geslaagd: 5 geldige EAN’s uit 5 details. | [run 39104705803](https://github.com/Vinylofy/curedplant./actions/runs/39104705803) |
+| Groen | Platomania | Automatisch geslaagd: 98 geldige EAN’s uit 100 details. | [run 39105403655](https://github.com/Vinylofy/curedplant./actions/runs/39105403655) |
 
 ## Herstel rode geplande runs van 18 oktober 2026
 
