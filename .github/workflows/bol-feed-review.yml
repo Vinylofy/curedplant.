@@ -27,32 +27,53 @@ jobs:
     # A Windows OS alone does not guarantee a static public IP.
     runs-on: [self-hosted, Windows, "${{ vars.BOL_FEED_RUNNER || 'X64' }}"]
     timeout-minutes: 45
+    defaults:
+      run:
+        shell: powershell
     steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
       - name: Verify whitelisted public IPv4 before using feed credentials
-        shell: python {0}
+        working-directory: ${{ runner.temp }}
         env:
           BOL_FEED_PUBLIC_IPV4: ${{ vars.BOL_FEED_PUBLIC_IPV4 }}
           BOL_IP_ONLY: ${{ inputs.ip_check_only }}
         run: |
-          import ipaddress, os, urllib.request
-          with urllib.request.urlopen('https://api4.ipify.org', timeout=15) as response:
-              actual = str(ipaddress.IPv4Address(response.read(64).decode().strip()))
-          print('Runner public IPv4:', actual)
-          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as summary:
-              summary.write('bol feed runner public IPv4: `' + actual + '`\n')
-          expected = os.environ.get('BOL_FEED_PUBLIC_IPV4', '')
-          if actual != expected and os.environ['BOL_IP_ONLY'] != 'true':
-              raise SystemExit('Configure this IP in bol Account > Productfeed and BOL_FEED_PUBLIC_IPV4; no feed login attempted.')
+          $ErrorActionPreference = 'Stop'
+          $actual = (Invoke-RestMethod -Uri 'https://api4.ipify.org' -TimeoutSec 15).ToString().Trim()
+          $address = [System.Net.IPAddress]::Parse($actual)
+          if ($address.AddressFamily -ne [System.Net.Sockets.AddressFamily]::InterNetwork) {
+              throw 'Expected a public IPv4 address'
+          }
+          Write-Output "Runner public IPv4: $actual"
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding UTF8 -Value "bol feed runner public IPv4: $actual"
+          if ($actual -ne $env:BOL_FEED_PUBLIC_IPV4 -and $env:BOL_IP_ONLY -ne 'true') {
+              throw 'Configure this IP in bol Account > Productfeed and BOL_FEED_PUBLIC_IPV4; no feed login attempted.'
+          }
+      - name: Download exact source commit to a Windows-safe path
+        working-directory: ${{ runner.temp }}
+        if: ${{ !inputs.ip_check_only }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # Avoid GITHUB_WORKSPACE: repository names ending in a dot are not
+          # ordinary Win32 directory names. Use the immutable commit archive.
+          $destination = Join-Path $env:RUNNER_TEMP "bol-source-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          New-Item -ItemType Directory -Path $destination -ErrorAction Stop | Out-Null
+          $archive = Join-Path $destination 'source.zip'
+          $sourceUrl = "https://github.com/$env:GITHUB_REPOSITORY/archive/$env:GITHUB_SHA.zip"
+          Invoke-WebRequest -UseBasicParsing -Uri $sourceUrl -OutFile $archive -TimeoutSec 120
+          Expand-Archive -LiteralPath $archive -DestinationPath $destination
+          $sourceDirs = @(Get-ChildItem -LiteralPath $destination -Directory)
+          if ($sourceDirs.Count -ne 1) { throw 'Unexpected source archive layout' }
+          Add-Content -LiteralPath $env:GITHUB_ENV -Encoding UTF8 -Value "BOL_SOURCE_DIR=$($sourceDirs[0].FullName)"
+      - uses: actions/setup-python@v5
+        if: ${{ !inputs.ip_check_only }}
+        with:
+          python-version: '3.12'
       - name: Install importer dependencies
+        working-directory: ${{ runner.temp }}
         if: ${{ !inputs.ip_check_only }}
         run: python -m pip install 'psycopg[binary]>=3.2,<4' 'python-dotenv>=1,<2' 'lxml>=5,<6'
       - name: Review official feed (no database credentials)
+        working-directory: ${{ runner.temp }}
         if: ${{ !inputs.ip_check_only }}
         shell: python {0}
         env:
@@ -68,11 +89,11 @@ jobs:
               '--profile', os.environ['BOL_PROFILE'], '--limit', os.environ['BOL_LIMIT']]
           if os.environ['BOL_INSPECT_SCHEMA'] == 'true':
               command.append('--inspect-schema')
-          subprocess.run(command, check=True)
+          subprocess.run(command, cwd=os.environ['BOL_SOURCE_DIR'], check=True)
       - name: Save review evidence only (not the bulk feed)
         if: ${{ always() && !inputs.ip_check_only }}
         uses: actions/upload-artifact@v4
         with:
           name: bol-feed-review-${{ github.run_id }}
-          path: output/bol/review.json
+          path: ${{ env.BOL_SOURCE_DIR }}/output/bol/review.json
           retention-days: 1
