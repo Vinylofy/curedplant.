@@ -89,3 +89,44 @@ Independent public product-page checks: 20 matched source prices. These are samp
 Schedules follow the daily cron convention (`*` day of month). UTC times are shown above. A green price run means the current listing source passed validation and the listed existing price rows were independently read back after commit. New/unmatched offers are left to the separate EAN/product pipeline; no products are created by this price worker. Isolated ambiguous URL-to-product mappings are quarantined without modifying their prices; over 10% ambiguous matched URLs stops the shop.
 
 Mixed Windows pipelines are retired only for shops whose daily Ubuntu EAN lane is already approved. Dedicated Windows EAN workflows remain unchanged. Music On Vinyl keeps its Windows detail cron while the new manual Curedplant EAN worker is being verified; that worker now includes its own bounded catalog discovery. Manual Windows backups remain available.
+
+### Music On Vinyl EAN repair: 18 October 2026
+
+The new `ean-detail-musiconvinyl.yml` workflow is manual only, defaults to
+25 products and `write=false`. It has independent bounded discovery from the
+same global `/products.json` catalog route used by the native source. Explicit
+`product_type=Vinyl` is required; used/CD/merchandise entries are excluded.
+The normal lane selects only unprocessed products. The optional `source_pilot`
+mode deliberately verifies current products even if already known, without
+database access or durable checkpoint reads/writes. It cannot be combined
+with writes. The wrapper automatically uses the normal new-only path for a
+requested write, never source-pilot replay.
+
+The product parser now reads real whitespace around the visible Barcode (EAN)
+label in the main product information container, validates the GS1 check digit,
+and rejects conflicting own-product identifiers. Related product cards and
+numeric SKUs are not accepted as product EANs. The same parser repair is pushed
+to the original Vinylofy repository; the Windows detail cron is retained.
+
+| Verification | Observed result |
+| --- | --- |
+| Local native-source pilot | 98 explicit vinyl rows from one 100-product collection page; 3/3 actual detail EANs found, including Imagine / Armin van Buuren. This was a source sample, not database matching or publication. |
+| [Initial new-only dry-run](https://github.com/Vinylofy/curedplant./actions/runs/39150760074) | No eligible unfinished products; outcome waiting. A green Actions job is not counted as a completed EAN source proof. |
+| [First explicit source pilot](https://github.com/Vinylofy/curedplant./actions/runs/39151072143) | 25 attempted, 13 valid GTINs, 12 HTML 404s. The initial unavailable classification was withdrawn: at least one of those URLs returns HTTP 200 locally, so global removal is not proven. |
+| [Follow-up source pilot](https://github.com/Vinylofy/curedplant./actions/runs/39151350374) | Stopped after 6 attempts: 3 valid GTINs, 3 technical errors. For these URLs, the hosted runner receives 404 from both HTML and the ordinary product `.js` endpoint. No products marked removed; no database writes, no progress changes. Overall source status red. |
+
+The public `.js` fallback is attempted only after HTML 404, not after 403/429.
+It verifies the listing product ID and selected variant ID before accepting a
+barcode. If the fallback also fails, this remains a technical failure, never
+a successful missing-EAN result. The exact reason for differing responses
+between the local environment and hosted runner is still unknown; no access
+restriction bypass is attempted. All 41 targeted local tests pass (12 MOV EAN,
+17 daily orchestration, 5 existing source adapters, 7 original scraper tests),
+and workflow/diff validation passes. These tests do not turn the failed hosted
+source proof green.
+
+No new daily EAN schedule or production write was enabled for Music On Vinyl.
+Further migration requires resolving the runner/source accessibility difference
+or verifying the replacement from the existing Windows environment, followed
+by an explicit successful write verification. Existing prices remain on their
+independent Curedplant daily price schedule.

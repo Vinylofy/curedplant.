@@ -25,7 +25,7 @@ hun actuele reparatiestatus is oranje totdat de automatische run slaagt.
 
 | Kleur | Shop | Bevinding | Laatste automatische run |
 | --- | --- | --- | --- |
-| Oranje | Music On Vinyl | Nieuwe aparte EAN-worker met eigen begrensde discovery; handmatig, standaard 25 en write=false. Zichtbare barcodeparser hersteld en drie echte producten lokaal gecontroleerd; volledige GitHub-proef nog te bevestigen. Windows-detailplanning blijft actief. | Nog geen automatische Curedplant-run |
+| Rood | Music On Vinyl | Parser en eigen discovery hersteld, maar een deel van de actuele producten geeft vanuit GitHub HTML én product-JSON HTTP 404. Laatste bronproef stopt na drie technische fouten; geen productieovername. Windows-detailplanning blijft actief. | [Read-only bronproef 39151350374](https://github.com/Vinylofy/curedplant./actions/runs/39151350374) |
 | Rood | North End Haarlem | Producttoegang vanuit GitHub geblokkeerd; geen planning. | Nog geen automatische run |
 | Rood | Sounds Venlo | Producttoegang vanuit GitHub geblokkeerd; geen planning. | Nog geen automatische run |
 | Oranje | Bob’s Vinyl | Hersteld en handmatig getest; automatische bevestiging van reparatie ontbreekt. | [run 39099344723](https://github.com/Vinylofy/curedplant./actions/runs/39099344723) |
