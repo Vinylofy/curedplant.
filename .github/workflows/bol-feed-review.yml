@@ -25,7 +25,7 @@ jobs:
   review:
     # Use the existing Windows machine, registered for this repo or organisation.
     # A Windows OS alone does not guarantee a static public IP.
-    runs-on: [self-hosted, Windows, "${{ vars.BOL_FEED_RUNNER || 'vinylofy-windows' }}"]
+    runs-on: [self-hosted, Windows, "${{ vars.BOL_FEED_RUNNER || 'X64' }}"]
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4

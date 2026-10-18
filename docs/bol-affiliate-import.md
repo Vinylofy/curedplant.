@@ -89,7 +89,7 @@ source's canonical titles/covers. The importer never publishes a bol cover.
 Use the existing Windows machine, **not** `windows-latest`. That machine must
 have a self-hosted runner registered for `curedplant.` or an organisation runner
 that is allowed to serve it. The default labels are `self-hosted`, `Windows`,
-`vinylofy-windows`. A repository-specific Vinylofy runner does not automatically
+`X64`. A repository-specific Vinylofy runner does not automatically
 serve curedplant. Do not replace its existing runner service: register an
 additional service/work directory if repo-level registration is needed.
 
@@ -105,7 +105,7 @@ GitHub → curedplant. → Settings → Secrets and variables → Actions:
 | Secret | `BOL_FEED_PASSWORD` | Actual productfeed password |
 | Variable | `BOL_SITE_ID` | Site_ID of the approved website channel; NL and BE may use the same channel ID |
 | Variable | `BOL_FEED_PUBLIC_IPV4` | Public IPv4 **observed on the Windows runner**, also entered at bol |
-| Variable | `BOL_FEED_RUNNER` | Optional custom Windows runner label; default `vinylofy-windows` |
+| Variable | `BOL_FEED_RUNNER` | Optional custom Windows runner label; default `X64` (standard runner label) |
 | Variable | `BOL_FEED_PROFILE` | Validated profile path; example defaults to `config/bol-feed.example.json` |
 
 No credentials belong in chat, committed files, command-line arguments or
