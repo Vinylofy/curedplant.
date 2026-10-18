@@ -130,3 +130,38 @@ Further migration requires resolving the runner/source accessibility difference
 or verifying the replacement from the existing Windows environment, followed
 by an explicit successful write verification. Existing prices remain on their
 independent Curedplant daily price schedule.
+
+### Controlled runner comparison (diagnosis branch only)
+
+The same three vinyl URLs (Imagine, Jennie Bomb, Don Blackman blue vinyl)
+were requested using requests 2.34.2 in three profiles. No database credential
+was provided, and no production code or schedules were changed.
+
+| Request profile | Linux hosted runner | Existing Windows runner |
+| --- | --- | --- |
+| Native MOV headers, fresh session per detail | 3 HTTP 200, all 3 expected visible barcode fields | 3 HTTP 200, all 3 expected visible barcode fields |
+| New adapter headers, fresh session per detail | 3 HTTP 200, only Imagine has a visible Barcode (EAN) field | 3 HTTP 200, all 3 expected visible barcode fields |
+| New adapter headers, shared session after catalog request | Imagine HTTP 200 with barcode; Jennie Bomb and Don Blackman HTTP 404 | 3 HTTP 200, all 3 expected visible barcode fields |
+
+Evidence: [Linux comparison 39152045638](https://github.com/Vinylofy/curedplant./actions/runs/39152045638)
+and [Windows comparison 39152285395](https://github.com/Vinylofy/curedplant./actions/runs/39152285395).
+Python was 3.12 on Linux and the existing 3.11.16 on Windows. The three Linux
+profiles used the same interpreter, dependency version and network environment,
+so their differing responses cannot be attributed solely to operating system
+or a blanket GitHub source-IP restriction. The adapter uses a generic browser
+User-Agent plus Accept-Language, instead of MOV's own VinylofyBot identity and
+Accept header. It also reuses the catalog session; native detail code creates
+a fresh MOV session for each product. The exact cookie/header responsible
+has not been independently isolated. Visible-field counts are an HTTP/content
+diagnostic, not claims about completed database EAN enrichment.
+
+The earlier successful Windows run with five EANs visited six CD product URLs;
+the other five inspected Windows detail runs processed zero products. Those
+green runs alone were not a comparable vinyl-source test. Native materialization
+also catches detail exceptions as warnings and enrichment exits with zero even
+when its error counters are nonzero. Preserve explicit failure reporting in
+the replacement rather than copying that behavior.
+
+Recommended repair: restore MOV's own request factory and isolate each detail
+request from catalog-session state, then repeat the bounded 25-product source
+pilot. This diagnosis does not authorize marking the full EAN rollout green.
