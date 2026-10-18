@@ -16,11 +16,21 @@ on:
         required: true
         default: false
         type: boolean
+      approved_dry_run_id:
+        description: "Optional: reviewed write=false run ID, only for write=true (max 6 hours old)"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+  actions: read
 
 jobs:
   worker:
     uses: ./.github/workflows/_catalog-price-worker.yml
     with:
+      approved_dry_run_id: ${{ inputs.approved_dry_run_id || '' }}
       worker: cdhal
       limit: ${{ github.event_name == 'schedule' && '0' || inputs.limit }}
       write: ${{ inputs.write }}

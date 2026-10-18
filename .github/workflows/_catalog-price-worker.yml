@@ -18,12 +18,17 @@ on:
         required: false
         default: false
         type: boolean
+      approved_dry_run_id:
+        required: false
+        default: ""
+        type: string
     secrets:
       DATABASE_URL:
         required: false
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   run:
@@ -41,10 +46,39 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: ${{ inputs.source_version == 'windows-baseline' && '3.11' || '3.12' }}
+      - name: Verify approved source run provenance
+        if: inputs.approved_dry_run_id != ''
+        uses: actions/github-script@v8
+        env:
+          SOURCE_RUN: ${{ inputs.approved_dry_run_id }}
+          WORKER: ${{ inputs.worker }}
+          WRITE: ${{ inputs.write }}
+          SOURCE_VERSION: ${{ inputs.source_version }}
+        with:
+          script: |
+            const id = Number(process.env.SOURCE_RUN);
+            if (!Number.isSafeInteger(id) || id <= 0 || process.env.WRITE !== 'true' || process.env.SOURCE_VERSION !== 'current') {
+              throw new Error('Source reuse requires a positive run ID and current write=true');
+            }
+            const {data: run} = await github.rest.actions.getWorkflowRun({...context.repo, run_id: id});
+            if (run.head_repository.full_name !== `${context.repo.owner}/${context.repo.repo}` ||
+                run.head_branch !== 'main' || run.event !== 'workflow_dispatch' || run.conclusion !== 'success' ||
+                run.path !== `.github/workflows/price-${process.env.WORKER}.yml` ||
+                Date.now() - Date.parse(run.created_at) > 6 * 3600000) {
+              throw new Error('Source run must be a recent successful manual price run from this repository main');
+            }
+      - name: Download approved read-only price evidence
+        if: inputs.approved_dry_run_id != ''
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.approved_dry_run_id }}
+          name: price-evidence-${{ inputs.worker }}-${{ inputs.approved_dry_run_id }}
+          path: output/approved-price-source
       - name: Install scraper dependencies
         run: python -m pip install -r requirements.txt
       - name: Install shop browser transport where required
-        if: contains(fromJSON('["cdhal","soundsvenlo"]'), inputs.worker) || (inputs.source_version != 'windows-baseline' && inputs.worker == 'northendhaarlem')
+        if: inputs.approved_dry_run_id == '' && (contains(fromJSON('["cdhal","soundsvenlo"]'), inputs.worker) || (inputs.source_version != 'windows-baseline' && inputs.worker == 'northendhaarlem'))
         run: |
           python -m pip install 'playwright>=1.50,<2'
           python -m playwright install --with-deps chromium
@@ -61,6 +95,7 @@ jobs:
           fi
           args=(--source-version "${{ inputs.source_version }}" --worker "${{ inputs.worker }}" --limit "${{ inputs.limit }}")
           if [ "${{ inputs.write }}" = "true" ]; then args+=(--write); fi
+          if [ -n "${{ inputs.approved_dry_run_id }}" ]; then args+=(--approved-source-run "${{ inputs.approved_dry_run_id }}" --approved-source-dir output/approved-price-source); fi
           python -u -m scripts.workers.run_catalog_price "${args[@]}"
 
       - name: Upload price source and database verification evidence

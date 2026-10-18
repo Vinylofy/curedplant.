@@ -60,8 +60,14 @@ def main() -> int:
     parser.add_argument("--worker", required=True)
     parser.add_argument("--limit", type=int, default=1)
     parser.add_argument("--write", action="store_true")
+    parser.add_argument("--approved-source-dir")
+    parser.add_argument("--approved-source-run")
     parser.add_argument("--source-version", choices=("current", "windows-baseline"), default="current")
     args = parser.parse_args()
+    if bool(args.approved_source_dir) != bool(args.approved_source_run):
+        parser.error("Approved source directory and run ID are both required")
+    if args.approved_source_run and (not args.write or args.source_version != "current"):
+        parser.error("Approved source reuse is only allowed for current write=true runs")
     if args.limit < 0:
         parser.error("--limit must be >= 0; 0 follows native pagination stop conditions")
     if args.source_version == "windows-baseline":
@@ -76,23 +82,31 @@ def main() -> int:
     directory.mkdir(parents=True, exist_ok=True)
     evidence = directory / "listing-records.jsonl"
     evidence.write_text("")
-    env = dict(os.environ, DATABASE_URL="", CUREDPLANT_PRICE_EVIDENCE=str(evidence.resolve()),
-               PGOPTIONS="-c default_transaction_read_only=on")
-    # The native source always runs without --write, including in the write
-    # phase. Only the verified price-only boundary below may mutate the DB.
-    command = command_for(args.worker, args.limit, args.source_version, write=True)
-    print("[CUREDPLANT] native listing (database write=false):", " ".join(command), flush=True)
-    result = subprocess.run(command, check=False, env=env)
-    records = [json.loads(line) for line in evidence.read_text().splitlines() if line.strip()]
+    if args.approved_source_run:
+        from scripts.workers.approved_price_source import load_approved_source
+        records, started = load_approved_source(args.approved_source_dir, args.worker, args.limit, args.approved_source_run)
+        evidence.write_text("".join(json.dumps(record, ensure_ascii=False) + "\n" for record in records))
+        source_returncode = 0
+        print(f"[CUREDPLANT] reviewed source run {args.approved_source_run}; no second catalogue fetch", flush=True)
+    else:
+        env = dict(os.environ, DATABASE_URL="", CUREDPLANT_PRICE_EVIDENCE=str(evidence.resolve()),
+                   PGOPTIONS="-c default_transaction_read_only=on")
+        # Native collection never receives a DB credential or a write flag.
+        command = command_for(args.worker, args.limit, args.source_version, write=True)
+        print("[CUREDPLANT] native listing (database write=false):", " ".join(command), flush=True)
+        source_returncode = subprocess.run(command, check=False, env=env).returncode
+        records = [json.loads(line) for line in evidence.read_text().splitlines() if line.strip()]
     rows, summary = assess(records)
     summary.update(worker=args.worker, write=args.write, limit=args.limit,
-                   started_at=started.isoformat(), source_returncode=result.returncode,
+                   started_at=started.isoformat(), source_returncode=source_returncode,
+                   approved_source_run=args.approved_source_run,
                    run_id=os.environ.get("GITHUB_RUN_ID"), database_writes=0)
-    if result.returncode:
+    if source_returncode:
         summary["status"] = "red"
-        summary["errors"].append({"reason": "native_source_failed", "returncode": result.returncode})
+        summary["errors"].append({"reason": "native_source_failed", "returncode": source_returncode})
     if args.write and summary["status"] == "green":
         try:
+            summary["database_writes"] = None  # A failed post-commit check must not falsely claim zero writes.
             stats = update_existing(args.worker, rows, started)
             summary["database"] = stats
             summary["database_writes"] = stats["updated"]
