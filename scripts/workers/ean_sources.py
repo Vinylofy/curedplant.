@@ -281,10 +281,10 @@ class EanSource:
                 response = self.get(url)
             except requests.HTTPError as exc:
                 response = exc.response
-                # Confirmed stale product links in these three shop queues are
+                # Confirmed stale product links in these shop queues are
                 # terminal detail results, not three transport failures. Never
                 # apply this to discovery, access blocks, or other shops.
-                if shop not in {"bobsvinyl", "cdhal", "fiftiesstore"} or response is None or response.status_code not in {404, 410}:
+                if shop not in {"bobsvinyl", "cdhal", "fiftiesstore", "soundshaarlem"} or response is None or response.status_code not in {404, 410}:
                     raise
                 return {**result, "ean": None, "unavailable": True,
                         "http_status": response.status_code, "issue": "removed_product",

@@ -5,6 +5,7 @@ import base64
 from datetime import datetime
 import json
 import os
+import random
 import subprocess
 import time
 from urllib.parse import quote
@@ -12,6 +13,7 @@ from zoneinfo import ZoneInfo
 
 BRANCH = "automation/ean-progress"
 DAILY_LIMIT = 100
+MAX_SAVE_ATTEMPTS = 10
 
 
 def day_key(now=None):
@@ -57,6 +59,7 @@ class GitHubProgress:
         self.repository = repository or os.environ.get("GITHUB_REPOSITORY", "Vinylofy/curedplant.")
         self.path = f"repos/{self.repository}/contents/.state/ean/{shop}.json"
         self.sha = None
+        self.conflicted = False
 
     def _api(self, method, path, payload=None):
         command = ["gh", "api", "--method", method, path]
@@ -83,22 +86,28 @@ class GitHubProgress:
         return validate_state(json.loads(base64.b64decode(data["content"])), self.shop)
 
     def save(self, state):
+        if self.conflicted:
+            raise RuntimeError("This checkpoint changed in another run; refusing all further writes from stale state")
         validate_state(state, self.shop)
         content = json.dumps(state, ensure_ascii=False, indent=2) + "\n"
         payload = {"message": f"EAN progress: {self.shop} [skip ci]", "branch": BRANCH,
                    "content": base64.b64encode(content.encode()).decode()}
         if self.sha:
             payload["sha"] = self.sha
-        for attempt in range(3):
+        for attempt in range(MAX_SAVE_ATTEMPTS):
             try:
                 result = self._api("PUT", self.path, payload)
                 self.sha = result["content"]["sha"]
                 return
             except RuntimeError as exc:
-                if "HTTP 409" not in str(exc) or attempt == 2:
+                if "HTTP 409" not in str(exc) or attempt == MAX_SAVE_ATTEMPTS - 1:
                     raise
                 old_sha = self.sha
                 self.load()
                 if self.sha != old_sha:
+                    self.conflicted = True
                     raise RuntimeError("Another run changed this shop's checkpoint; refusing to overwrite its budget") from exc
-                time.sleep(attempt + 1)
+                # Other shops update different files on the same branch. Their
+                # ref CAS conflicts are safe to retry, but synchronized fixed
+                # waits made a burst of 16 jobs collide repeatedly.
+                time.sleep(random.uniform(1, min(8, 2 ** (attempt + 1))))

@@ -34,7 +34,7 @@ def execute(shop, limit, write, *, progress=None, queue=None, source_factory=Ean
                "missing_ean": 0, "unavailable": 0, "excluded_non_vinyl": 0,
                "technical_errors": 0, "claim_skips": 0, "discovery_pages": 0,
                "requeued_for_repair": 0, "price_writes": 0, "records": [], "errors": []}
-    source, state = None, None
+    source, state, reservation_saved = None, None, False
     try:
         state = copy.deepcopy(validate_state(progress.load(), shop))
         allocated = reserve(state, limit, today) if write else limit
@@ -43,6 +43,7 @@ def execute(shop, limit, write, *, progress=None, queue=None, source_factory=Ean
             # Reserve before any source requests. A repeated manual run cannot
             # exceed 100 slots on the same Europe/Amsterdam calendar day.
             progress.save(state)
+            reservation_saved = True
         if allocated == 0:
             summary["outcome"] = "daily_budget_exhausted"
             return summary
@@ -120,7 +121,7 @@ def execute(shop, limit, write, *, progress=None, queue=None, source_factory=Ean
             summary["next_cursor"] = state["cursor"]
             summary["daily_reserved"] = state["budget"]["reserved"] if write else None
         summary["status"] = "red" if summary["errors"] else "waiting" if not summary["attempted"] else "green"
-        if write and state is not None:
+        if write and state is not None and reservation_saved:
             state["last_result"] = {key: summary[key] for key in
                 ("day", "attempted", "valid_eans", "missing_ean", "unavailable", "excluded_non_vinyl", "technical_errors", "status", "outcome")}
             try:

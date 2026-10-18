@@ -40,6 +40,13 @@ class SourceRepairTests(unittest.TestCase):
         self.assertEqual(result['http_status'], 404)
         self.assertIsNone(result['ean'])
 
+    def test_soundshaarlem_removed_shopify_product_is_terminal(self):
+        s = self.source('soundshaarlem', '')
+        s.get.side_effect = http_error(404)
+        result = s.detail({'source_url': 'https://soundshaarlem.nl/products/angry-angles-angry-angles-w-download-lp'})
+        self.assertTrue(result['unavailable'])
+        self.assertEqual(result['http_status'], 404)
+
     def test_cdhal_gone_does_not_hide_access_or_server_failures(self):
         s = self.source('cdhal', '')
         for status in (404, 410):

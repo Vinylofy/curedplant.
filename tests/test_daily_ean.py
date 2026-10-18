@@ -148,6 +148,7 @@ class DailyEanTests(unittest.TestCase):
         source = Mock()
         result = daily.execute("everythingjazz", 100, True, progress=progress, queue=Queue(), source_factory=source)
         source.assert_not_called()
+        progress.save.assert_called_once()
         self.assertEqual(result["status"], "red")
 
     def test_403_stops_and_next_day_skips_already_attempted_product(self):
