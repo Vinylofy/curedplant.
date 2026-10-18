@@ -2,8 +2,9 @@
   "version": 1,
   "shop": "vinyleers",
   "cursor": {
-    "page": 1,
-    "seed": 0
+    "page": 2,
+    "seed": 0,
+    "signature": "350a6e4f80780b1830c8f83abec5bf9c41994cb3be88a595357b5ab439aa2fab"
   },
   "budget": {
     "date": "2026-10-18",
