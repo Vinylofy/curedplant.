@@ -11,6 +11,7 @@ from urllib.parse import urljoin
 
 import requests
 from bs4 import BeautifulSoup
+from scripts.importers.common import strict_normalize_gtin
 
 SHOP_ID = "musiconvinyl"
 SHOP_NAME = "Music On Vinyl"
@@ -391,15 +392,23 @@ def fetch_product_js(source_url: str, *, timeout: float = 20.0) -> dict[str, Any
 
 
 DETAIL_LABEL_RE = re.compile(
-    r"(Barcode\s*\\(EAN\\)|Barcode|EAN|Catalogue number|Catalog number|Releasedate|Release date|Original Release Year|Vinyl colour|Genre|Number of discs|Vinyl weight|Limited Edition of)\\s*:?\\s*([^\\n\\r<]+)",
+    r"(Barcode\s*\(EAN\)|Barcode|EAN|Catalogue number|Catalog number|Releasedate|Release date|Original Release Year|Vinyl colour|Genre|Number of discs|Vinyl weight|Limited Edition of)\s*:?\s*([^\n\r<]+)",
     re.IGNORECASE,
 )
 
 
-def extract_detail_metadata_from_html(html_text: str) -> dict[str, str | None]:
+def extract_detail_metadata_from_html(html_text: str, source_url: str | None = None) -> dict[str, str | None]:
     soup = BeautifulSoup(html_text, "html.parser")
 
-    text_parts: list[str] = []
+    codes: dict[str, tuple[str, str]] = {}
+
+    def add_code(value, source):
+        raw = str(value or '').strip()
+        if not re.fullmatch(r'\d{8}|\d{12,14}', raw):
+            return
+        normalized = strict_normalize_gtin(raw)
+        if normalized:
+            codes[normalized] = (raw, source)
 
     for script in soup.find_all("script", {"type": "application/ld+json"}):
         try:
@@ -410,43 +419,37 @@ def extract_detail_metadata_from_html(html_text: str) -> dict[str, str | None]:
         while stack:
             item = stack.pop()
             if isinstance(item, dict):
-                for key, value in item.items():
-                    if key.lower() in {"gtin", "gtin13", "gtin12", "barcode", "sku"}:
-                        ean = normalize_ean_candidate(value)
-                        if ean:
-                            return {"ean": ean, "ean_source": f"json_ld_{key}"}
+                types = item.get('@type') or []
+                types = [types] if isinstance(types, str) else types
+                own = (not source_url or not item.get('url')
+                       or str(item['url']).split('?', 1)[0].rstrip('/') == source_url.split('?', 1)[0].rstrip('/'))
+                if 'Product' in types and own:
+                    for key in ('gtin', 'gtin8', 'gtin12', 'gtin13', 'gtin14', 'barcode'):
+                        add_code(item.get(key), f'json_ld_{key}')
+                for value in item.values():
                     if isinstance(value, (dict, list)):
                         stack.append(value)
             elif isinstance(item, list):
                 stack.extend(item)
 
     details: dict[str, str | None] = {}
-    visible_text = soup.get_text("\\n", strip=True)
-    text_parts.append(visible_text)
+    # Only the main product's specification block, not quick-shop cards.
+    root = soup.select_one('.product__info-container') or soup.select_one('main') or soup
+    visible_text = root.get_text("\n", strip=True)
 
-    for raw_text in text_parts:
-        # Direct high-confidence EAN label match
-        ean_match = re.search(
-            r"Barcode\\s*\\(EAN\\)\\s*:?\\s*(\\d{12,13})",
-            raw_text,
-            flags=re.IGNORECASE,
-        )
-        if ean_match:
-            details["ean"] = normalize_ean_candidate(ean_match.group(1))
-            details["ean_source"] = "details_barcode_ean"
-            break
+    for raw_text in [visible_text]:
+        for match in re.finditer(r"\b(?:Barcode\s*\(EAN\)|Barcode|EAN)\s*:?\s*(\d{8}|\d{12,14})(?!\d)", raw_text, re.I):
+            add_code(match.group(1), 'details_barcode_ean')
 
         for label, value in DETAIL_LABEL_RE.findall(raw_text):
-            key = re.sub(r"\\W+", "_", label.lower()).strip("_")
+            key = re.sub(r"\W+", "_", label.lower()).strip("_")
             details[key] = clean(value)
 
-    if not details.get("ean"):
-        for key in ("barcode_ean", "barcode", "ean"):
-            candidate = normalize_ean_candidate(details.get(key))
-            if candidate:
-                details["ean"] = candidate
-                details["ean_source"] = f"details_{key}"
-                break
+    details.pop('ean', None)
+    if len(codes) == 1:
+        details['ean'], details['ean_source'] = next(iter(codes.values()))
+    elif len(codes) > 1:
+        details['ean_source'] = 'conflicting_product_gtins'
 
     return details
 
@@ -454,4 +457,4 @@ def extract_detail_metadata_from_html(html_text: str) -> dict[str, str | None]:
 def fetch_detail_metadata(source_url: str, *, timeout: float = 20.0) -> dict[str, str | None]:
     response = make_session().get(source_url, timeout=timeout)
     response.raise_for_status()
-    return extract_detail_metadata_from_html(response.text)
+    return extract_detail_metadata_from_html(response.text, source_url=source_url)

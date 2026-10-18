@@ -25,6 +25,7 @@ LEGACY = {"atthemovies", "bestkeptrecords", "blackvinyl", "getbackmusic", "rocki
 REVIEWED = {"cdhal", "colouredvinyl", "dgmoutlet", "everythingjazz", "fiftiesstore",
             "myrecordstore", "shop3345", "soundshaarlem"}
 GREEN = tuple(sorted(LEGACY | REVIEWED | {"bobsvinyl", "platenzaak", "sounds", "variaworld", "imusic", "jpc"}))
+PILOT = {"musiconvinyl"}  # Manual only until the live no-write pilot is verified.
 
 
 def module(name):
@@ -42,7 +43,7 @@ def link_row(link):
 
 class EanSource:
     def __init__(self, shop, *, sleeper=time.sleep):
-        if shop not in GREEN:
+        if shop not in set(GREEN) | PILOT:
             raise ValueError(f"Shop is not approved for daily EAN collection: {shop}")
         self.shop, self.sleeper, self.last_request = shop, sleeper, None
         self.events = []
@@ -71,7 +72,9 @@ class EanSource:
 
     def get(self, url):
         if self.last_request is not None:
-            remaining = (2.0 if self.shop == "cdhal" else 1.0) - (time.monotonic() - self.last_request)
+            delay = (30.0 if self.shop == 'musiconvinyl' and '/products.json?' in url
+                     else 3.0 if self.shop == 'musiconvinyl' else 2.0 if self.shop == "cdhal" else 1.0)
+            remaining = delay - (time.monotonic() - self.last_request)
             if remaining > 0:
                 self.sleeper(remaining)
         self.last_request = time.monotonic()
@@ -108,7 +111,28 @@ class EanSource:
             # Their large exposure queues are supplied by the existing source
             # discovery jobs. Do not replace those with an unbounded search crawl.
             return [], {**cursor, "registry_only": True}
-        if shop == "fiftiesstore":
+        if shop == 'musiconvinyl':
+            native = module('musiconvinyl')
+            url = f'{native.BASE_URL}/collections/all-products/products.json?limit=100&page={page}'
+            products = self.get(url).json()['products']
+            for product in products:
+                # Source-proven type; no CD/merch/title-only inference.
+                if str(product.get('product_type', '')).strip().casefold() != 'vinyl':
+                    continue
+                tags = str(product.get('tags', ''))
+                if re.search(r'\b(?:used|second[ -]?hand|tweedehands)\b', tags, re.I):
+                    continue
+                record = native.product_to_record(product, collection='all-products')
+                row = link_row(record)
+                row['payload']['format'] = 'Vinyl'
+                rows.append(row)
+            if products and not rows:
+                return [], next_cursor
+            signature = hashlib.sha256('\n'.join(sorted({row['source_url'] for row in rows})).encode()).hexdigest()
+            if not products or signature == cursor.get('signature'):
+                return [], {'page': 1, 'seed': 0, 'exhausted': True}
+            return rows, {**next_cursor, 'signature': signature}
+        elif shop == "fiftiesstore":
             source = module("usf.jobs.refresh_fiftiesstore_listing_prices")
             products = source.fetch_batch((page - 1) * 100, 100).get("product_data", [])
             rows = [{"source_url": source.normalize_url(p["url"]), "payload": {
@@ -284,7 +308,7 @@ class EanSource:
                 # Confirmed stale product links in these shop queues are
                 # terminal detail results, not three transport failures. Never
                 # apply this to discovery, access blocks, or other shops.
-                if shop not in {"bobsvinyl", "cdhal", "fiftiesstore", "soundshaarlem"} or response is None or response.status_code not in {404, 410}:
+                if shop not in {"bobsvinyl", "cdhal", "fiftiesstore", "soundshaarlem", "musiconvinyl"} or response is None or response.status_code not in {404, 410}:
                     raise
                 return {**result, "ean": None, "unavailable": True,
                         "http_status": response.status_code, "issue": "removed_product",
@@ -296,7 +320,27 @@ class EanSource:
                         "http_status": response.status_code, "issue": "product_redirected_to_catalogue",
                         "detail_url": response.url,
                         "detail_sha256": hashlib.sha256(response.content).hexdigest()}
-            if shop in REVIEWED:
+            if shop == 'musiconvinyl':
+                if '/products/' not in urlparse(response.url).path:
+                    raise ValueError('Music On Vinyl product redirected to non-product page')
+                parsed = module('musiconvinyl').extract_detail_metadata_from_html(html, source_url=url)
+                if parsed.get('ean_source') == 'conflicting_product_gtins':
+                    raw = None
+                    result['issue'] = 'conflicting_product_gtins'
+                else:
+                    codes = {strict_normalize_gtin(parsed.get('ean')),
+                             strict_normalize_gtin(payload.get('ean') or payload.get('barcode'))} - {None}
+                    raw = next(iter(codes)) if len(codes) == 1 else None
+                    if len(codes) > 1:
+                        result['issue'] = 'listing_detail_gtin_conflict'
+                result['artist'] = payload.get('artist')
+                result['ean_source'] = parsed.get('ean_source')
+                result['ean_parser_version'] = 2
+                if str(payload.get('product_type') or payload.get('format') or '').casefold() != 'vinyl':
+                    return {**result, 'ean': None, 'excluded_reason': 'format_not_proven_vinyl',
+                            'detail_url': response.url,
+                            'detail_sha256': hashlib.sha256(response.content).hexdigest()}
+            elif shop in REVIEWED:
                 # Only the reviewed parsers' source-scoped pure helpers below.
                 if shop == "cdhal":
                     parsed = module("usf.jobs.detail_cdhal").parse_detail_html(html, source_url=url, payload=payload)

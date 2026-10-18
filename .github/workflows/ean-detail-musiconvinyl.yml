@@ -1,0 +1,27 @@
+name: "Curedplant | EAN/detail | Music On Vinyl"
+
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Max new details (1-100); start with a 25-record no-write pilot"
+        required: true
+        default: "25"
+        type: string
+      write:
+        description: "Save EAN metadata/progress only; no price writes"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  worker:
+    uses: ./.github/workflows/_daily-ean-worker.yml
+    with:
+      worker: musiconvinyl
+      limit: ${{ inputs.limit }}
+      write: ${{ inputs.write }}
+    secrets: inherit

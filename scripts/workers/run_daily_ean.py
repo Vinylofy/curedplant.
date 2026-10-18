@@ -13,7 +13,7 @@ import requests
 
 from scripts.workers.ean_progress import GitHubProgress, day_key, reserve, validate_state
 from scripts.workers.ean_queue import EanQueue
-from scripts.workers.ean_sources import EanSource, GREEN
+from scripts.workers.ean_sources import EanSource, GREEN, PILOT
 
 MAX_DISCOVERY_PAGES = 10
 
@@ -160,7 +160,7 @@ def execute(shop, limit, write, *, progress=None, queue=None, source_factory=Ean
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--worker", choices=GREEN, required=True)
+    parser.add_argument("--worker", choices=sorted(set(GREEN) | PILOT), required=True)
     parser.add_argument("--limit", type=int, default=100)
     parser.add_argument("--write", action="store_true")
     args = parser.parse_args()
