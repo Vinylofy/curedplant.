@@ -15,8 +15,10 @@
     "attempted": 0,
     "valid_eans": 0,
     "missing_ean": 0,
+    "unavailable": 0,
+    "excluded_non_vinyl": 0,
     "technical_errors": 0,
     "status": "waiting",
-    "outcome": "discovery_continues_next_run"
+    "outcome": "daily_budget_exhausted"
   }
 }
