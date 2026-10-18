@@ -620,3 +620,56 @@ van de zes gewijzigde workflowbestanden slagen.
 - Sounds: 25/25 detailpagina's met EAN in de read-only pilot.
 - De overige eerder groene shops behouden hun bestaande beoordeling; hier is
   geen nieuwe test of productievalidatie voor geclaimd.
+
+## Volledige actuele audit — 18 oktober 2026, 18:33 UTC
+
+Deze meting vervangt bovenstaande historische kleurentellingen. Alle 57 shopworkflows
+zijn via de laatste maximaal drie runs en de opgeslagen runlogs gecontroleerd.
+Groen = automatische write-run met echte resultaten; oranje = handmatig bewezen
+of wachtend op echte automatische resultaten; rood = onopgeloste blokkade.
+Een budgetstop of nulresultaat is geen nieuwe bronfout, maar bewijst ook geen automatische dataverwerking.
+Prijswrites zijn na commit teruggelezen; getallen hieronder zijn DB-rijen, niet alle gevonden bronproducten.
+
+EAN: {'Oranje': 17, 'Groen': 10, 'Rood': 2}. Prijs: {'Oranje': 26, 'Rood': 2}; 3345 heeft geen prijsworkflow.
+
+| Shop | EAN/detail | Prijs |
+| --- | --- | --- |
+| 3345 | [Oranje](https://github.com/Vinylofy/curedplant./actions/runs/39106431657) — 100/100 EAN; write; laatste run budgetstop | — geen workflow |
+| At The Movies | [Groen](https://github.com/Vinylofy/curedplant./actions/runs/39097981243) — 100/100 EAN; write | [Oranje](https://github.com/Vinylofy/curedplant./actions/runs/39108901216) — 801 DB-gecontroleerd |
+| Best Kept Records | [Groen](https://github.com/Vinylofy/curedplant./actions/runs/39098136897) — 100/100 EAN; write | [Oranje](https://github.com/Vinylofy/curedplant./actions/runs/39109297452) — 4,678 DB-gecontroleerd |
+| Black Vinyl | [Groen](https://github.com/Vinylofy/curedplant./actions/runs/39098994515) — 89/100 EAN; write | [Oranje](https://github.com/Vinylofy/curedplant./actions/runs/39108675172) — 182 DB-gecontroleerd |
+| Bob’s Vinyl | [Oranje](https://github.com/Vinylofy/curedplant./actions/runs/39107291696) — 29/55 EAN; write | [Oranje](https://github.com/Vinylofy/curedplant./actions/runs/39109091812) — 4,047 DB-gecontroleerd |
+| CDHal Ruinen | [Oranje](https://github.com/Vinylofy/curedplant./actions/runs/39107293642) — 45/56 EAN; write | [Oranje](https://github.com/Vinylofy/curedplant./actions/runs/39109297290) — 2,148 DB-gecontroleerd; cron write ontbreekt |
+| Coloured Vinyl | [Groen](https://github.com/Vinylofy/curedplant./actions/runs/39099793727) — 100/100 EAN; write | [Oranje](https://github.com/Vinylofy/curedplant./actions/runs/39108674956) — 943 DB-gecontroleerd; cron write ontbreekt |
+| DGM Outlet | [Groen](https://github.com/Vinylofy/curedplant./actions/runs/39100446034) — 1/1 EAN; write | [Oranje](https://github.com/Vinylofy/curedplant./actions/runs/39109297351) — 743 DB-gecontroleerd; cron write ontbreekt |
+| Everything Jazz | [Oranje](https://github.com/Vinylofy/curedplant./actions/runs/39107295544) — 0 nieuwe details | [Oranje](https://github.com/Vinylofy/curedplant./actions/runs/39108675352) — 1,299 DB-gecontroleerd |
+| FiftiesStore | [Oranje](https://github.com/Vinylofy/curedplant./actions/runs/39105637387) — 19/25 EAN; read-only; laatste run budgetstop | [Oranje](https://github.com/Vinylofy/curedplant./actions/runs/39109094961) — 222 DB-gecontroleerd |
+| Get Back Music | [Groen](https://github.com/Vinylofy/curedplant./actions/runs/39102576354) — 100/100 EAN; write | [Oranje](https://github.com/Vinylofy/curedplant./actions/runs/39108676808) — 4,485 DB-gecontroleerd; cron write ontbreekt |
+| iMusic | [Oranje](https://github.com/Vinylofy/curedplant./actions/runs/39107297162) — 66/66 EAN; write | [Oranje](https://github.com/Vinylofy/curedplant./actions/runs/39111913834) — 2,769 DB-gecontroleerd; cron write ontbreekt |
+| JPC | [Groen](https://github.com/Vinylofy/curedplant./actions/runs/39104215856) — 100/100 EAN; write | [Oranje](https://github.com/Vinylofy/curedplant./actions/runs/39146564774) — 14,848 DB-gecontroleerd |
+| Music On Vinyl | [Oranje](https://github.com/Vinylofy/curedplant./actions/runs/39152893138) — 25/25 EAN; read-only; geen cron | [Oranje](https://github.com/Vinylofy/curedplant./actions/runs/39108676893) — 852 DB-gecontroleerd |
+| My Record Store | [Groen](https://github.com/Vinylofy/curedplant./actions/runs/39104631185) — 100/100 EAN; write | [Oranje](https://github.com/Vinylofy/curedplant./actions/runs/39108677067) — 32 DB-gecontroleerd |
+| North End Haarlem | [Rood](https://github.com/Vinylofy/curedplant./actions/runs/39066854696) — geblokkeerd; geen cron | [Rood](https://github.com/Vinylofy/curedplant./actions/runs/39108339265) — geblokkeerd; geen cron |
+| Platenzaak | [Groen](https://github.com/Vinylofy/curedplant./actions/runs/39104705803) — 5/5 EAN; write | [Oranje](https://github.com/Vinylofy/curedplant./actions/runs/39108676960) — 3,571 DB-gecontroleerd |
+| Platomania | [Groen](https://github.com/Vinylofy/curedplant./actions/runs/39105403655) — 98/100 EAN; write | [Oranje](https://github.com/Vinylofy/curedplant./actions/runs/39108678248) — 5,551 DB-gecontroleerd |
+| Records on Vinyl | [Oranje](https://github.com/Vinylofy/curedplant./actions/runs/39107298921) — 33/33 EAN; write | [Oranje](https://github.com/Vinylofy/curedplant./actions/runs/39110734445) — 8,637 DB-gecontroleerd |
+| Rockin’ Out Records | [Oranje](https://github.com/Vinylofy/curedplant./actions/runs/39107300680) — 98/100 EAN; write | [Oranje](https://github.com/Vinylofy/curedplant./actions/runs/39108678475) — 114 DB-gecontroleerd; cron write ontbreekt |
+| Sounds Delft | [Oranje](https://github.com/Vinylofy/curedplant./actions/runs/39106434877) — 98/100 EAN; write; laatste run budgetstop | [Oranje](https://github.com/Vinylofy/curedplant./actions/runs/39109711911) — 1,950 DB-gecontroleerd |
+| Sounds Haarlem | [Oranje](https://github.com/Vinylofy/curedplant./actions/runs/39107302513) — 96/96 EAN; write; laatste run budgetstop | [Oranje](https://github.com/Vinylofy/curedplant./actions/runs/39112730348) — 1,394 DB-gecontroleerd |
+| Sounds Venlo | [Rood](https://github.com/Vinylofy/curedplant./actions/runs/39066857022) — geblokkeerd; geen cron | [Rood](https://github.com/Vinylofy/curedplant./actions/runs/39108343561) — geblokkeerd; geen cron |
+| Suburban | [Oranje](https://github.com/Vinylofy/curedplant./actions/runs/39106438019) — 98/100 EAN; write; laatste run budgetstop | [Oranje](https://github.com/Vinylofy/curedplant./actions/runs/39109093465) — 2,133 DB-gecontroleerd; cron write ontbreekt |
+| Top Notch | [Oranje](https://github.com/Vinylofy/curedplant./actions/runs/39106439325) — 100/100 EAN; write; laatste run budgetstop | [Oranje](https://github.com/Vinylofy/curedplant./actions/runs/39108678776) — 299 DB-gecontroleerd; cron write ontbreekt |
+| Variaworld | [Oranje](https://github.com/Vinylofy/curedplant./actions/runs/39106441042) — 88/100 EAN; write; laatste run budgetstop | [Oranje](https://github.com/Vinylofy/curedplant./actions/runs/39111916753) — 4,468 DB-gecontroleerd |
+| Vinyl Freaks | [Oranje](https://github.com/Vinylofy/curedplant./actions/runs/39106444078) — 36/100 EAN; write; laatste run budgetstop | [Oranje](https://github.com/Vinylofy/curedplant./actions/runs/39108679668) — 227 DB-gecontroleerd; cron write ontbreekt |
+| Vinyleers | [Oranje](https://github.com/Vinylofy/curedplant./actions/runs/39106442282) — 92/100 EAN; write; laatste run budgetstop | [Oranje](https://github.com/Vinylofy/curedplant./actions/runs/39108678694) — 654 DB-gecontroleerd; cron write ontbreekt |
+| VIP Records | [Oranje](https://github.com/Vinylofy/curedplant./actions/runs/39106445717) — 98/100 EAN; write; laatste run budgetstop | [Oranje](https://github.com/Vinylofy/curedplant./actions/runs/39108903024) — 2,610 DB-gecontroleerd; cron write ontbreekt |
+
+**Planningsprobleem:** bij deze 11 prijsworkflows is de cron aanwezig maar `write`
+komt alleen uit `inputs.write`, dat bij cron ontbreekt: CDHal Ruinen, Coloured Vinyl, DGM Outlet, Get Back Music, iMusic, Rockin’ Out Records, Suburban, Top Notch, Vinyl Freaks, Vinyleers, VIP Records.
+Dit is in deze statusopdracht vastgesteld, nog niet gerepareerd.
+
+JPC is wel correct omgezet: `17 3 * * *`, automatische `write=true`,
+geverifieerde write-run 39146564774. Windows listing/prijscron verwijderd
+in Vinylofy commit `e30eca6`; handmatige backup en afzonderlijke detailinstellingen behouden.
+Curedplant-planningscommit: `0b743fd`. Actionlint en diff checks geslaagd.
+Geen extra scraperstarts of databasewrites tijdens deze audit.
