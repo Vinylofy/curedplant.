@@ -6,15 +6,15 @@ on:
       source_version:
         description: "Linux source: Windows baseline is read-only (max 3 pages / 25 details)"
         required: true
-        default: windows-baseline
+        default: current
         type: choice
         options:
           - windows-baseline
           - current
       limit:
-        description: "Pages/products for this worker"
+        description: "0 = native full catalogue; positive = pages/products pilot"
         required: true
-        default: "1"
+        default: "0"
         type: string
       write:
         description: "Write to database"
@@ -28,6 +28,6 @@ jobs:
     with:
       source_version: ${{ inputs.source_version || 'current' }}
       worker: northendhaarlem
-      limit: ${{ github.event_name == 'schedule' && '1' || inputs.limit }}
+      limit: ${{ github.event_name == 'schedule' && '0' || inputs.limit }}
       write: ${{ github.event_name == 'schedule' || inputs.write }}
     secrets: inherit

@@ -34,6 +34,13 @@ class ListingOffer:
     seen_at: datetime | None = None
     raw: dict[str, Any] | None = None
 
+    def __post_init__(self):
+        from scripts.workers.price_evidence import capture
+        capture({"source_url": self.source_url, "shop_domain": self.shop_domain,
+                 "price": self.price, "currency": self.currency,
+                 "availability": self.availability, "ean": self.ean,
+                 "raw": self.raw, "kind": "native_listing_offer"})
+
 
 @dataclass
 class ListingSyncStats:

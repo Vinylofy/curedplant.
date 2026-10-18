@@ -42,8 +42,8 @@ def main() -> int:
     parser.add_argument("--write", action="store_true")
     args = parser.parse_args()
     scraper, importer, style = PROFILES[args.worker]
-    if args.limit < 1:
-        parser.error("--limit must be >= 1")
+    if args.limit < 0 or (args.lane == "detail" and args.limit == 0):
+        parser.error("--limit must be >= 0 for prices and >= 1 for details")
 
     detail_limit = str(args.limit if args.lane == "detail" else 0)
     if style == "mode":
@@ -57,6 +57,8 @@ def main() -> int:
         scraper_args = ["--max-pages", "1" if args.lane == "detail" else str(args.limit), "--detail-limit", detail_limit]
     else:
         scraper_args = ["--max-pages", "1" if args.lane == "detail" else str(args.limit), "--detail-limit", detail_limit]
+    if args.worker == "atthemovies" and args.lane == "price" and args.limit == 0:
+        scraper_args = ["--detail-limit", "0"]
     scrape = [sys.executable, "-u", "-m", scraper, *scraper_args]
     print("[CUREDPLANT] legacy scrape:", " ".join(scrape), flush=True)
     result = subprocess.run(scrape, check=False)
@@ -81,6 +83,13 @@ def sync_listing_prices(worker: str, *, write: bool) -> int:
     if not csv_path.exists():
         raise SystemExit(f"CSV not found: {csv_path}")
     rows = list(csv.DictReader(csv_path.open(encoding="utf-8-sig", newline="")))
+    from scripts.workers.price_evidence import capture
+    for row in rows:
+        capture({"source_url": row.get("product_url"), "price": row.get("price"),
+                 "currency": row.get("currency") or definition.config.currency,
+                 "shop_domain": definition.config.shop_domain,
+                 "availability": row.get("availability"), "ean": row.get("ean"),
+                 "raw": row, "kind": "native_listing_csv"})
     valid = [row for row in rows if row.get("product_url") and row.get("price")]
     if not write:
         print(f"[PRICE DRY-RUN] rows={len(rows)} price_candidates={len(valid)}", flush=True)

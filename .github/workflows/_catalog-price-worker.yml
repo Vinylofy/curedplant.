@@ -32,7 +32,7 @@ jobs:
     concurrency:
       group: curedplant-${{ inputs.worker }}-${{ contains(fromJSON('["northendhaarlem","soundsvenlo"]'), inputs.worker) && 'source' || 'price' }}
       cancel-in-progress: false
-    timeout-minutes: ${{ inputs.source_version == 'windows-baseline' && 30 || 60 }}
+    timeout-minutes: ${{ inputs.source_version == 'windows-baseline' && 30 || 180 }}
     env:
       DATABASE_URL: ${{ inputs.source_version != 'windows-baseline' && secrets.DATABASE_URL || '' }}
       PYTHONUNBUFFERED: "1"
@@ -63,12 +63,12 @@ jobs:
           if [ "${{ inputs.write }}" = "true" ]; then args+=(--write); fi
           python -u -m scripts.workers.run_catalog_price "${args[@]}"
 
-      - name: Upload price source verification evidence
-        if: always() && inputs.source_version == 'current' && !inputs.write && contains(fromJSON('["northendhaarlem","soundsvenlo"]'), inputs.worker)
+      - name: Upload price source and database verification evidence
+        if: always() && inputs.source_version == 'current'
         uses: actions/upload-artifact@v4
         with:
           name: price-evidence-${{ inputs.worker }}-${{ github.run_id }}
-          path: output/price-pilots/
+          path: output/price-verification/
           if-no-files-found: error
           retention-days: 14
 

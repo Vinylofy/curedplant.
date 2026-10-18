@@ -1,14 +1,12 @@
 name: "Curedplant | Price | Bestkeptrecords"
 
 on:
-  schedule:
-    - cron: "37 2 * * *"
   workflow_dispatch:
     inputs:
       limit:
-        description: "Pages/products for this worker"
+        description: "0 = native full catalogue; positive = pages/products pilot"
         required: true
-        default: "1"
+        default: "0"
         type: string
       write:
         description: "Write to database where supported"
@@ -21,6 +19,6 @@ jobs:
     uses: ./.github/workflows/_catalog-price-worker.yml
     with:
       worker: bestkeptrecords
-      limit: ${{ inputs.limit }}
+      limit: ${{ github.event_name == 'schedule' && '0' || inputs.limit }}
       write: ${{ github.event_name == 'schedule' || inputs.write }}
     secrets: inherit

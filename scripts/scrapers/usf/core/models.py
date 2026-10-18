@@ -12,6 +12,10 @@ class DiscoveredLink:
     source_product_id: str | None = None
     payload: dict[str, Any] = field(default_factory=dict)
 
+    def __post_init__(self):
+        from scripts.workers.price_evidence import capture_link
+        capture_link(self)
+
 
 @dataclass(frozen=True)
 class RawProductData:

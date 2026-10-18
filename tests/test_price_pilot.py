@@ -12,9 +12,9 @@ from scripts.workers.run_catalog_price import command_for
 
 
 class PricePilotTests(unittest.TestCase):
-    def test_read_only_prices_use_live_pilot_and_writes_keep_native_worker(self):
+    def test_read_only_and_write_prices_use_the_same_native_listing_source(self):
         for shop in ("northendhaarlem", "soundsvenlo"):
-            self.assertIn("scripts.scrapers.usf.jobs.live_price_pilot", command_for(shop, 1))
+            self.assertEqual(command_for(shop, 1), command_for(shop, 1, write=True))
             self.assertIn(f"scripts.scrapers.usf.jobs.refresh_{shop}_listing_prices",
                           command_for(shop, 1, write=True))
 

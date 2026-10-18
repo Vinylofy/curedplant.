@@ -310,8 +310,8 @@ def discover_products(
     timeout: float = 20.0,
     sleep: float = DEFAULT_LISTING_SLEEP_SECONDS,
 ) -> list[MusicOnVinylProduct]:
-    if max_pages < 1:
-        raise ValueError("max_pages moet minimaal 1 zijn")
+    if max_pages < 0:
+        raise ValueError("max_pages mag niet negatief zijn")
     # all-products is the complete catalog. The new-releases and back-in-stock
     # collections are subsets and their collection endpoints are rate-limited
     # more aggressively by the shop.
@@ -322,7 +322,8 @@ def discover_products(
     by_url: dict[str, MusicOnVinylProduct] = {}
 
     for collection in collections:
-        for page in range(1, max_pages + 1):
+        import itertools
+        for page in (range(1, max_pages + 1) if max_pages else itertools.count(1)):
             try:
                 products = fetch_collection_json(
                     session,
@@ -332,6 +333,8 @@ def discover_products(
                     timeout=timeout,
                 )
             except MusicOnVinylRateLimited as exc:
+                from scripts.workers.price_evidence import capture
+                capture({"kind": "source_error", "reason": "catalogue_incomplete_http_429", "page": page})
                 print(
                     "[MUSICONVINYL-WARN] stopping discovery after rate limit; "
                     "already parsed pages remain available for registration",
@@ -346,6 +349,7 @@ def discover_products(
             )
             if not products:
                 break
+            before = len(by_url)
             for product in products:
                 record = product_to_record(product, collection=collection)
                 by_url[record.source_url] = record
@@ -365,6 +369,8 @@ def discover_products(
                     },
                     flush=True,
                 )
+            if len(by_url) == before:
+                break
             if sleep:
                 time.sleep(sleep)
 

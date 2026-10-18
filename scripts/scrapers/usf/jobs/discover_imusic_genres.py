@@ -425,7 +425,7 @@ def discover_genre_links(
 
             pages_processed += 1
 
-            if not links:
+            if not links or new_count == 0:
                 print(
                     "[IMUSIC-GENRE-DISCOVER] stop empty page",
                     {
@@ -505,8 +505,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def validate_args(args: argparse.Namespace) -> None:
-    if args.max_pages_per_genre < 1:
-        raise SystemExit("[ERROR] --max-pages-per-genre moet minimaal 1 zijn.")
+    if args.max_pages_per_genre < 0:
+        raise SystemExit("[ERROR] --max-pages-per-genre mag niet negatief zijn.")
     if args.offset_step < 1:
         raise SystemExit("[ERROR] --offset-step moet minimaal 1 zijn.")
     if args.delay < 0:
@@ -540,7 +540,7 @@ def main() -> int:
 
     links = discover_genre_links(
         genre_specs=genre_specs,
-        max_pages_per_genre=args.max_pages_per_genre,
+        max_pages_per_genre=args.max_pages_per_genre or None,
         offset_step=args.offset_step,
         only_local_stock=not args.include_non_local_stock,
         sort=args.sort,
