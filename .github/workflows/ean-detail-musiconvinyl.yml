@@ -70,21 +70,23 @@ jobs:
           if shared: shared.close()
         Path(os.environ['RUNNER_TEMP'],'mov-comparison.json').write_text(json.dumps(result,indent=2),encoding='utf-8')
     steps:
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Install same HTTP library on both runners
+      - name: Use existing native Python with isolated temporary dependencies
         working-directory: ${{ runner.temp }}
-        shell: python {0}
+        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy RemoteSigned -File {0}
         run: |
-          import subprocess, sys
-          subprocess.run([sys.executable, '-m', 'pip', 'install', 'requests==2.34.2'], check=True)
-      - name: Compare identical requests (no database credentials)
-        working-directory: ${{ runner.temp }}
-        shell: python {0}
-        run: |
-          import os
-          exec(compile(os.environ['PROBE_CODE'], '<read-only MOV comparison>', 'exec'))
+          $ErrorActionPreference = 'Stop'
+          $nativePython = Join-Path $env:LOCALAPPDATA 'Vinylofy\musiconvinyl-venv\Scripts\python.exe'
+          if (-not (Test-Path -LiteralPath $nativePython)) { throw 'Native MOV Python not available to this service account' }
+          $probeRoot = Join-Path $env:RUNNER_TEMP "mov-diagnostic-$env:GITHUB_RUN_ID"
+          & $nativePython -m venv $probeRoot
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $probePython = Join-Path $probeRoot 'Scripts\python.exe'
+          & $probePython -m pip install requests==2.34.2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $probeScript = Join-Path $probeRoot 'probe.py'
+          Set-Content -LiteralPath $probeScript -Value $env:PROBE_CODE -Encoding UTF8
+          & $probePython $probeScript
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
