@@ -2,8 +2,9 @@
   "version": 1,
   "shop": "getbackmusic",
   "cursor": {
-    "page": 1,
-    "seed": 0
+    "page": 2,
+    "seed": 0,
+    "signature": "6d9a39b69ce5ed6e8009c4afa358886042858bcf9184465dc8a8814dee4d17a5"
   },
   "budget": {
     "date": "2026-10-18",
