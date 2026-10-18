@@ -163,6 +163,15 @@ dagmaximum; ze verhogen de limiet niet.
 | Rockinoutrecords | 0 | 100 | [39107300680](https://github.com/Vinylofy/curedplant./actions/runs/39107300680) |
 | Sounds Haarlem | 4 | 96 | [39107302513](https://github.com/Vinylofy/curedplant./actions/runs/39107302513) |
 
+De eerste vervolgrun is inhoudelijk afgerond: Records on Vinyl
+[33 geldige EAN's uit 33 details](https://github.com/Vinylofy/curedplant./actions/runs/39107298921),
+geen technische fouten. De dagteller staat daarmee op 100.
+Everything Jazz [39107295544](https://github.com/Vinylofy/curedplant./actions/runs/39107295544)
+heeft het cataloguseinde bereikt zonder onbehandelde nieuwe producten; uitkomst
+`waiting`, nul details, dagreservering terug naar nul. Dat telt niet als een
+inhoudelijk geslaagde datarun. De overige vervolgruns waren bij deze controle
+nog actief; de runlinks tonen de verdere uitkomst.
+
 FiftiesStore had al 100 echte details gestart en krijgt daarom geen extra
 productierun boven die daglimiet. De voorbereid herstelde EAN-controle van de
 98 eerdere missers blijft beschikbaar voor het volgende dagbudget. De gewone
