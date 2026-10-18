@@ -341,6 +341,7 @@ def discover_genre_links(
         pages_processed = 0
         offset = 0
         seen_offsets: set[int] = set()
+        seen_product_pages: set[frozenset[str]] = set()
 
         while max_pages_per_genre is None or pages_processed < max_pages_per_genre:
             if offset in seen_offsets:
@@ -425,7 +426,10 @@ def discover_genre_links(
 
             pages_processed += 1
 
-            if not links or new_count == 0:
+            signature = frozenset(link.source_url for link in links)
+            repeated_page = signature in seen_product_pages
+            seen_product_pages.add(signature)
+            if not links or repeated_page:
                 print(
                     "[IMUSIC-GENRE-DISCOVER] stop empty page",
                     {

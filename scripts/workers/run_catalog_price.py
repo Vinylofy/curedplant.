@@ -46,7 +46,7 @@ def command_for(worker: str, limit: int, source_version: str = "current", write:
         "colouredvinyl": common + ["scripts.scrapers.usf.jobs.refresh_colouredvinyl_listing_prices", "--max-pages", str(limit)],
         "dgmoutlet": common + ["scripts.scrapers.usf.jobs.discover_dgmoutlet", "--max-pages", str(limit), "--delay", "0.5"],
         "imusic": common + ["scripts.scrapers.usf.jobs.discover_imusic_genres", "--max-pages-per-genre", str(limit), "--delay", "4.0", "--genre-ids", IMUSIC_GENRES],
-        "jpc": common + ["scripts.scrapers.usf.jobs.discover_jpc_vinyl", "--max-pages-per-route", str(limit), "--include-route-index", "--pagination-fallback", "ff", "--delay", "2.0"],
+        "jpc": common + ["scripts.scrapers.usf.jobs.discover_jpc_vinyl", "--max-pages-per-route", str(limit), "--include-route-index", "--pagination-fallback", "ff", "--delay", "2.0", "--availability-filter", "none"],
         "suburban": common + ["scripts.scrapers.usf.jobs.refresh_suburban_listing_prices", "--max-pages", str(limit)],
     }
     try:

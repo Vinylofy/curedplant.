@@ -43,8 +43,8 @@ jobs:
           python-version: ${{ inputs.source_version == 'windows-baseline' && '3.11' || '3.12' }}
       - name: Install scraper dependencies
         run: python -m pip install -r requirements.txt
-      - name: Install North End or Sounds Venlo browser transport
-        if: inputs.worker == 'soundsvenlo' || (inputs.source_version != 'windows-baseline' && inputs.worker == 'northendhaarlem')
+      - name: Install shop browser transport where required
+        if: contains(fromJSON('["cdhal","soundsvenlo"]'), inputs.worker) || (inputs.source_version != 'windows-baseline' && inputs.worker == 'northendhaarlem')
         run: |
           python -m pip install 'playwright>=1.50,<2'
           python -m playwright install --with-deps chromium

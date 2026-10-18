@@ -5,6 +5,7 @@ from decimal import Decimal
 import os
 import psycopg
 from psycopg.rows import dict_row
+from psycopg.types.json import Jsonb
 
 from scripts.workers.price_evidence import url_key
 from scripts.scrapers.usf.core.listing_price_sync import normalize_availability
@@ -41,9 +42,15 @@ def update_existing(worker, records, started_at):
             cur.execute("""select product_id, shop_id, product_url, price, currency,
                                   availability, last_seen_at, is_active
                            from public.prices where shop_id=%s
-                           order by product_id for update""", (shop_id,))
+                             and regexp_replace(trim(trailing '/' from split_part(product_url,'?',1)),
+                                                '^https?://(www[.])?', '')=any(%s)
+                           order by product_id for update""", (shop_id, list(expected)))
             targets = cur.fetchall()
             matched_keys = set()
+            keys = [url_key(t["product_url"]) for t in targets]
+            if len(keys) != len(set(keys)):
+                raise RuntimeError("Multiple existing products share a listing URL; variant review required")
+            changes = []
             for target in targets:
                 key = url_key(target["product_url"])
                 record = expected.get(key)
@@ -61,25 +68,33 @@ def update_existing(worker, records, started_at):
                 if availability == "unknown":
                     availability = target["availability"]
                 changed = value != target["price"] or availability != target["availability"]
-                cur.execute("""update public.prices set price=%s, availability=%s,
-                               last_seen_at=%s, updated_at=now(), is_active=true
-                               where product_id=%s and shop_id=%s""",
-                            (value, availability, started_at, target["product_id"], shop_id))
-                if cur.rowcount != 1:
-                    raise RuntimeError("Expected exactly one existing offer update")
+                changes.append({"product_id": str(target["product_id"]), "price": str(value),
+                                "currency": record["currency"], "availability": availability,
+                                "changed": changed})
                 stats["updated"] += 1
                 stats["changed"] += int(changed)
-                if changed:
-                    cur.execute("""insert into public.price_history
-                        (product_id,shop_id,price,currency,availability,captured_at,created_at)
-                        values (%s,%s,%s,%s,%s,%s,now())""",
-                        (target["product_id"], shop_id, value, record["currency"], availability, started_at))
                 written.append((target["product_id"], value, availability))
                 if len(stats["samples"]) < 12:
                     stats["samples"].append({"url": record["source_url"], "before": str(target["price"]), "after": str(value), "currency": record["currency"]})
             stats["unmatched"] = len(expected) - len(matched_keys)
             if not written:
                 raise RuntimeError(f"No existing prices updated: matched={stats['matched']}, newer={stats['skipped_newer']}")
+            for offset in range(0, len(changes), 2000):
+                batch = Jsonb(changes[offset:offset + 2000])
+                cur.execute("""update public.prices p
+                    set price=v.price,availability=v.availability,last_seen_at=%s,
+                        updated_at=now(),is_active=true
+                    from jsonb_to_recordset(%s::jsonb)
+                         as v(product_id uuid,price numeric,availability text)
+                    where p.product_id=v.product_id and p.shop_id=%s""", (started_at, batch, shop_id))
+                if cur.rowcount != len(changes[offset:offset + 2000]):
+                    raise RuntimeError("Existing offer target count changed; rolling back")
+                cur.execute("""insert into public.price_history
+                    (product_id,shop_id,price,currency,availability,captured_at,created_at)
+                    select v.product_id,%s,v.price,v.currency,v.availability,%s,now()
+                    from jsonb_to_recordset(%s::jsonb) as v
+                      (product_id uuid,price numeric,currency text,availability text,changed boolean)
+                    where v.changed""", (shop_id, started_at, batch))
             # Verify before commit; a mismatch rolls back the entire write.
             cur.execute("""select product_id,price,availability from public.prices
                            where shop_id=%s and product_id=any(%s)""", (shop_id, [r[0] for r in written]))
