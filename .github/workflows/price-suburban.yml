@@ -2,6 +2,8 @@ name: "Curedplant | Price | Suburban"
 run-name: "Price | Suburban | ${{ github.event_name == 'schedule' && 'scheduled write' || (inputs.write && 'write=true' || 'write=false') }} | limit=${{ github.event_name == 'schedule' && '0' || inputs.limit }}"
 
 on:
+  schedule:
+    - cron: "34 4 */2 * *"
   workflow_dispatch:
     inputs:
       limit:
