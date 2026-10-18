@@ -11,11 +11,13 @@
   },
   "last_result": {
     "day": "2026-10-18",
-    "attempted": 100,
+    "attempted": 0,
     "valid_eans": 0,
-    "missing_ean": 98,
-    "technical_errors": 2,
-    "status": "red",
-    "outcome": "completed"
+    "missing_ean": 0,
+    "unavailable": 0,
+    "excluded_non_vinyl": 0,
+    "technical_errors": 0,
+    "status": "waiting",
+    "outcome": "daily_budget_exhausted"
   }
 }
