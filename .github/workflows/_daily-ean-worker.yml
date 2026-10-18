@@ -14,6 +14,10 @@ on:
         required: false
         default: false
         type: boolean
+      source_pilot:
+        required: false
+        default: false
+        type: boolean
     secrets:
       DATABASE_URL:
         required: true
@@ -52,10 +56,12 @@ jobs:
           WORKER: ${{ inputs.worker }}
           RECORD_LIMIT: ${{ inputs.limit }}
           WRITE_ENABLED: ${{ inputs.write }}
+          SOURCE_PILOT: ${{ inputs.source_pilot }}
         run: |
           set -euo pipefail
           args=(--worker "$WORKER" --limit "$RECORD_LIMIT")
           if [ "$WRITE_ENABLED" = "true" ]; then args+=(--write); fi
+          if [ "$SOURCE_PILOT" = "true" ]; then args+=(--source-pilot); fi
           python -u -m scripts.workers.run_daily_ean "${args[@]}"
       - name: Save EAN batch evidence
         if: always()

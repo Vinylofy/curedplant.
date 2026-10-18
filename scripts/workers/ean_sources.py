@@ -113,7 +113,7 @@ class EanSource:
             return [], {**cursor, "registry_only": True}
         if shop == 'musiconvinyl':
             native = module('musiconvinyl')
-            url = f'{native.BASE_URL}/collections/all-products/products.json?limit=100&page={page}'
+            url = f'{native.BASE_URL}/products.json?limit=100&page={page}'
             products = self.get(url).json()['products']
             for product in products:
                 # Source-proven type; no CD/merch/title-only inference.

@@ -84,6 +84,26 @@ class DailyEanTests(unittest.TestCase):
         self.stdout.__enter__()
         self.addCleanup(lambda: self.stdout.__exit__(None, None, None))
 
+    def test_mov_source_pilot_ignores_known_queue_and_never_accesses_db_or_progress(self):
+        queue, progress = Mock(), Mock()
+        for name in ['candidates', 'fresh_catalog_rows', 'register', 'claim', 'finish']:
+            getattr(queue, name).side_effect = AssertionError('Pilot must not query/write queue')
+        progress.load.side_effect = AssertionError('Pilot must not load durable progress')
+        class LiveSource(Source):
+            def catalog(self, cursor):
+                return [{'id': str(i), 'source_url': f'https://example.com/product/{i}', 'payload': {}}
+                        for i in range(30)], {'page': 2, 'seed': 0}
+        result = daily.execute('musiconvinyl', 25, False, progress=progress, queue=queue,
+                               source_factory=LiveSource, source_pilot=True)
+        self.assertEqual((result['attempted'], result['valid_eans'], result['price_writes']), (25, 25, 0))
+        self.assertEqual(result['status'], 'green')
+        progress.save.assert_not_called()
+
+    def test_source_pilot_cannot_be_used_for_writes_or_other_shops(self):
+        for shop, write in [('musiconvinyl', True), ('jpc', False)]:
+            with self.assertRaises(ValueError):
+                daily.execute(shop, 25, write, source_pilot=True)
+
     def test_two_days_fetch_next_hundred_without_overlap(self):
         progress, queue, sources = Progress(), Queue(), []
         def factory(shop):

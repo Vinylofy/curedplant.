@@ -11,7 +11,7 @@ import re
 
 import requests
 
-from scripts.workers.ean_progress import GitHubProgress, day_key, reserve, validate_state
+from scripts.workers.ean_progress import GitHubProgress, day_key, initial_state, reserve, validate_state
 from scripts.workers.ean_queue import EanQueue
 from scripts.workers.ean_sources import EanSource, GREEN, PILOT
 
@@ -26,7 +26,9 @@ def error_text(exc):
     return re.sub(r"postgres(?:ql)?://\S+|password=\S+", "<redacted>", text)
 
 
-def execute(shop, limit, write, *, progress=None, queue=None, source_factory=EanSource, today=None):
+def execute(shop, limit, write, *, progress=None, queue=None, source_factory=EanSource, today=None, source_pilot=False):
+    if source_pilot and (write or shop != 'musiconvinyl'):
+        raise ValueError('Source pilot is read-only and only available for Music On Vinyl')
     progress, queue = progress or GitHubProgress(shop), queue or EanQueue()
     today = today or day_key()
     summary = {"shop": shop, "day": today, "write": write, "requested": limit,
@@ -35,9 +37,11 @@ def execute(shop, limit, write, *, progress=None, queue=None, source_factory=Ean
                "technical_errors": 0, "claim_skips": 0, "discovery_pages": 0,
                "requeued_for_repair": 0, "refunded_reservations": 0,
                "price_writes": 0, "records": [], "errors": []}
+    if source_pilot:
+        summary['source_pilot'] = True
     source, state, reservation_saved = None, None, False
     try:
-        state = copy.deepcopy(validate_state(progress.load(), shop))
+        state = initial_state(shop) if source_pilot else copy.deepcopy(validate_state(progress.load(), shop))
         allocated = reserve(state, limit, today) if write else limit
         summary["reserved"] = allocated if write else 0
         if allocated == 0:
@@ -53,7 +57,7 @@ def execute(shop, limit, write, *, progress=None, queue=None, source_factory=Ean
         # Haarlem's historic queue contains mostly removed Shopify handles.
         # Refresh one bounded current page before prioritizing recently seen
         # links, rather than letting that old queue starve live products.
-        selected = [] if shop == "soundshaarlem" else queue.candidates(shop, allocated)
+        selected = [] if source_pilot or shop == "soundshaarlem" else queue.candidates(shop, allocated)
         selected_by_url = {row["source_url"]: row for row in selected}
         cursor = state["cursor"]
         exhausted_on = cursor.get("exhausted_on")
@@ -76,7 +80,7 @@ def execute(shop, limit, write, *, progress=None, queue=None, source_factory=Ean
                 queue.register(shop, rows)
                 selected_by_url = {row["source_url"]: row for row in queue.candidates(shop, allocated)}
             else:
-                for row in queue.fresh_catalog_rows(shop, rows):
+                for row in (rows if source_pilot else queue.fresh_catalog_rows(shop, rows)):
                     selected_by_url.setdefault(row["source_url"], row)
             cursor = state["cursor"] = following
             if write:
@@ -163,10 +167,13 @@ def main():
     parser.add_argument("--worker", choices=sorted(set(GREEN) | PILOT), required=True)
     parser.add_argument("--limit", type=int, default=100)
     parser.add_argument("--write", action="store_true")
+    parser.add_argument("--source-pilot", action="store_true", help="Music On Vinyl read-only source verification, including already-known products")
     args = parser.parse_args()
     if not 1 <= args.limit <= 100:
         parser.error("daily EAN limit must be 1..100")
-    result = execute(args.worker, args.limit, args.write)
+    if args.source_pilot and (args.write or args.worker != 'musiconvinyl'):
+        parser.error('--source-pilot is only supported for Music On Vinyl without --write')
+    result = execute(args.worker, args.limit, args.write, source_pilot=args.source_pilot)
     return 1 if result["errors"] else 0
 
 

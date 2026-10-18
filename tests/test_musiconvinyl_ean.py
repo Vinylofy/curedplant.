@@ -54,7 +54,7 @@ class MusicOnVinylEanTests(unittest.TestCase):
         self.assertEqual(rows[0]['payload']['artist'], 'Artist')
         self.assertEqual(cursor['page'], 2)
         self.assertEqual(source.catalog(cursor)[1].get('exhausted'), True)
-        source.get.assert_called_with('https://www.musiconvinyl.com/collections/all-products/products.json?limit=100&page=2')
+        source.get.assert_called_with('https://www.musiconvinyl.com/products.json?limit=100&page=2')
 
     def test_cd_only_page_does_not_finish_catalogue(self):
         source = self.source({'products': [{'product_type': 'CD'}]})

@@ -13,6 +13,11 @@ on:
         required: true
         default: false
         type: boolean
+      source_pilot:
+        description: "For write=false: verify current products even if already known; no progress/database writes"
+        required: true
+        default: true
+        type: boolean
 
 permissions:
   contents: write
@@ -24,4 +29,5 @@ jobs:
       worker: musiconvinyl
       limit: ${{ inputs.limit }}
       write: ${{ inputs.write }}
+      source_pilot: ${{ inputs.source_pilot && !inputs.write }}
     secrets: inherit
