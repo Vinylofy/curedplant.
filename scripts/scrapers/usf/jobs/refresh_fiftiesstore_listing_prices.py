@@ -157,7 +157,7 @@ def finish_scrape_run(run_id, status="completed"):
 
 
 
-def fetch_batch(offset, limit):
+def fetch_batch(offset, limit, *, strict_category=False):
     payload = {
         "offset": offset,
         "category": CATEGORY_ID,
@@ -170,6 +170,10 @@ def fetch_batch(offset, limit):
             "brand", "manufacturer", "categories", "sku"
         ],
     }
+    if strict_category:
+        # Clerk recommendations can include merchandise outside the selected
+        # category. The storefront's vinyl category is explicitly 1530.
+        payload["filter"] = f"categories in [{CATEGORY_ID}]"
     qs = urlencode({
         "payload": json.dumps(payload, separators=(",", ":")),
         "callback": "cb",
@@ -194,6 +198,7 @@ def main():
     ap.add_argument("--max-products", type=int, default=0, help="0 = all")
     ap.add_argument("--sleep", type=float, default=0.25)
     ap.add_argument("--write", action="store_true")
+    ap.add_argument("--strict-category", action="store_true", help="Only the storefront vinyl category; exclude cross-category recommendations")
     ap.add_argument("--skip-raw", action="store_true", help="Skip raw_shop_scrapes inserts; useful for Actions performance")
     ap.add_argument(
         "--skip-delist-missing",
@@ -212,7 +217,8 @@ def main():
     links = []
 
     while True:
-        data = fetch_batch(offset, args.batch_size)
+        data = (fetch_batch(offset, args.batch_size, strict_category=True)
+                if args.strict_category else fetch_batch(offset, args.batch_size))
         total = data.get("count", total)
         products = data.get("product_data") or []
 
@@ -220,6 +226,8 @@ def main():
             break
 
         for pos, item in enumerate(products, offset + 1):
+            if args.strict_category and CATEGORY_ID not in (item.get("categories") or []):
+                raise RuntimeError("Fifties API returned an item outside the requested vinyl category")
             url = normalize_url(item.get("url"))
             if not url:
                 continue
