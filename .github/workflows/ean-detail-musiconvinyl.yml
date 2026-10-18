@@ -11,13 +11,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - label: Linux
-            runner: '["ubuntu-latest"]'
           - label: Windows
             runner: '["self-hosted","Windows","X64"]'
     runs-on: ${{ fromJSON(matrix.runner) }}
     timeout-minutes: 15
     env:
+      # Process-only policy for setup-python's generated local installer script.
+      # No machine/user execution-policy setting is changed.
+      PSExecutionPolicyPreference: RemoteSigned
       PROBE_CODE: |
         import hashlib, json, os, platform, re, sys, time
         from pathlib import Path
