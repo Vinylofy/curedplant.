@@ -221,3 +221,8 @@ __marimo__/
 
 # Bounded scraper verification outputs (published as Actions artifacts).
 /output/
+
+# Affiliate feed credentials and bulk data stay local.
+/data/bol/
+/config/bol-feed.local.json
+.env.local

@@ -1,0 +1,78 @@
+name: "Curedplant | Affiliate | bol | Feed review"
+run-name: "bol | NL + BE | dry-run | limit=${{ inputs.limit }}"
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Number of new vinyl products to review"
+        type: string
+        default: "20"
+        required: true
+      ip_check_only:
+        description: "Only display this Windows runner's public IPv4; no feed login"
+        type: boolean
+        default: false
+      inspect_schema:
+        description: "Inspect actual feed headers before validating the field profile"
+        type: boolean
+        default: true
+permissions:
+  contents: read
+concurrency:
+  group: bol-feed-review
+  cancel-in-progress: false
+jobs:
+  review:
+    # Use the existing Windows machine, registered for this repo or organisation.
+    # A Windows OS alone does not guarantee a static public IP.
+    runs-on: [self-hosted, Windows, "${{ vars.BOL_FEED_RUNNER || 'vinylofy-windows' }}"]
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify whitelisted public IPv4 before using feed credentials
+        shell: python {0}
+        env:
+          BOL_FEED_PUBLIC_IPV4: ${{ vars.BOL_FEED_PUBLIC_IPV4 }}
+          BOL_IP_ONLY: ${{ inputs.ip_check_only }}
+        run: |
+          import ipaddress, os, urllib.request
+          with urllib.request.urlopen('https://api4.ipify.org', timeout=15) as response:
+              actual = str(ipaddress.IPv4Address(response.read(64).decode().strip()))
+          print('Runner public IPv4:', actual)
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as summary:
+              summary.write('bol feed runner public IPv4: `' + actual + '`\n')
+          expected = os.environ.get('BOL_FEED_PUBLIC_IPV4', '')
+          if actual != expected and os.environ['BOL_IP_ONLY'] != 'true':
+              raise SystemExit('Configure this IP in bol Account > Productfeed and BOL_FEED_PUBLIC_IPV4; no feed login attempted.')
+      - name: Install importer dependencies
+        if: ${{ !inputs.ip_check_only }}
+        run: python -m pip install 'psycopg[binary]>=3.2,<4' 'python-dotenv>=1,<2' 'lxml>=5,<6'
+      - name: Review official feed (no database credentials)
+        if: ${{ !inputs.ip_check_only }}
+        shell: python {0}
+        env:
+          BOL_FEED_USERNAME: ${{ secrets.BOL_FEED_USERNAME }}
+          BOL_FEED_PASSWORD: ${{ secrets.BOL_FEED_PASSWORD }}
+          BOL_SITE_ID: ${{ vars.BOL_SITE_ID }}
+          BOL_PROFILE: ${{ vars.BOL_FEED_PROFILE || 'config/bol-feed.example.json' }}
+          BOL_LIMIT: ${{ inputs.limit }}
+          BOL_INSPECT_SCHEMA: ${{ inputs.inspect_schema }}
+        run: |
+          import os, subprocess, sys
+          command = [sys.executable, '-m', 'scripts.importers.bol_feed',
+              '--profile', os.environ['BOL_PROFILE'], '--limit', os.environ['BOL_LIMIT']]
+          if os.environ['BOL_INSPECT_SCHEMA'] == 'true':
+              command.append('--inspect-schema')
+          subprocess.run(command, check=True)
+      - name: Save review evidence only (not the bulk feed)
+        if: ${{ always() && !inputs.ip_check_only }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: bol-feed-review-${{ github.run_id }}
+          path: output/bol/review.json
+          retention-days: 1
