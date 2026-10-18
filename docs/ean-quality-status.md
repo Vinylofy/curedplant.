@@ -1,6 +1,6 @@
 # EAN/detail quality status
 
-Bijgewerkt: 2026-10-17. Repository: `Vinylofy/curedplant.`.
+Bijgewerkt: 2026-10-18. Repository: `Vinylofy/curedplant.`.
 
 Dit is het centrale document voor de EAN/detail-kwaliteitscontrole. De review
 hieronder betreft de tien eerder rode actions. De achttien eerder groene shops
@@ -9,6 +9,68 @@ zijn tijdens deze review niet opnieuw getest.
 Uitkomst van deze tien: **acht groen, nul oranje, twee rood**. Samen met de
 achttien eerder groene beoordelingen is de geregistreerde stand 26 groen en
 twee rood; die eerdere achttien zijn geen nieuwe testresultaten.
+
+## Herstel rode geplande runs van 18 oktober 2026
+
+Vijf rode EAN-runs aangetroffen tijdens deze controle. Het gaat om de volgende
+concrete oorzaken; niet iedere rode run betekende nul verzamelde EAN's.
+
+| Shop | Oorspronkelijke rode run | Oorzaak en gerichte reparatie |
+| --- | --- | --- |
+| Bob's Vinyl | [39099344723](https://github.com/Vinylofy/curedplant./actions/runs/39099344723) — 16 EAN's uit 45 pogingen | Drie verwijderde productlinks gaven 404 en telden als technische fouten, waarna de batch stopte. Ook de standaard productroute van een voorbeeld geeft 404. Alleen bevestigde detail-404/410 worden nu als verwijderd afgehandeld; de batch gaat naar de volgende link. |
+| CDHal | [39099405288](https://github.com/Vinylofy/curedplant./actions/runs/39099405288) — 38 EAN's uit 44 pogingen | Oude productlinks, waaronder Weezer – Black Album, geven echt 404. Deze worden apart geteld en in de EAN-wachtrij afgerond. De bestaande browserroute en begrensde 429-vertraging blijven behouden. |
+| FiftiesStore | [39101835680](https://github.com/Vinylofy/curedplant./actions/runs/39101835680) — 0 EAN's uit 100 pogingen | De oude parser zocht alleen een Magento `th/td`-tabel. De actuele Hyva-pagina bevat EAN in eigen `td/td`-rijen en `div/div`-specificaties. De parser leest deze productgebonden velden nu ook zonder EAN in de oude queue-payload. Gerelateerde productcodes en tegenstrijdige geldige codes worden geweigerd. Expliciete posters zonder vinyl/LP-aanduiding worden uitgesloten. |
+| iMusic | [39102779912](https://github.com/Vinylofy/curedplant./actions/runs/39102779912) — vijf EAN's opgeslagen vóór de fout | Bij het gelijknamige album Love ontbreekt de artiest in `og:title`, maar staat Love wel in de eigen productkop. Die kop wordt nu benut; artiest en albumtitel blijven afzonderlijke velden. De oude canonical helper maakte bij twee lege artiestwaarden SQL NULL, in strijd met `products.artist NOT NULL`. Onvolledige identiteiten worden nu uitgesteld terwijl de waargenomen EAN behouden blijft; er wordt geen artiest verzonnen. |
+| Records on Vinyl | [39105403941](https://github.com/Vinylofy/curedplant./actions/runs/39105403941) — 64 EAN's uit 67 pogingen | Drie verdwenen Shopify-handles gaven 404 op product.js. Van het onderzochte voorbeeld geven de collectie-API, de gewone product-API én de publieke productpagina 404. De adapter gebruikt de native `/products/<handle>.js`-route en handelt verwijderde handles afzonderlijk af. |
+
+### Nieuwe controles en pogingenteller
+
+De functionele code is eerst lokaal getest en daarna op herstelbranch
+`fix/ean-runs-2026-10-18` vanuit de bestaande GitHub-actions gestart. Iedere shop:
+25 records, `write=false`; dus geen extra productie-productwrites en geen
+verandering van de opgeslagen voortgang of het dagbudget.
+
+| Shop | Herstelpoging / maximum | Gecontroleerd | Geldige GTIN | EAN ontbreekt | Verwijderd | Technische fouten | Nieuwe GitHub-run |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Bob's Vinyl | 1 / 3 | 25 | 14 | 10 | 1 | 0 | [Groen 39105635137](https://github.com/Vinylofy/curedplant./actions/runs/39105635137) |
+| CDHal | 1 / 3 | 25 | 20 | 2 | 3 | 0 | [Groen 39105636365](https://github.com/Vinylofy/curedplant./actions/runs/39105636365) |
+| FiftiesStore | 1 / 3 | 25 | 19 | 6 | 0 | 0 | [Groen 39105637387](https://github.com/Vinylofy/curedplant./actions/runs/39105637387) |
+| iMusic | 1 / 3 | 25 | 25 | 0 | 0 | 0 | [Groen 39105638640](https://github.com/Vinylofy/curedplant./actions/runs/39105638640) |
+| Records on Vinyl | 1 / 3 | 25 | 25 | 0 | 0 | 0 | [Groen 39105821042](https://github.com/Vinylofy/curedplant./actions/runs/39105821042) |
+
+De eerste vier bronproeven draaien op commit `a148019`; de afzonderlijke
+Records on Vinyl-reparatie en extra databaseproef staan op `2a482cb`.
+Het volledige lokale suite-resultaat is **78 tests geslaagd**, inclusief acht
+tests met echte tijdelijke Postgres-tabellen. Daarin wordt ook de concrete
+lege-artiest-situatie met `NOT NULL` en de echte canonical product-upsert
+gecontroleerd. Workflowvalidatie met actionlint, Python-compilatie en
+diffcontrole slagen.
+
+### Reeds gemaakte FiftiesStore-missers herstellen
+
+De 98 inhoudelijke missers van de foutieve FiftiesStore-run mogen niet
+permanent verdwijnen uit de nieuwe-productwachtrij. Er is daarom een gericht,
+idempotent herstel toegevoegd voor uitsluitend actieve FiftiesStore-links
+met een opgeslagen versie-1-detailresultaat van **18 oktober 2026**, status
+`not_found`, een response-hash en geen EAN of technische fout.
+
+Dit herstel zet alleen hun EAN-wachtrijstatus terug op pending. Raw-bewijs en
+het oorspronkelijke resultaat blijven bewaard. Versie-2-resultaten worden
+nooit opnieuw aangeboden door deze correctie. De SQL-afbakening en herhaalde
+uitvoering zijn getest in de tijdelijke database.
+
+Het herstel gebeurt bij de eerstvolgende write-run waarvoor dagbudget
+beschikbaar is. Het dagbudget is vandaag al gereserveerd; dit wordt niet
+kunstmatig teruggezet. De normale volgende dagelijkse run kan de gerepareerde
+records dus controleren binnen de bestaande limiet van 100. Dit is voorbereid
+en lokaal getest, nog geen claim dat die 98 records al opnieuw zijn gescrapet.
+
+HTTP 403/429 en serverfouten blijven fouten. Alleen de hierboven onderzochte
+shops behandelen detail-404/410 als verwijderde artikelen. Discovery-404's,
+een volledig mislukte EAN-steekproef en onbekende shopfouten worden niet groen
+geforceerd. De prijsactions, de daglimiet en de twee geblokkeerde EAN-shops
+North End Haarlem / Sounds Venlo zijn niet gewijzigd. Historische rode runs
+blijven rood; nieuwe runs nemen de gepubliceerde reparatie over.
 
 ## Betekenis van de status
 
