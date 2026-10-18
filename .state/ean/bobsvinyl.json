@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "shop": "bobsvinyl",
+  "cursor": {
+    "page": 1,
+    "seed": 0
+  },
+  "budget": {
+    "date": "2026-10-18",
+    "reserved": 100
+  }
+}
