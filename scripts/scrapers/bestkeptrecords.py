@@ -215,6 +215,7 @@ def scrape_listings(
                 page_results[page] = (page_rows, identities)
     else:
         page = 2
+        fetched_page_sets = {frozenset(first_identities)}
         while target_last_page is None or page <= target_last_page:
             try:
                 html = fetch(session, listing_page_url(page))
@@ -226,6 +227,10 @@ def scrape_listings(
                     break
                 raise
             page_rows, _next, identities = parse_listing_page(html, page)
+            if not identities or frozenset(identities) in fetched_page_sets:
+                print(f"[STOP] listing page {page} is empty or repeats a previous page", flush=True)
+                break
+            fetched_page_sets.add(frozenset(identities))
             page_results[page] = (page_rows, identities)
             if target_last_page is not None and page >= target_last_page:
                 break

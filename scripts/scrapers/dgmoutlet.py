@@ -69,11 +69,13 @@ class DGMOutletLPScraper:
         start_page: int = 1,
         max_pages: Optional[int] = None,
         delay: float = 0.0,
+        verify_detail_availability: bool = True,
     ):
         self.output_path = Path(output_path)
         self.start_page = max(1, start_page)
         self.max_pages = max_pages if (max_pages is None or max_pages > 0) else None
         self.delay = max(0.0, delay)
+        self.verify_detail_availability = verify_detail_availability
         self.session = self._build_session()
         self.seen_keys: set[str] = set()
         self.total_rows_written = 0
@@ -111,8 +113,7 @@ class DGMOutletLPScraper:
             url = BASE_URL.format(page=page)
             html = self._fetch(url)
             if html is None:
-                print(f"[PAGINA {page}] ophalen mislukt, stop om halflege output te voorkomen.")
-                break
+                raise RuntimeError(f"DGM listing page {page} failed; incomplete catalogue must not be green")
 
             rows = self._parse_listing_page(html, page=page, page_url=url)
             if not rows:
@@ -130,6 +131,9 @@ class DGMOutletLPScraper:
                 self.seen_keys.add(key)
                 new_rows.append(row)
 
+            if not new_rows:
+                print(f"[STOP] pagina {page} bevat alleen eerder geziene producten.", flush=True)
+                break
             self._append_rows(new_rows)
             self.total_rows_written += len(new_rows)
             processed_pages += 1
@@ -153,6 +157,8 @@ class DGMOutletLPScraper:
             print(f"[FOUT] request mislukt voor {url}: {exc}")
             return None
 
+        if response.status_code == 404:
+            return ""
         if response.status_code >= 400:
             print(f"[FOUT] HTTP {response.status_code} voor {url}")
             return None
@@ -195,7 +201,7 @@ class DGMOutletLPScraper:
             positive_source="listing_card_no_oos_marker",
         )
 
-        if availability != "out_of_stock":
+        if self.verify_detail_availability and availability != "out_of_stock":
             detail_availability, detail_source = self._detect_detail_availability(url)
             if detail_availability in {"in_stock", "out_of_stock"}:
                 availability, availability_source = detail_availability, detail_source
@@ -497,6 +503,7 @@ def run_default(
     start_page: int = 1,
     max_pages: Optional[int] = None,
     delay: float = 0.0,
+    verify_detail_availability: bool = True,
 ) -> Path:
     output_path = Path(output_path)
     scraper = DGMOutletLPScraper(
@@ -504,6 +511,7 @@ def run_default(
         start_page=start_page,
         max_pages=max_pages,
         delay=delay,
+        verify_detail_availability=verify_detail_availability,
     )
     scraper.run()
     return output_path

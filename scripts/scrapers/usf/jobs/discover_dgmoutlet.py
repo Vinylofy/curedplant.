@@ -253,6 +253,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="Aantal listingpagina's. Gebruik 0 om door te lopen tot de eerste lege pagina.",
     )
     parser.add_argument("--delay", type=float, default=0.0)
+    parser.add_argument("--listing-only", action="store_true", help="Never request detail pages during catalogue price collection")
     parser.add_argument(
         "--write",
         action="store_true",
@@ -280,6 +281,7 @@ def main() -> int:
             start_page=args.start_page,
             max_pages=max_pages,
             delay=args.delay,
+            verify_detail_availability=not args.listing_only,
         )
 
         links = read_discovered_links(csv_path)
