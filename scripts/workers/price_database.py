@@ -39,12 +39,13 @@ def update_existing(worker, records, started_at):
             shop_id = shops[0]["id"]
             # One narrowly scoped shop snapshot. Stable lock order prevents
             # two price writers taking these rows in opposite orders.
+            cur.execute("""select product_id,product_url from public.prices where shop_id=%s""", (shop_id,))
+            target_ids = [r["product_id"] for r in cur.fetchall() if url_key(r["product_url"]) in expected]
             cur.execute("""select product_id, shop_id, product_url, price, currency,
                                   availability, last_seen_at, is_active
                            from public.prices where shop_id=%s
-                             and regexp_replace(trim(trailing '/' from split_part(product_url,'?',1)),
-                                                '^https?://(www[.])?', '')=any(%s)
-                           order by product_id for update""", (shop_id, list(expected)))
+                             and product_id=any(%s)
+                           order by product_id for update""", (shop_id, target_ids))
             targets = cur.fetchall()
             matched_keys = set()
             keys = [url_key(t["product_url"]) for t in targets]

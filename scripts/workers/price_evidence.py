@@ -34,7 +34,17 @@ def capture_link(link):
 
 def url_key(value):
     parsed = urlsplit(str(value or ""))
-    return parsed.netloc.lower().removeprefix("www.") + parsed.path.rstrip("/")
+    host = parsed.netloc.lower().removeprefix("www.")
+    path = re.sub(r"^/collections/[^/]+/products/", "/products/", parsed.path).rstrip("/")
+    if host == "imusic.nl":
+        match = re.match(r"/music/(\d{12,14})(?:/|$)", path)
+        if match:
+            path = "/music/" + match[1]
+    if host == "jpc.de":
+        match = re.search(r"/hnum/(\d+)(?:/|$)", path)
+        if match:
+            path = "/hnum/" + match[1]
+    return host + path
 
 
 def amount(value):

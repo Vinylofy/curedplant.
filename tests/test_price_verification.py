@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from unittest.mock import patch, Mock
 
-from scripts.workers.price_evidence import assess, capture, amount
+from scripts.workers.price_evidence import assess, capture, amount, url_key
 from scripts.workers.run_catalog_price import command_for, main
 
 
@@ -16,6 +16,13 @@ def row(index, price="25.00"):
 
 
 class PriceVerificationTests(unittest.TestCase):
+    def test_shopify_collection_and_stable_imusic_jpc_id_urls_match(self):
+        for left, right in [
+            ("https://www.platenzaak.nl/collections/vinyl/products/album/?x=1", "https://platenzaak.nl/products/album"),
+            ("https://imusic.nl/music/8719262047020/calibro-lp", "https://imusic.nl/music/8719262047020"),
+            ("https://www.jpc.de/jpcng/poprock/detail/-/art/album/hnum/123456", "https://jpc.de/jpcng/jazz/detail/-/hnum/123456"),
+        ]:
+            self.assertEqual(url_key(left), url_key(right))
     def test_shipping_text_and_ambiguous_prices_are_never_amounts(self):
         for value in ("shipping 4.95", "25.00 + 4.95", "free", "NaN", "0", "-1", None):
             self.assertIsNone(amount(value))
