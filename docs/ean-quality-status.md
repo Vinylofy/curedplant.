@@ -88,6 +88,44 @@ verandert de operationele kleur niet in groen.
 | Vinylfreaks | [39106444078](https://github.com/Vinylofy/curedplant./actions/runs/39106444078) | Beschikbaar; verwerkingsrun gestart |
 | Viprecords | [39106445717](https://github.com/Vinylofy/curedplant./actions/runs/39106445717) | Beschikbaar; verwerkingsrun gestart |
 
+## Herstel na de gelijktijdige extra starts
+
+De eerste 16 extra starts leverden acht geslaagde verwerkingsruns, zes
+budgetstops en twee nieuwe fouten op. Die twee zijn onderzocht:
+
+- Rockin Out [39106429362](https://github.com/Vinylofy/curedplant./actions/runs/39106429362):
+  geen details gestart; HTTP 409 bij gelijktijdig opslaan van verschillende
+  shopbestanden op dezelfde voortgangsbranch. De drie vaste retries waren
+  onvoldoende voor deze startpiek. De code gebruikt nu maximaal tien begrensde
+  retries met verschillende wachttijden bij uitsluitend zulke branchconflicten.
+  Wijziging van hetzelfde shopbestand blokkeert iedere volgende stale write.
+  Een mislukte eerste reservering wordt ook niet meer in `finally` alsnog geschreven.
+- Sounds Haarlem [39106436198](https://github.com/Vinylofy/curedplant./actions/runs/39106436198):
+  historische productwachtrij met verwijderde handles. Eerste herstelproef:
+  24 verwijderde producten en één doorverwijzing naar de homepage uit 25 records,
+  dus terecht geen groene EAN-proef. Tweede herstelproef:
+  [39107046363](https://github.com/Vinylofy/curedplant./actions/runs/39107046363),
+  **25/25 geldige EAN's**, read-only. De worker ontdekt nu eerst een begrensde
+  actuele listingpagina en prioriteert recent geziene links. Een homepage na
+  productredirect mag geen eigen EAN leveren. Herstelpogingen: 2 van maximaal 3.
+
+Het dagmaximum blijft 100 **gestarte productdetails**. De worker reserveert
+vooraf; ongebruikte plaatsen worden bij normale afsluiting teruggegeven.
+Een detail dat opgehaald is maar niet naar de database kon worden geschreven,
+blijft meetellen. Bij een harde crash zonder eindcheckpoint kan de reservering
+conservatief blijven staan. Een budgetstop wijzigt geen voortgangsbestand meer.
+
+De eerdere reserveringen worden uitsluitend gecorrigeerd met artifactbewijs
+van alle productieruns van die shop op deze datum. De oorspronkelijke daglimiet
+wordt niet verhoogd, verwerkte producten worden niet opnieuw geselecteerd en
+het herstel wordt met bronrun-ID's in de checkpoint geaudit. FiftiesStore heeft
+100 echte details gestart; daarvoor is geen ongebruikt budget vrij te geven.
+
+Validatie: **88 tests geslaagd**, inclusief negen echte Postgres-tests,
+begrensde conflict-retries, bescherming tegen overschrijven van een gelijktijdig
+gewijzigd shopbestand, reserveringen bij een lege batch en behoud van een
+verbruikte plaats na databasefalen. Actionlint en Python-compilatie slagen.
+
 ## Herstel rode geplande runs van 18 oktober 2026
 
 Vijf rode EAN-runs aangetroffen tijdens deze controle. Het gaat om de volgende
@@ -194,8 +232,10 @@ Raw-verrijkingsrecords hebben `price_raw` en `availability_raw` op NULL.
   bouwt geen nieuwe discovery-crawler voor die twee shops.
 - Iedere write-run reserveert vooraf het resterende dagbudget. Ook extra
   handmatige starts kunnen samen de 100 niet overschrijden. Ongebruikte
-  gereserveerde plaatsen na een storing blijven die dag verbruikt; de volgende
-  Amsterdamse kalenderdag begint een nieuw budget.
+  gereserveerde plaatsen komen bij normale afsluiting weer beschikbaar; ieder
+  gestart productdetail blijft meetellen, ook bij een databasefout. Bij een harde
+  crash kan de reservering conservatief blijven staan. De volgende Amsterdamse
+  kalenderdag begint een nieuw budget.
 - Een vastgelegde technische fout wordt overgeslagen bij de volgende normale
   nieuwe-productrun en blijft zichtbaar voor gericht herstel. HTTP 403/429
   stopt de run. Een crash vóór databasecommit laat alleen een claim achter;

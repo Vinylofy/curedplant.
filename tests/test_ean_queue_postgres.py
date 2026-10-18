@@ -170,3 +170,12 @@ class QueuePostgresTests(unittest.TestCase):
         with psycopg.connect(DSN) as conn:
             self.assertEqual(conn.execute('select source_url from public.shop_product_links where last_detail_scraped_at is null').fetchall(), [('https://test.invalid/0',)])
             self.assertEqual(conn.execute("select payload->'curedplant_daily_ean'->>'detail_sha256' from public.shop_product_links where source_url='https://test.invalid/0'").fetchone()[0], 'source-proof')
+
+    def test_haarlem_prioritizes_recently_seen_links(self):
+        self.queue.register('soundshaarlem', [
+            {'source_url':'https://soundshaarlem.nl/products/old','payload':{}},
+            {'source_url':'https://soundshaarlem.nl/products/current','payload':{}}])
+        with psycopg.connect(DSN) as conn:
+            conn.execute("update public.shop_product_links set last_seen_at=now()-interval '1 year' where source_url like '%/old'")
+        selected=self.queue.candidates('soundshaarlem',1)
+        self.assertEqual(selected[0]['source_url'],'https://soundshaarlem.nl/products/current')
