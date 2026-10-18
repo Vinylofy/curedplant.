@@ -47,6 +47,13 @@ class SourceRepairTests(unittest.TestCase):
         self.assertTrue(result['unavailable'])
         self.assertEqual(result['http_status'], 404)
 
+    def test_soundshaarlem_homepage_redirect_cannot_supply_product_ean(self):
+        s = self.source('soundshaarlem', '')
+        s.get.return_value = response('<h1>Shop</h1>EAN 0792755872161', 'https://soundshaarlem.nl/')
+        result = s.detail({'source_url': 'https://soundshaarlem.nl/products/removed'})
+        self.assertTrue(result['unavailable'])
+        self.assertIsNone(result['ean'])
+
     def test_cdhal_gone_does_not_hide_access_or_server_failures(self):
         s = self.source('cdhal', '')
         for status in (404, 410):

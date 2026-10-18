@@ -291,6 +291,11 @@ class EanSource:
                         "detail_url": response.url,
                         "detail_sha256": hashlib.sha256(response.content).hexdigest()}
             html, soup = response.text, BeautifulSoup(response.text, "html.parser")
+            if shop == "soundshaarlem" and "/products/" not in urlparse(response.url).path:
+                return {**result, "ean": None, "unavailable": True,
+                        "http_status": response.status_code, "issue": "product_redirected_to_catalogue",
+                        "detail_url": response.url,
+                        "detail_sha256": hashlib.sha256(response.content).hexdigest()}
             if shop in REVIEWED:
                 # Only the reviewed parsers' source-scoped pure helpers below.
                 if shop == "cdhal":

@@ -170,6 +170,14 @@ class DailyEanTests(unittest.TestCase):
                                source_factory=Pages, today="2026-10-19")
         self.assertEqual(result["records"][0]["source_url"], "https://example.com/product/2")
 
+    def test_haarlem_live_listing_is_checked_even_with_large_historic_queue(self):
+        class Current(Source):
+            def catalog(self, cursor):
+                return [{'id': 'live', 'source_url': 'https://example.com/product/live', 'payload': {}}], {'page': 2, 'seed': 0}
+        result = daily.execute('soundshaarlem', 1, False, progress=Progress('soundshaarlem'), queue=Queue(250), source_factory=Current)
+        self.assertEqual(result['discovery_pages'], 1)
+        self.assertEqual(result['records'][0]['source_url'], 'https://example.com/product/live')
+
     def test_failed_checkpoint_prevents_source_requests(self):
         progress = Progress()
         progress.save = Mock(side_effect=RuntimeError("GitHub denied checkpoint write"))

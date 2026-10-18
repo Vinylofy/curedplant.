@@ -51,8 +51,10 @@ class EanQueue:
         return [row for row in rows if row["source_url"] not in done]
 
     def candidates(self, shop, limit):
+        order = ("l.last_seen_at desc nulls last, l.first_seen_at asc, l.id asc"
+                 if shop == "soundshaarlem" else "l.first_seen_at asc, l.id asc")
         with db_connection() as conn, conn.cursor(row_factory=dict_row) as cur:
-            cur.execute("""
+            cur.execute(f"""
                 select l.id, l.source_url, l.source_product_id, l.payload
                 from public.shop_product_links l
                 where l.shop_id = %s and l.status = 'active'
@@ -63,7 +65,7 @@ class EanQueue:
                     select 1 from public.raw_shop_scrapes r
                     where r.shop_id = l.shop_id and r.source_url = l.source_url
                       and nullif(r.ean_raw, '') is not null)
-                order by l.first_seen_at asc, l.id asc limit %s
+                order by {order} limit %s
             """, (shop, limit))
             return [dict(row) for row in cur.fetchall()]
 

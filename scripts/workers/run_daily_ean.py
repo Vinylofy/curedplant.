@@ -50,7 +50,10 @@ def execute(shop, limit, write, *, progress=None, queue=None, source_factory=Ean
             reservation_saved = True
         if write and shop == "fiftiesstore":
             summary["requeued_for_repair"] = queue.requeue_fifties_layout_misses()
-        selected = queue.candidates(shop, allocated)
+        # Haarlem's historic queue contains mostly removed Shopify handles.
+        # Refresh one bounded current page before prioritizing recently seen
+        # links, rather than letting that old queue starve live products.
+        selected = [] if shop == "soundshaarlem" else queue.candidates(shop, allocated)
         selected_by_url = {row["source_url"]: row for row in selected}
         cursor = state["cursor"]
         exhausted_on = cursor.get("exhausted_on")
