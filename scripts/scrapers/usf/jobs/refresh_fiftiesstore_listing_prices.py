@@ -207,6 +207,11 @@ def main():
     )
     args = ap.parse_args()
 
+    if args.batch_size < 1 or args.max_products < 0 or args.sleep < 0:
+        ap.error("batch-size must be positive; max-products and sleep must be nonnegative")
+    if args.write and args.max_products and not args.skip_delist_missing:
+        ap.error("bounded runs require --skip-delist-missing when writing")
+
     load_env()
 
     run_id = str(uuid.uuid4())
@@ -215,14 +220,24 @@ def main():
     total = None
     raw_rows = []
     links = []
+    seen_urls = set()
 
     while True:
         data = (fetch_batch(offset, args.batch_size, strict_category=True)
                 if args.strict_category else fetch_batch(offset, args.batch_size))
-        total = data.get("count", total)
-        products = data.get("product_data") or []
+        reported_total = data.get("count", total)
+        if reported_total is not None:
+            reported_total = int(reported_total)
+            if reported_total < 0 or (total is not None and reported_total != total):
+                raise RuntimeError("Fifties catalogue count changed during pagination; retry a fresh run")
+        total = reported_total
+        products = data.get("product_data")
+        if not isinstance(products, list):
+            raise RuntimeError("Fifties API response is missing a product_data array")
 
         if not products:
+            if total is not None and offset < total:
+                raise RuntimeError(f"Incomplete Fifties catalogue: empty batch at {offset} of {total}")
             break
 
         for pos, item in enumerate(products, offset + 1):
@@ -230,7 +245,10 @@ def main():
                 raise RuntimeError("Fifties API returned an item outside the requested vinyl category")
             url = normalize_url(item.get("url"))
             if not url:
-                continue
+                raise RuntimeError("Fifties catalogue contains a product without a URL")
+            if url in seen_urls:
+                raise RuntimeError(f"Incomplete Fifties catalogue: repeated product at offset {offset}")
+            seen_urls.add(url)
 
             sku = clean(item.get("sku"))
             current_price = price(item.get("price"))

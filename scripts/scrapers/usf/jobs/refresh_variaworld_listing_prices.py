@@ -285,15 +285,13 @@ def main() -> int:
                     "consecutive_page_failures": consecutive_page_failures,
                 }, flush=True)
                 if consecutive_page_failures >= args.max_page_failures:
-                    break
-                pages_done += 1
-                page += 1
+                    raise RuntimeError(f"Incomplete Variaworld catalogue: {seed_key} page {page} failed") from exc
+                # Retry this page; skipping it would silently lose its prices.
                 time.sleep(args.sleep)
                 continue
 
             if response.status_code == 429:
-                print("[LISTING-REFRESH][WARN] HTTP 429, stopping safely.", {"seed": seed_key, "page": page}, flush=True)
-                break
+                raise RuntimeError(f"Incomplete Variaworld catalogue: HTTP 429 at {seed_key} page {page}")
 
             if response.status_code >= 500:
                 consecutive_page_failures += 1
@@ -304,9 +302,7 @@ def main() -> int:
                     "consecutive_page_failures": consecutive_page_failures,
                 }, flush=True)
                 if consecutive_page_failures >= args.max_page_failures:
-                    break
-                pages_done += 1
-                page += 1
+                    raise RuntimeError(f"Incomplete Variaworld catalogue: HTTP {response.status_code} at {seed_key} page {page}")
                 time.sleep(args.sleep)
                 continue
 
@@ -333,31 +329,8 @@ def main() -> int:
                     **response_diagnostics(response),
                 }, flush=True)
                 time.sleep(args.sleep * empty_page_attempt)
-                try:
-                    response = session.get(listing_url, timeout=30)
-                except requests.RequestException as exc:
-                    print("[LISTING-REFRESH][WARN] empty-page retry failed", {
-                        "seed": seed_key,
-                        "page": page,
-                        "attempt": empty_page_attempt,
-                        "error": str(exc),
-                    }, flush=True)
-                    break
-                if response.status_code == 429:
-                    print("[LISTING-REFRESH][WARN] HTTP 429 during empty-page retry; stopping safely.", {
-                        "seed": seed_key,
-                        "page": page,
-                        "attempt": empty_page_attempt,
-                    }, flush=True)
-                    break
-                if response.status_code >= 500:
-                    print("[LISTING-REFRESH][WARN] server error during empty-page retry", {
-                        "seed": seed_key,
-                        "page": page,
-                        "attempt": empty_page_attempt,
-                        "status_code": response.status_code,
-                    }, flush=True)
-                    break
+                # A failed retry is not evidence of the end of the catalogue.
+                response = session.get(listing_url, timeout=30)
                 response.raise_for_status()
                 response.encoding = response.apparent_encoding or response.encoding or "utf-8"
                 links, offers = parse_listing_page(
@@ -367,6 +340,16 @@ def main() -> int:
                     listing_url=listing_url,
                     seen_at=seen_at,
                 )
+
+            if not links:
+                # A normal empty page may contain robots metadata or CDN scripts.
+                # Require visible challenge text rather than raw HTML keywords.
+                visible_text = clean(BeautifulSoup(response.text, "html.parser").get_text(" ", strip=True)).lower()
+                if any(marker in visible_text for marker in (
+                    "captcha", "access denied", "verify you are human",
+                    "just a moment", "checking your browser",
+                )):
+                    raise RuntimeError(f"Incomplete Variaworld catalogue: blocked listing at {seed_key} page {page}")
 
             page_signature = tuple(link.source_url for link in links)
             if page_signature and page_signature in seen_page_signatures:
