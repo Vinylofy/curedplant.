@@ -9,18 +9,18 @@
   },
   "budget": {
     "date": "2026-10-20",
-    "reserved": 100
+    "reserved": 14
   },
   "last_result": {
-    "day": "2026-10-19",
-    "attempted": 100,
-    "details_started": 100,
-    "valid_eans": 9,
-    "missing_ean": 91,
+    "day": "2026-10-20",
+    "attempted": 14,
+    "details_started": 14,
+    "valid_eans": 0,
+    "missing_ean": 14,
     "unavailable": 0,
     "excluded_non_vinyl": 0,
     "technical_errors": 0,
-    "status": "green",
+    "status": "red",
     "outcome": "completed"
   },
   "reservation_recovery_20261018": {
