@@ -13,6 +13,38 @@ from scripts.scrapers.usf.jobs import refresh_soundshaarlem_listing_prices as ha
 
 
 class PriceSourceRepairsTests(unittest.TestCase):
+    def test_fifties_broad_source_accepts_vinyl_outside_parent_category(self):
+        for title in ['Artist Album LP', 'Elvis - Album 2LP', 'Artist 2-LP + CD',
+                      'Artist (Gekleurd Vinyl + Poster) LP', 'Single 7" Artist', 'Artist 12-inch',
+                      'Neil Sedaka Calendar Girl LP']:
+            with self.subTest(title=title):
+                self.assertIsNone(fifties.vinyl_exclusion_reason({'name': title, 'categories': [2012]}))
+        for title in ['Artist Album CD', 'Vinyl Klok Danny Vera', 'Calendar LP Sized',
+                      'Artist T-shirt Vinyl', 'Artist LP Tweedehands', 'Artist Poster']:
+            with self.subTest(title=title):
+                self.assertIsNotNone(fifties.vinyl_exclusion_reason({'name': title}))
+
+    def test_fifties_price_command_uses_broad_vinyl_selection_without_delisting(self):
+        from scripts.workers.run_catalog_price import command_for
+        command = command_for('fiftiesstore', 0)
+        self.assertIn('--vinyl-only', command)
+        self.assertIn('--skip-delist-missing', command)
+        self.assertNotIn('--strict-category', command)
+
+    def test_fifties_vinyl_selection_keeps_pagination_in_source_offsets(self):
+        vinyl = {'id': 2, 'name': 'Artist Album 2LP', 'categories': [2012],
+                 'url': 'https://www.fiftiesstore.nl/album.html', 'price': 24.95}
+        batches = [{'count': 2, 'product_data': [dict(vinyl, id=1, name='Vinyl Klok', url='https://www.fiftiesstore.nl/clock.html')]},
+                   {'count': 2, 'product_data': [vinyl]}]
+        with patch.object(fifties, 'fetch_batch', side_effect=batches) as fetch, \
+             patch.object(fifties, 'DiscoveredLink') as link, \
+             patch('sys.argv', ['refresh', '--vinyl-only', '--sleep', '0']), \
+             contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(fifties.main(), 0)
+        self.assertEqual([c.args[0] for c in fetch.call_args_list], [0, 1])
+        self.assertEqual(link.call_count, 1)
+        self.assertEqual(link.call_args.kwargs['source_url'], vinyl['url'])
+
     def test_sounds_haarlem_preserves_thousands_and_current_sale_amount(self):
         for token in ['1,039.99', '1.039,99', '1039.99', '1039,99']:
             self.assertEqual(haarlem.extract_price('Regular price €' + token), '1039.99')

@@ -50,6 +50,18 @@ def ean_from_sku(sku):
     return s if EAN13_RE.match(s) else None
 
 
+def vinyl_exclusion_reason(item):
+    """Classify explicit listing formats, not membership of a parent category."""
+    title = clean(item.get("name")).lower()
+    if re.search(r"\b(?:used|second[ -]?hand|tweedehands|2e hands)\b", title):
+        return "secondhand"
+    if re.search(r"\b(?:klok|wandklok|clock|t[ -]?shirt|hoodie|sleutelhanger|mug|mok)\b|lp[ -]sized", title):
+        return "merchandise"
+    if not re.search(r"\bvinyl\b|(?<![a-z0-9])(?:[1-9]\s*[- ]?)?lps?\b|\b(?:7|10|12)\s*(?:[\"”″]|[ -]?inch)", title):
+        return "no_explicit_vinyl_format"
+    return None
+
+
 def source_product_id(item):
     return str(item.get("id") or item.get("sku") or "")
 
@@ -198,6 +210,7 @@ def main():
     ap.add_argument("--max-products", type=int, default=0, help="0 = all")
     ap.add_argument("--sleep", type=float, default=0.25)
     ap.add_argument("--write", action="store_true")
+    ap.add_argument("--vinyl-only", action="store_true", help="Use the broad Clerk source, selecting explicit new-vinyl listings")
     ap.add_argument("--strict-category", action="store_true", help="Only the storefront vinyl category; exclude cross-category recommendations")
     ap.add_argument("--skip-raw", action="store_true", help="Skip raw_shop_scrapes inserts; useful for Actions performance")
     ap.add_argument(
@@ -212,6 +225,9 @@ def main():
     if args.write and args.max_products and not args.skip_delist_missing:
         ap.error("bounded runs require --skip-delist-missing when writing")
 
+    if args.write and args.vinyl_only and not args.skip_delist_missing:
+        ap.error("vinyl-only selection requires --skip-delist-missing when writing")
+
     load_env()
 
     run_id = str(uuid.uuid4())
@@ -221,6 +237,7 @@ def main():
     raw_rows = []
     links = []
     seen_urls = set()
+    excluded = {}
 
     while True:
         data = (fetch_batch(offset, args.batch_size, strict_category=True)
@@ -249,6 +266,10 @@ def main():
             if url in seen_urls:
                 raise RuntimeError(f"Incomplete Fifties catalogue: repeated product at offset {offset}")
             seen_urls.add(url)
+            reason = vinyl_exclusion_reason(item) if args.vinyl_only else None
+            if reason:
+                excluded[reason] = excluded.get(reason, 0) + 1
+                continue
 
             sku = clean(item.get("sku"))
             current_price = price(item.get("price"))
@@ -310,6 +331,8 @@ def main():
 
     stats = {
         "total_api_count": total,
+        "source_products_seen": len(seen_urls),
+        "excluded": excluded,
         "collected": len(raw_rows),
         "with_ean_from_sku": sum(1 for r in raw_rows if r.get("ean")),
         "with_price": sum(1 for r in raw_rows if r.get("price")),
