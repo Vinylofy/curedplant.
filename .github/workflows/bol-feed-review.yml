@@ -12,6 +12,10 @@ on:
         description: "Only display this Windows runner's public IPv4; no feed login"
         type: boolean
         default: false
+      connectivity_check_only:
+        description: "Only test FTPS DNS/TCP/banner on Windows; no login or feed download"
+        type: boolean
+        default: false
       inspect_schema:
         description: "Inspect actual feed headers before validating the field profile"
         type: boolean
@@ -48,8 +52,65 @@ jobs:
           if ($actual -ne $env:BOL_FEED_PUBLIC_IPV4 -and $env:BOL_IP_ONLY -ne 'true') {
               throw 'Configure this IP in bol Account > Productfeed and BOL_FEED_PUBLIC_IPV4; no feed login attempted.'
           }
+      - name: Diagnose FTPS network without credentials
+        if: ${{ inputs.connectivity_check_only && !inputs.ip_check_only }}
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const dns = require('node:dns/promises');
+            const net = require('node:net');
+            const host = 'apm-feed.unftp.bol.com';
+            const report = { host, port: 21, credential_use: false, checks: [] };
+            try {
+              const response = await fetch('https://api.bol.com/marketing/docs/product-feed/download-product-feed.html',
+                { signal: AbortSignal.timeout(10000) });
+              report.documentation_http_status = response.status;
+              report.documentation_contains_host = (await response.text()).includes(host);
+            } catch {
+              report.documentation_http_status = 'unavailable';
+            }
+            let addresses = [];
+            try {
+              addresses = await dns.lookup(host, { all: true });
+              report.dns = addresses;
+            } catch (error) {
+              report.dns_error = error.code;
+            }
+            for (const address of addresses.slice(0, 4)) {
+              const result = await new Promise(resolve => {
+                const item = { ...address, tcp_connected: false, ftp_code: null };
+                const socket = net.createConnection({ host: address.address, family: address.family, port: 21 });
+                let received = '';
+                let finished = false;
+                const finish = () => {
+                  if (finished) return;
+                  finished = true;
+                  socket.destroy();
+                  resolve(item);
+                };
+                socket.setTimeout(8000);
+                socket.on('connect', () => { item.tcp_connected = true; });
+                socket.on('data', data => {
+                  received += data.toString('utf8');
+                  const match = received.match(/^(\d{3})[ -]/);
+                  if (match) { item.ftp_code = match[1]; finish(); }
+                  else if (received.length > 1024) { item.error = 'unexpected_banner'; finish(); }
+                });
+                socket.on('timeout', () => { item.error = 'timeout'; finish(); });
+                socket.on('error', error => { item.error = error.code; finish(); });
+                socket.on('end', finish);
+              });
+              report.checks.push(result);
+            }
+            // Only fixed diagnostic fields: no server text, usernames or passwords.
+            core.notice(JSON.stringify(report));
+            await core.summary.addHeading('Bol FTPS network check')
+              .addCodeBlock(JSON.stringify(report, null, 2), 'json').write();
+            if (!report.checks.some(item => item.tcp_connected && item.ftp_code === '220')) {
+              core.setFailed('No FTP welcome received on port 21; no login attempted.');
+            }
       - name: Download exact source commit through GitHub API
-        if: ${{ !inputs.ip_check_only }}
+        if: ${{ !inputs.ip_check_only && !inputs.connectivity_check_only }}
         uses: actions/github-script@v8
         with:
           script: |
@@ -67,7 +128,7 @@ jobs:
             core.exportVariable('BOL_ARCHIVE_DIR', destination);
       - name: Extract source to a Windows-safe path
         working-directory: ${{ runner.temp }}
-        if: ${{ !inputs.ip_check_only }}
+        if: ${{ !inputs.ip_check_only && !inputs.connectivity_check_only }}
         run: |
           $ErrorActionPreference = 'Stop'
           # Avoid GITHUB_WORKSPACE: repository names ending in a dot are not
@@ -80,7 +141,7 @@ jobs:
           Add-Content -LiteralPath $env:GITHUB_ENV -Encoding UTF8 -Value "BOL_SOURCE_DIR=$($sourceDirs[0].FullName)"
       - name: Set up uv without Python installer scripts
         uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
-        if: ${{ !inputs.ip_check_only }}
+        if: ${{ !inputs.ip_check_only && !inputs.connectivity_check_only }}
         with:
           version: '0.12.15'
           working-directory: ${{ runner.temp }}
@@ -89,7 +150,7 @@ jobs:
           UV_CACHE_DIR: ${{ runner.temp }}/bol-uv-cache
       - name: Prepare isolated Python and importer dependencies
         working-directory: ${{ runner.temp }}
-        if: ${{ !inputs.ip_check_only }}
+        if: ${{ !inputs.ip_check_only && !inputs.connectivity_check_only }}
         run: |
           $ErrorActionPreference = 'Stop'
           if (-not $env:LOCALAPPDATA) { throw 'LOCALAPPDATA is required for the Python environment.' }
@@ -106,7 +167,7 @@ jobs:
           Add-Content -LiteralPath $env:GITHUB_PATH -Encoding UTF8 -Value (Join-Path $venv 'Scripts')
       - name: Review official feed (no database credentials)
         working-directory: ${{ runner.temp }}
-        if: ${{ !inputs.ip_check_only }}
+        if: ${{ !inputs.ip_check_only && !inputs.connectivity_check_only }}
         shell: python {0}
         env:
           BOL_FEED_USERNAME: ${{ secrets.BOL_FEED_USERNAME }}
@@ -123,7 +184,7 @@ jobs:
               command.append('--inspect-schema')
           subprocess.run(command, cwd=os.environ['BOL_SOURCE_DIR'], check=True)
       - name: Save review evidence only (not the bulk feed)
-        if: ${{ always() && !inputs.ip_check_only }}
+        if: ${{ always() && !inputs.ip_check_only && !inputs.connectivity_check_only }}
         uses: actions/upload-artifact@v4
         with:
           name: bol-feed-review-${{ github.run_id }}
