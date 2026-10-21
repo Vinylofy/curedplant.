@@ -365,14 +365,22 @@ def download_feed(destination, *, max_bytes=2_000_000_000):
         raise FeedError("missing_feed_credentials")
     size = 0
     destination = Path(destination)
+    stage = "connect"
     try:
         with ftplib.FTP_TLS(context=ssl.create_default_context(), timeout=60) as ftp:
             ftp.connect(FTP_HOST, 21)
+            stage = "tls_auth"
+            ftp.auth()
+            stage = "login"
             ftp.login(user, password)
+            stage = "protect_data"
             ftp.prot_p()
+            stage = "passive_mode"
             ftp.set_pasv(True)
+            stage = "feed_timestamp"
             modified = ftp.sendcmd("MDTM " + FEED_NAME).split()[-1]
             source_at = datetime.strptime(modified, "%Y%m%d%H%M%S").replace(tzinfo=timezone.utc)
+            stage = "download"
             with destination.open("wb") as target:
                 def receive(block):
                     nonlocal size
@@ -381,9 +389,24 @@ def download_feed(destination, *, max_bytes=2_000_000_000):
                         raise FeedError("feed_download_size_limit")
                     target.write(block)
                 ftp.retrbinary("RETR " + FEED_NAME, receive)
-    except Exception:
+            stage = "close"
+    except Exception as exc:
         destination.unlink(missing_ok=True)
-        raise FeedError("feed_download_failed_check_credentials_ip_and_tls") from None
+        if isinstance(exc, FeedError):
+            raise
+        # FTP replies and OS messages may contain account names or paths.
+        # Report only our stage, a fixed category, and a numeric FTP status.
+        reason = ("certificate_verification" if isinstance(exc, ssl.SSLCertVerificationError)
+                  else "tls_error" if isinstance(exc, ssl.SSLError)
+                  else "ftp_rejected" if isinstance(exc, ftplib.error_perm)
+                  else "ftp_temporary_error" if isinstance(exc, ftplib.error_temp)
+                  else "timeout" if isinstance(exc, TimeoutError)
+                  else "network_or_local_io" if isinstance(exc, OSError)
+                  else "invalid_server_reply" if isinstance(exc, ValueError)
+                  else "unexpected_error")
+        status = re.match(r"^([45][0-9]{2})(?:[ -]|$)", str(exc)) if isinstance(exc, ftplib.Error) else None
+        code = f" ftp_status={status[1]}" if status else ""
+        raise FeedError(f"feed_download_failed stage={stage} reason={reason}{code}") from None
     if not size:
         destination.unlink(missing_ok=True)
         raise FeedError("empty_feed_download")

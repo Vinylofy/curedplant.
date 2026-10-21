@@ -100,7 +100,8 @@ jobs:
               uv venv --no-project --seed --managed-python --python 3.12 --link-mode copy $venv
               if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
-          & $python -m pip install 'psycopg[binary]>=3.2,<4' 'python-dotenv>=1,<2' 'lxml>=5,<6'
+          # uv checks the retained environment first; satisfied requirements are a no-op.
+          uv pip install --python $python 'psycopg[binary]>=3.2,<4' 'python-dotenv>=1,<2' 'lxml>=5,<6'
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Add-Content -LiteralPath $env:GITHUB_PATH -Encoding UTF8 -Value (Join-Path $venv 'Scripts')
       - name: Review official feed (no database credentials)
