@@ -906,7 +906,7 @@ def discover_links(
                     },
                     flush=True,
                 )
-                break
+                raise
 
             if response.status_code == 429:
                 print(
@@ -914,7 +914,7 @@ def discover_links(
                     {"route": route.name, "page": page_number, "url": current_url},
                     flush=True,
                 )
-                break
+                response.raise_for_status()
 
             if response.status_code >= 400:
                 print(
@@ -927,15 +927,25 @@ def discover_links(
                     },
                     flush=True,
                 )
+                # Only a missing continuation page is a normal catalogue end.
+                if response.status_code not in {404, 410} or page_number == 1:
+                    response.raise_for_status()
                 break
 
+            # Availability/format filtering must not decide pagination. A page
+            # of unavailable products can precede more eligible vinyl records.
+            soup = BeautifulSoup(response.text, "html.parser")
+            source_ids = {
+                hnum for anchor in soup.find_all("a", href=True)
+                if (hnum := hnum_from_href(anchor.get("href")))
+            }
             links = parse_listing_links(
                 response.text,
                 listing_url=response.url,
                 route=route,
                 page_number=page_number,
             )
-            signature = tuple(sorted(link.source_product_id or "" for link in links))
+            signature = tuple(sorted(source_ids))
             if signature and signature in seen_page_signatures:
                 print(
                     "[JPC-DISCOVER-STOP]",
@@ -963,6 +973,7 @@ def discover_links(
                     "route": route.name,
                     "page": page_number,
                     "status_code": response.status_code,
+                    "source_products": len(source_ids),
                     "page_links": len(links),
                     "new_links_added": new_count,
                     "unique_total": len(all_links_by_hnum),
@@ -971,7 +982,7 @@ def discover_links(
                 flush=True,
             )
 
-            if not links:
+            if not source_ids:
                 break
 
             time.sleep(delay_seconds)

@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -26,8 +27,10 @@ def blocked_log(text):
     for line in text.splitlines():
         if '[JPC-DISCOVER-RATE-LIMIT]' in line:
             return 'JPC HTTP429; all price shards stopped'
-        if '[JPC-DISCOVER-HTTP-SKIP]' in line and any(f"'status_code': {code}" in line for code in (401,403,429)):
-            return 'JPC access denial; all price shards stopped'
+        if '[JPC-DISCOVER-HTTP-SKIP]' in line:
+            status = re.search(r"['\"]status_code['\"]\s*:\s*(\d+)", line)
+            if status and int(status[1]) not in {404, 410}:
+                return 'JPC HTTP error; source collection incomplete'
         if '[JPC-DISCOVER-ERROR]' in line:
             return 'JPC network error; source collection incomplete'
     return None
