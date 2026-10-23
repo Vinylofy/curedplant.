@@ -117,3 +117,32 @@ class PriceTests(unittest.TestCase):
             with self.assertRaisesRegex(FeedError, 'existing_product_required'):
                 bol_feed.publish(plan, 'dsn', {'NL': api.SHOP_ID}, approved=True, existing_only=True)
         insert.assert_not_called()
+
+    def test_observed_multidisc_and_structured_vinyl_labels_are_supported(self):
+        for label in ('LP (2)', '2XLP', '12" Vinyl', 'Vinyl | 1 12Inch Single | 180g Sky Blue Vinyl | Store Exclusive'):
+            with self.subTest(label=label):
+                self.assertTrue(api.is_vinyl_format(label))
+        for label in ('CD', 'Vinyl brush', 'Vinyl | CD', 'Vinyl | Cleaning brush'):
+            with self.subTest(label=label):
+                self.assertFalse(api.is_vinyl_format(label))
+
+    def test_client_reuses_token_and_refreshes_only_near_expiry(self):
+        with patch.object(api, 'authenticate', side_effect=[('first-token', 300), ('second-token', 300)]) as auth, \
+             patch.object(api, 'request_json', return_value=self.offer) as fetch, \
+             patch.object(api.time, 'sleep'):
+            client = api.Client()
+            client.best_offer(self.product['ean'])
+            client.best_offer(self.product['ean'])
+            self.assertEqual(auth.call_count, 1)
+            client.expires_at = 0
+            client.best_offer(self.product['ean'])
+            self.assertEqual(auth.call_count, 2)
+            self.assertEqual(fetch.call_args.args[0].get_header('Authorization'), 'Bearer second-token')
+
+    def test_client_does_not_retry_or_reauthenticate_on_rate_limit(self):
+        with patch.object(api, 'authenticate', return_value=('token', 300)) as auth, \
+             patch.object(api, 'request_json', side_effect=ReviewError('best_offer', 'http_error', 429)) as fetch:
+            with self.assertRaises(ReviewError):
+                api.Client().best_offer(self.product['ean'])
+        self.assertEqual(auth.call_count, 1)
+        self.assertEqual(fetch.call_count, 1)

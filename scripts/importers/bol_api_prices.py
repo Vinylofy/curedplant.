@@ -21,7 +21,20 @@ from scripts.importers.bol_feed import FeedError, amount, affiliate_link, produc
 from scripts.importers.common import strict_normalize_gtin
 
 SHOP_ID = 'f08437c2-1d85-47a6-94f9-33a55612d5cc'
-VINYL_FORMATS = ('vinyl', 'lp', '2lp', '3lp', '4lp', '7 inch', '10 inch', '12 inch', '7"', '10"', '12"')
+VINYL_FORMATS = ('vinyl', 'lp', '7 inch', '10 inch', '12 inch', '7"', '10"', '12"',
+                 '7" vinyl', '10" vinyl', '12" vinyl') + tuple(
+    label for count in range(1, 21) for label in (f'{count}lp', f'{count}xlp', f'lp ({count})'))
+VINYL_SQL = "(lower(trim(format_label))=any(%s) or lower(trim(format_label)) like 'vinyl |%%')"
+
+
+def is_vinyl_format(value):
+    text = str(value or '').strip().lower()
+    if text in VINYL_FORMATS:
+        return True
+    if re.search(r'\b(cd|dvd|blu-ray|cassette|digital|download)\b', text):
+        return False
+    return text.startswith('vinyl |') and bool(re.search(r'\b(lp|(7|10|12)\s*inch)\b', text))
+
 STATE_PATH = Path('state/bol-api/nl.json')
 
 
@@ -61,7 +74,7 @@ def verified_ean(product):
     registered = product.get('gtin_normalized')
     if registered and registered != gtin:
         raise FeedError('existing_barcode_conflict')
-    if str(product.get('format_label') or '').strip().lower() not in VINYL_FORMATS:
+    if not is_vinyl_format(product.get('format_label')):
         raise FeedError('existing_format_not_vinyl')
     return value, gtin
 
@@ -114,11 +127,11 @@ def load_targets(dsn, limit, cursor=None, sample=False):
     with psycopg.connect(dsn, prepare_threshold=None) as conn, conn.cursor(row_factory=dict_row) as cur:
         cur.execute('set transaction read only')
         cur.execute('''select count(*) as count from public.products
-            where lower(trim(format_label))=any(%s) and ean is not null''', (list(VINYL_FORMATS),))
+            where ''' + VINYL_SQL + ' and ean is not null', (list(VINYL_FORMATS),))
         total = cur.fetchone()['count']
         # Use canonical format evidence; no title-based matching/new products.
         sql = '''select id,ean,gtin_normalized,format_label,title from public.products
-                 where lower(trim(format_label))=any(%s) and ean is not null'''
+                 where ''' + VINYL_SQL + ' and ean is not null'
         values = [list(VINYL_FORMATS)]
         if sample:
             sql += ' and ean=any(%s)'
@@ -134,8 +147,7 @@ def load_targets(dsn, limit, cursor=None, sample=False):
         if not rows and cursor and not sample:
             # Start a new pass only after reaching the end of the stable UUID order.
             cur.execute('''select id,ean,gtin_normalized,format_label,title from public.products
-                where lower(trim(format_label))=any(%s) and ean is not null
-                order by id limit %s''', (list(VINYL_FORMATS), limit))
+                where ''' + VINYL_SQL + ' and ean is not null order by id limit %s', (list(VINYL_FORMATS), limit))
             rows, wrapped = cur.fetchall(), True
     return rows, wrapped, total
 
