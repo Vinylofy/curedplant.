@@ -10,12 +10,12 @@
     "reserved": 100
   },
   "last_result": {
-    "day": "2026-10-22",
+    "day": "2026-10-23",
     "attempted": 100,
     "details_started": 100,
-    "valid_eans": 94,
-    "missing_ean": 1,
-    "unavailable": 5,
+    "valid_eans": 91,
+    "missing_ean": 0,
+    "unavailable": 9,
     "excluded_non_vinyl": 0,
     "technical_errors": 0,
     "status": "green",
