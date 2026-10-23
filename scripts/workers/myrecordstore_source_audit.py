@@ -20,7 +20,10 @@ def main():
         conn.execute('set transaction read only')
         rows = conn.execute('select product_url,last_seen_at from public.prices where shop_id=%s and is_active=true', (SHOP,)).fetchall()
     known_urls = {url_key(row[0]) for row in rows}
-    known_ids = {urlsplit(row[0]).path.rstrip('/').rsplit('/', 1)[-1] for row in rows}
+    known_by_id = {}
+    for row in rows:
+        known_by_id.setdefault(urlsplit(row[0]).path.rstrip('/').rsplit('/', 1)[-1], []).append(row[0])
+    known_ids = set(known_by_id)
     session = requests.Session()
     session.headers.update(source.HEADERS)
     report = {'database_writes': 0, 'registered_active_prices': len(rows), 'sources': []}
@@ -44,6 +47,8 @@ def main():
             'existing_url_matches': sum(url_key(x.source_url) in known_urls for x in links),
             'existing_numeric_id_matches': sum(source.source_product_id_from_url(x.source_url) in known_ids for x in links),
             'availability': {kind: sum(x.availability == kind for x in offers) for kind in ('in_stock', 'unknown', 'out_of_stock')},
+            'changed_path_samples': [{'current_url': x.source_url, 'registered_urls': known_by_id[source.source_product_id_from_url(x.source_url)]}
+                for x in links if source.source_product_id_from_url(x.source_url) in known_ids and url_key(x.source_url) not in known_urls][:5],
             'sample_urls': [x.source_url for x in links[:3]]})
         time.sleep(1)
     text = json.dumps(report).replace('%', '%25').replace('\n', '%0A').replace('\r', '%0D')
