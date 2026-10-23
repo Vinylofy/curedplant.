@@ -146,3 +146,17 @@ class PriceTests(unittest.TestCase):
                 api.Client().best_offer(self.product['ean'])
         self.assertEqual(auth.call_count, 1)
         self.assertEqual(fetch.call_count, 1)
+
+    def test_upc_is_requested_as_equivalent_ean13_not_sent_as_invalid_api_id(self):
+        from scripts.importers.common import strict_normalize_gtin
+        upc = '889397520793'
+        gtin = strict_normalize_gtin(upc)
+        self.assertEqual(api.api_ean(gtin), '0889397520793')
+        self.assertEqual(strict_normalize_gtin(api.api_ean(gtin)), gtin)
+        with self.assertRaises(FeedError):
+            api.api_ean('18893975207930')
+
+    def test_barcode_equivalence_is_preserved_when_response_has_leading_zero(self):
+        product = dict(self.product, ean='889854344115')
+        result = self.normalize(product=product)
+        self.assertEqual(result['gtin'], self.product['gtin_normalized'])

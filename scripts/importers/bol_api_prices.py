@@ -79,6 +79,14 @@ def verified_ean(product):
     return value, gtin
 
 
+def api_ean(gtin):
+    # UPC-A and leading-zero GTIN-14 share the same GS1 identity as EAN-13.
+    # A nonzero packaging indicator cannot be dropped to invent a consumer EAN.
+    if len(gtin) != 14 or not gtin.startswith('0'):
+        raise FeedError('api_requires_consumer_ean13')
+    return gtin[1:]
+
+
 def normalize_offer(product, offer, site_id, captured):
     ean, gtin = verified_ean(product)
     if not isinstance(offer, dict):
@@ -158,6 +166,7 @@ def run(dsn, limit=20, write=False, sample=False, site_id='', progress=STATE_PAT
             'errors': [], 'captured_at': started.isoformat(), 'source': 'bol_marketing_api',
             'complete_feed': False, 'scope': 'existing_vinyl_prices', 'sample': sample,
             'requested': limit, 'checked': 0, 'skipped': {}, 'token_requests': 0}
+    client, skips = None, Counter()
     try:
         if not re.fullmatch(r'\d+', site_id):
             raise FeedError('missing_or_invalid_site_id')
@@ -170,11 +179,11 @@ def run(dsn, limit=20, write=False, sample=False, site_id='', progress=STATE_PAT
         products, wrapped, total = load_targets(dsn, limit, cursor, sample)
         plan['wrapped'] = wrapped
         plan['eligible_catalogue'] = total
-        client, skips = Client(), Counter()
+        client = Client()
         for product in products:
             try:
-                ean, _ = verified_ean(product)
-                response = client.best_offer(ean)
+                ean, gtin = verified_ean(product)
+                response = client.best_offer(api_ean(gtin))
                 plan['checked'] += 1
                 if response is None:
                     skips['no_offer_404'] += 1
@@ -185,7 +194,7 @@ def run(dsn, limit=20, write=False, sample=False, site_id='', progress=STATE_PAT
         plan['skipped'] = dict(skips)
         plan['token_requests'] = client.token_requests
         validation_skips = sum(n for reason, n in skips.items() if reason not in {
-            'no_offer_404', 'condition_not_proven_new', 'invalid_existing_barcode', 'existing_format_not_vinyl'})
+            'no_offer_404', 'condition_not_proven_new', 'invalid_existing_barcode', 'existing_format_not_vinyl', 'api_requires_consumer_ean13'})
         if products and validation_skips / len(products) > .1:
             raise FeedError('widespread_offer_validation_failure')
         # Publication helper enforces market shop/shipping contracts, barcode
@@ -204,11 +213,17 @@ def run(dsn, limit=20, write=False, sample=False, site_id='', progress=STATE_PAT
         plan['status'] = 'success' if products else 'empty_catalogue'
     except ReviewError as exc:
         plan['errors'].append({'stage': exc.stage, 'reason': exc.reason, 'http_status': exc.status})
+        if 'ean' in locals():
+            plan['failed_ean'] = ean
     except FeedError as exc:
         plan['errors'].append({'reason': str(exc)})
     except (psycopg.Error, ValueError, OSError):
         # Do not print raw DSNs, network exceptions or arbitrary state contents.
         plan['errors'].append({'reason': 'database_or_local_validation_failed'})
+    finally:
+        plan['skipped'] = dict(skips)
+        if client is not None:
+            plan['token_requests'] = client.token_requests
     return plan
 
 
@@ -233,7 +248,8 @@ def main():
         print('::notice title=Bol NL price sample::' + json.dumps(sample).replace('%', '%25').replace('\n', '%0A').replace('\r', '%0D'), flush=True)
     if os.environ.get('GITHUB_STEP_SUMMARY'):
         with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as handle:
-            handle.write('### Bol NL prices\n\n```json\n' + json.dumps(result, indent=2, default=str) + '\n```\n')
+            display = dict(summary, offer_samples=result['offers'][:10], offer_count=len(result['offers']))
+            handle.write('### Bol NL prices\n\n```json\n' + json.dumps(display, indent=2, default=str) + '\n```\n')
     return 0 if result['status'] == 'success' else 1
 
 
