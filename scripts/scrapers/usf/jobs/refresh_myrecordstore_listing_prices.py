@@ -5,7 +5,6 @@ import argparse
 import hashlib
 import html as html_lib
 import json
-import os
 from pathlib import Path
 import re
 import time

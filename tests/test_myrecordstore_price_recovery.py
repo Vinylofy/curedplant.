@@ -1,6 +1,7 @@
 import contextlib
 import io
 import json
+import os
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -96,6 +97,30 @@ class MyRecordStoreRecoveryTests(unittest.TestCase):
                 self.assertEqual(session.return_value.get.call_args.args[0],
                     'https://myrecordstore.nl/item/search?q=0810020501780&type=LP')
                 self.assertEqual(parser.call_args.kwargs['wanted_ids'], {'8518501'})
+
+    def test_full_worker_exports_known_offers_without_passing_db_credentials(self):
+        from scripts.workers import run_catalog_price as worker
+        from scripts.workers.price_evidence import capture
+        target = {'source_url': 'https://myrecordstore.nl/item/rock/lp/artist/album/8518501',
+                  'source_product_id': '8518501', 'ean': '0810020501780'}
+        with tempfile.TemporaryDirectory() as directory, \
+             patch.object(worker, 'Path', side_effect=lambda path: Path(directory) / path), \
+             patch('scripts.workers.myrecordstore_targets.registered_offers', return_value=[target]), \
+             patch('scripts.workers.price_database.update_existing') as writer, \
+             patch.dict(os.environ, {'DATABASE_URL': 'must-stay-in-parent'}), \
+             patch('sys.argv', ['worker', '--worker', 'myrecordstore', '--limit', '0']), \
+             contextlib.redirect_stdout(io.StringIO()):
+            def collect(command, **kwargs):
+                self.assertEqual(kwargs['env']['DATABASE_URL'], '')
+                self.assertNotIn('--write', command)
+                path = command[command.index('--existing-offers-file') + 1]
+                self.assertEqual(json.loads(Path(path).read_text()), [target])
+                with patch.dict(os.environ, kwargs['env']):
+                    capture({'source_url': target['source_url'], 'price': '24.99'})
+                return Mock(returncode=0)
+            with patch.object(worker.subprocess, 'run', side_effect=collect):
+                self.assertEqual(worker.main(), 0)
+            writer.assert_not_called()
 
     def test_failed_page_aborts_before_any_native_write(self):
         response = Mock()
