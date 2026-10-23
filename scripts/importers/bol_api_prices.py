@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+from decimal import Decimal
 from collections import Counter
 from datetime import datetime, timezone
 import json
@@ -87,7 +88,33 @@ def api_ean(gtin):
     return gtin[1:]
 
 
-def normalize_offer(product, offer, site_id, captured):
+def load_shipping_policy(dsn):
+    with psycopg.connect(dsn, prepare_threshold=None) as conn, conn.cursor(row_factory=dict_row) as cur:
+        cur.execute('set transaction read only')
+        cur.execute("""select country_code,currency,shipping_cost_cents,
+            free_shipping_threshold_cents,shipping_logic,rules_version
+            from public.shop_shipping_rules
+            where shop_id=%s and country_code='NL' and active=true""", (SHOP_ID,))
+        rows = cur.fetchall()
+    if len(rows) > 1:
+        raise FeedError('ambiguous_shipping_policy')
+    return rows[0] if rows else None
+
+
+def configured_shipping(price, policy):
+    if policy is None:
+        return None
+    if policy.get('country_code') != 'NL' or policy.get('currency') != 'EUR' or policy.get('shipping_logic') != 'threshold':
+        raise FeedError('unsupported_shipping_policy')
+    fee, threshold = policy.get('shipping_cost_cents'), policy.get('free_shipping_threshold_cents')
+    if type(fee) is not int or fee < 0 or (threshold is not None and (type(threshold) is not int or threshold < 0)):
+        raise FeedError('invalid_shipping_policy')
+    cents = int(Decimal(price) * 100)
+    applied = 0 if threshold is not None and cents >= threshold else fee
+    return format(Decimal(applied) / 100, '.2f')
+
+
+def normalize_offer(product, offer, site_id, captured, shipping_policy=None):
     ean, gtin = verified_ean(product)
     if not isinstance(offer, dict):
         raise FeedError('invalid_offer_schema')
@@ -117,13 +144,16 @@ def normalize_offer(product, offer, site_id, captured):
     availability = 'preorder' if offer['isPreOrder'] else 'unknown'
     if not offer['isPreOrder'] and delivery.casefold().startswith('op voorraad.'):
         availability = 'in_stock'
+    shipping = configured_shipping(price, shipping_policy)
     return {'ean': ean, 'gtin': gtin, 'product_id': product_id,
             'title': str(product.get('title') or 'Vinyl ' + ean), 'country': 'NL',
             'price': price, 'currency': 'EUR', 'condition': 'NEW',
             'availability': availability, 'delivery_description': delivery,
             'min_delivery_date': offer.get('minDeliveryDate'),
             'max_delivery_date': offer.get('maxDeliveryDate'),
-            'seller': 'unknown', 'shipping': None, 'shipping_status': 'unknown',
+            'seller': 'unknown', 'shipping': shipping,
+            'shipping_status': 'configured_shop_rule' if shipping is not None else 'unknown',
+            'shipping_rule_version': shipping_policy.get('rules_version') if shipping_policy else None,
             'product_url': affiliate_link(canonical, 'NL', site_id),
             'canonical_url': canonical, 'captured_at': captured.isoformat(),
             'source': 'bol_marketing_api_best_offer'}
@@ -176,6 +206,7 @@ def run(dsn, limit=20, write=False, sample=False, site_id='', progress=STATE_PAT
             cursor = state.get('cursor')
             if state.get('country') != 'NL':
                 raise FeedError('wrong_progress_market')
+        shipping_policy = load_shipping_policy(dsn)
         products, wrapped, total = load_targets(dsn, limit, cursor, sample)
         plan['wrapped'] = wrapped
         plan['eligible_catalogue'] = total
@@ -188,7 +219,7 @@ def run(dsn, limit=20, write=False, sample=False, site_id='', progress=STATE_PAT
                 if response is None:
                     skips['no_offer_404'] += 1
                     continue
-                plan['offers'].append(normalize_offer(product, response, site_id, started))
+                plan['offers'].append(normalize_offer(product, response, site_id, started, shipping_policy))
             except FeedError as exc:
                 skips[str(exc)] += 1
         plan['skipped'] = dict(skips)
@@ -244,7 +275,7 @@ def main():
     message = json.dumps(summary, default=str).replace('%', '%25').replace('\n', '%0A').replace('\r', '%0D')
     print('::notice title=Bol NL price result::' + message, flush=True)
     for offer in result['offers'][:10]:
-        sample = {k: offer[k] for k in ('ean', 'title', 'country', 'price', 'currency', 'condition', 'availability', 'canonical_url')}
+        sample = {k: offer[k] for k in ('ean', 'title', 'country', 'price', 'currency', 'condition', 'availability', 'canonical_url', 'shipping', 'shipping_status')}
         print('::notice title=Bol NL price sample::' + json.dumps(sample).replace('%', '%25').replace('\n', '%0A').replace('\r', '%0D'), flush=True)
     if os.environ.get('GITHUB_STEP_SUMMARY'):
         with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as handle:

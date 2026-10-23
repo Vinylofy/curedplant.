@@ -14,7 +14,11 @@ delivery metadata. Import **best-offer** data, not an assumed NEW embedded offer
 - Response EAN must match canonical GTIN; country must explicitly be NL and
   condition must be `NEW`. Missing/used conditions are excluded.
 - `price` is the article price in EUR. `listPrice` and shipping are never used
-  as article price. No verified shipping/seller fields: both remain unknown.
+  as article price. The API does not supply verified shipping/seller fields. Seller remains unknown.
+  Shipping follows the configured active NL `shop_shipping_rules` row: €2.99
+  below €25, free from €25, as instructed by the owner on 23 October 2026.
+  Raw evidence labels this `configured_shop_rule`, not an API-observed fee.
+  The website uses the same rule table; fees never alter the article price.
 - Preorder is explicit. `Op voorraad.` delivery text means in stock; longer
   delivery text stays unknown rather than claiming physical stock.
 - Links must resolve to a canonical NL Bol product path, then use `BOL_SITE_ID`

@@ -13,6 +13,9 @@ from scripts.importers.bol_api_review import ReviewError
 
 class PriceTests(unittest.TestCase):
     def setUp(self):
+        policy = patch.object(api, 'load_shipping_policy', return_value=None)
+        policy.start()
+        self.addCleanup(policy.stop)
         self.product = {'id': '00000000-0000-0000-0000-000000000001', 'ean': '0889854344115',
             'gtin_normalized': '00889854344115', 'format_label': 'LP', 'title': 'Canonical title'}
         self.offer = {'ean': '0889854344115', 'countryCode': 'NL', 'condition': 'NEW',
@@ -160,3 +163,15 @@ class PriceTests(unittest.TestCase):
         product = dict(self.product, ean='889854344115')
         result = self.normalize(product=product)
         self.assertEqual(result['gtin'], self.product['gtin_normalized'])
+
+    def test_configured_shipping_is_separate_from_article_price_at_threshold(self):
+        policy = {'country_code': 'NL', 'currency': 'EUR', 'shipping_logic': 'threshold',
+                  'shipping_cost_cents': 299, 'free_shipping_threshold_cents': 2500, 'rules_version': 1}
+        for price, shipping in [('24.43', '2.99'), ('24.99', '2.99'), ('25.00', '0.00'), ('25.01', '0.00')]:
+            with self.subTest(price=price):
+                result = api.normalize_offer(self.product, dict(self.offer, price=price), '123', self.now, policy)
+                self.assertEqual(result['price'], price)
+                self.assertEqual(result['shipping'], shipping)
+                self.assertEqual(result['shipping_status'], 'configured_shop_rule')
+        with self.assertRaises(FeedError):
+            api.configured_shipping('24.43', dict(policy, country_code='BE'))
