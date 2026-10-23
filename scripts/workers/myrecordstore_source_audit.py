@@ -7,6 +7,8 @@ import sys
 import tempfile
 
 import psycopg
+import requests
+from bs4 import BeautifulSoup
 
 from scripts.workers.price_evidence import assess, url_key
 
@@ -42,6 +44,17 @@ def main():
         'errors': assessment['errors'],
         'samples': [{'url': row['source_url'], 'price': row['price']} for row in prices[:3]],
     }
+    response = requests.get('https://myrecordstore.nl/item/search?tags=Voorraad&type=LP', timeout=45)
+    response.raise_for_status()
+    soup = BeautifulSoup(response.text, 'html.parser')
+    controls = [str(x)[:1500] for x in soup.select('input,button') if any(w in str(x).lower() for w in ('search', 'zoek', 'zoeken'))][:5]
+    scripts = []
+    for script in soup.select('script'):
+        content = script.get_text()
+        index = content.find('/item/search')
+        if index >= 0:
+            scripts.append(content[max(0,index-300):index+800])
+    print('::notice title=Public search controls::' + json.dumps({'controls': controls, 'scripts': scripts[:2]}).replace('%','%25'))
     text = json.dumps(report).replace('%', '%25').replace('\n', '%0A').replace('\r', '%0D')
     print('::notice title=My Record Store catalogue coverage audit::' + text)
     return 0 if report['status'] == 'green' else 1
