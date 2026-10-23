@@ -93,6 +93,11 @@ def main() -> int:
                    PGOPTIONS="-c default_transaction_read_only=on")
         # Native collection never receives a DB credential or a write flag.
         command = command_for(args.worker, args.limit, args.source_version, write=True)
+        if args.worker == "myrecordstore" and args.limit == 0:
+            from scripts.workers.myrecordstore_targets import registered_offers
+            targets = directory / "existing-offers.json"
+            targets.write_text(json.dumps(registered_offers()))
+            command += ["--existing-offers-file", str(targets.resolve())]
         print("[CUREDPLANT] native listing (database write=false):", " ".join(command), flush=True)
         source_returncode = subprocess.run(command, check=False, env=env).returncode
         records = [json.loads(line) for line in evidence.read_text().splitlines() if line.strip()]

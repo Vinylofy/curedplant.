@@ -6,6 +6,7 @@ import hashlib
 import html as html_lib
 import json
 import os
+from pathlib import Path
 import re
 import time
 from datetime import datetime, timezone
@@ -165,7 +166,7 @@ def extract_listing_card_prices(anchor) -> list[str]:
 
     return []
 
-def parse_listing_page(html: str, *, listing_url: str, page: int, seen_at: datetime):
+def parse_listing_page(html: str, *, listing_url: str, page: int, seen_at: datetime, wanted_ids: set[str] | None = None):
     soup = BeautifulSoup(html, "html.parser")
     links: dict[str, DiscoveredLink] = {}
     offers: dict[str, ListingOffer] = {}
@@ -212,6 +213,8 @@ def parse_listing_page(html: str, *, listing_url: str, page: int, seen_at: datet
     for a in title_links:
         source_url = normalize_url(a.get("href") or "")
         if not re.fullmatch(r"/item/[^/]+/lp/(?:[^/]+/)+(\d+)", urlsplit(source_url).path.rstrip("/"), re.I):
+            continue
+        if wanted_ids is not None and source_product_id_from_url(source_url) not in wanted_ids:
             continue
         if source_url in links:
             continue
@@ -358,11 +361,27 @@ def deactivate_missing_links(run_started_at: datetime, *, write: bool) -> dict[s
 
     return {"links_deactivated": links_count, "prices_deactivated": prices_count}
 
+def fetch_listing(session, url):
+    """Retry transient failures on the same page; never skip a failed page."""
+    for attempt in range(3):
+        try:
+            response = session.get(url, timeout=45)
+            response.raise_for_status()
+            return response
+        except requests.RequestException as exc:
+            status = getattr(getattr(exc, "response", None), "status_code", None)
+            if attempt == 2 or (status is not None and status != 429 and status < 500):
+                raise
+            time.sleep(2 ** (attempt + 1))
+    raise RuntimeError("Unreachable listing retry state")
+
+
 def build_parser():
     p = argparse.ArgumentParser(description="Refresh My Record Store listing-first prices.")
     p.add_argument("--start-page", type=int, default=1)
     p.add_argument("--max-pages", type=int, default=5, help="0 = doorlopen tot stopconditie")
     p.add_argument("--sleep", type=float, default=1.0)
+    p.add_argument("--existing-offers-file", help="Read-only export of existing vinyl identities for listing search fallback")
     p.add_argument("--write", action="store_true")
     p.add_argument("--fast-price-sync", action="store_true")
     p.add_argument("--sync-existing-offers", action="store_true")
@@ -392,8 +411,7 @@ def main() -> int:
         while args.max_pages == 0 or pages_done < args.max_pages:
             url = page_url(page, seed)
             print("[MYRECORDSTORE-LISTING] page", {"page": page, "url": url}, flush=True)
-            response = session.get(url, timeout=45)
-            response.raise_for_status()
+            response = fetch_listing(session, url)
             last_page = advertised_last_page(response.text, url)
             if args.max_pages == 0 and last_page > MAX_CATALOGUE_PAGES:
                 raise RuntimeError(f"My Record Store scope exceeds safe page budget: {last_page}")
@@ -417,6 +435,39 @@ def main() -> int:
             time.sleep(args.sleep)
         if args.max_pages and pages_done >= args.max_pages:
             break
+
+    # Keep the normal price pass listing-first. Older known offers that no
+    # longer occur in either scope get a narrowly targeted listing search,
+    # matched only by their existing stable shop ID; never by a fuzzy title.
+    if args.existing_offers_file:
+        from scripts.workers.price_evidence import url_key
+        from scripts.importers.common import strict_normalize_gtin
+        targets = json.loads(Path(args.existing_offers_file).read_text())
+        if not isinstance(targets, list) or len(targets) > 2000:
+            raise ValueError("My Record Store existing-offer budget exceeded (maximum 2000)")
+        known = {url_key(url) for url in all_links}
+        stats = {"searched": 0, "found": 0, "not_found": 0}
+        for target in targets:
+            key = url_key(target['source_url'])
+            article = str(target['source_product_id'])
+            if key in known:
+                continue
+            if (key != 'myrecordstore.nl/item/lp/' + article or not article.isdigit()
+                    or not strict_normalize_gtin(target['ean'])):
+                raise ValueError("Invalid existing My Record Store vinyl identity")
+            url = BASE_URL + '/item/search?' + urlencode({'q': target['ean'], 'type': 'LP'})
+            response = fetch_listing(session, url)
+            links, offers = parse_listing_page(response.text, listing_url=url, page=1,
+                seen_at=seen_at, wanted_ids={article})
+            stats['searched'] += 1
+            stats['found' if links else 'not_found'] += 1
+            for link in links:
+                all_links[link.source_url] = link
+                known.add(url_key(link.source_url))
+            for offer in offers:
+                all_offers[offer.source_url] = offer
+            time.sleep(max(args.sleep, 1.0))
+        print('::notice title=My Record Store existing offer searches::' + json.dumps(stats), flush=True)
 
     print("[MYRECORDSTORE-LISTING] collected", {"links": len(all_links), "offers": len(all_offers), "write": args.write}, flush=True)
 

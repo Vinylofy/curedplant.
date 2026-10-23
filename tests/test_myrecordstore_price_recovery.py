@@ -1,5 +1,9 @@
 import contextlib
 import io
+import json
+import tempfile
+from datetime import datetime, timezone
+from pathlib import Path
 import unittest
 from unittest.mock import Mock, patch
 
@@ -64,11 +68,41 @@ class MyRecordStoreRecoveryTests(unittest.TestCase):
                 with self.assertRaises(RuntimeError):
                     source.main()
 
+    def test_target_search_only_accepts_registered_article_not_neighbor(self):
+        html = '<main>' + ''.join(
+            '<div><p>Artist - <a href="/item/rock/lp/artist/album/' + article + '">Album</a></p>'
+            '<p class="bg-(--secondary)">24,99</p><p>Op voorraad</p></div>'
+            for article in ('8518501', '6359001')) + '</main>'
+        links, offers = source.parse_listing_page(html, listing_url=source.STOCK_URL,
+            page=1, seen_at=datetime.now(timezone.utc), wanted_ids={'8518501'})
+        self.assertEqual([x.source_product_id for x in links], ['8518501'])
+        self.assertEqual([x.price for x in offers], ['24.99'])
+
+    def test_existing_offer_fallback_uses_barcode_and_exact_shop_id(self):
+        listed = Mock(source_url='https://myrecordstore.nl/item/rock/lp/artist/album/123')
+        recovered = Mock(source_url='https://myrecordstore.nl/item/rock-alternative/lp/artist/album/8518501')
+        target = {'source_url': 'https://myrecordstore.nl/item/rock/lp/artist/album/8518501',
+                  'source_product_id': '8518501', 'ean': '0810020501780'}
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'known.json'
+            path.write_text(json.dumps([target]))
+            with patch.object(source.requests, 'Session') as session, \
+                 patch.object(source.time, 'sleep'), \
+                 patch.object(source, 'parse_listing_page', side_effect=[([listed], []), ([listed], []), ([recovered], [])]) as parser, \
+                 patch.object(source, 'advertised_last_page', return_value=1), \
+                 patch('sys.argv', ['worker', '--max-pages', '0', '--existing-offers-file', str(path)]), \
+                 contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(source.main(), 0)
+                self.assertEqual(session.return_value.get.call_args.args[0],
+                    'https://myrecordstore.nl/item/search?q=0810020501780&type=LP')
+                self.assertEqual(parser.call_args.kwargs['wanted_ids'], {'8518501'})
+
     def test_failed_page_aborts_before_any_native_write(self):
         response = Mock()
         response.raise_for_status.side_effect = requests.HTTPError('429 blocked')
         with patch.object(source.requests, 'Session') as session, \
              patch.object(source, 'upsert_discovered_links') as write, \
+             patch.object(source.time, 'sleep'), \
              patch('sys.argv', ['worker', '--max-pages', '1', '--write']), \
              contextlib.redirect_stdout(io.StringIO()):
             session.return_value.get.return_value = response
