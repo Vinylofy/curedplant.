@@ -1,5 +1,5 @@
 name: "Curedplant | Affiliate | bol | API review"
-run-name: "bol | Marketing API | 3 EANs | NL + BE | no database writes"
+run-name: "bol | Marketing API | 10 EANs | NL + BE | no database writes"
 on:
   workflow_dispatch:
 permissions:
@@ -18,7 +18,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
-      - name: Review authentication and six catalogue responses without database credentials
+      - name: Review authentication and twenty catalogue responses without database credentials
         env:
           BOL_API_CLIENT_ID: ${{ secrets.BOL_API_CLIENT_ID }}
           BOL_API_CLIENT_SECRET: ${{ secrets.BOL_API_CLIENT_SECRET }}

@@ -15,7 +15,9 @@ import urllib.request
 TOKEN_URL = 'https://login.bol.com/token'
 CATALOG_URL = 'https://api.bol.com/marketing/catalog/v1/products/'
 # Existing vinyl EANs; these are probes, not an assertion of Bol availability.
-EANS = ('0886922480287', '4018939545352', '3596974182769')
+EANS = ('0886922480287', '4018939545352', '3596974182769', '0889854344115',
+        '0602567549499', '0885513028716', '0602475625551', '0888072785700',
+        '0194111030220', '4251896109247')
 
 
 class ReviewError(Exception):
@@ -94,6 +96,9 @@ def review(client_id, client_secret):
                 try:
                     data = request_json(request, stage)
                     item.update(http_status=200, schema=schema_paths(data))
+                    item['public_sample'] = {k: data[k] for k in (
+                        'ean', 'id', 'title', 'offer', 'offers', 'url', 'productUrl',
+                        'bolProductId', 'attributes', 'media', 'specifications') if k in data}
                     if not isinstance(data, dict) or not data:
                         raise ReviewError(stage, 'unexpected_product_schema')
                 except ReviewError as exc:
@@ -115,7 +120,12 @@ def main():
     output.write_text(json.dumps(result, indent=2) + '\n')
     # Schema details stay in the artifact; bounded safe counts are API-readable annotations.
     concise = {k: v for k, v in result.items() if k != 'products'}
-    concise['products'] = [{k: v for k, v in p.items() if k != 'schema'} for p in result['products']]
+    concise['products'] = [{k: v for k, v in p.items() if k not in {'schema', 'public_sample'}} for p in result['products']]
+    for product in result['products']:
+        if product.get('http_status') == 200:
+            sample = json.dumps(product)
+            if len(sample) < 25000:
+                print('::notice title=Bol public product sample::' + sample.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A'), flush=True)
     message = json.dumps(concise).replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
     print('::notice title=Bol API review::' + message, flush=True)
     if os.environ.get('GITHUB_STEP_SUMMARY'):

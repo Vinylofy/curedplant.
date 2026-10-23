@@ -5,6 +5,11 @@ from scripts.importers import bol_api_review as api
 
 
 class ApiReviewTests(unittest.TestCase):
+    def setUp(self):
+        probes = patch.object(api, 'EANS', api.EANS[:3])
+        probes.start()
+        self.addCleanup(probes.stop)
+
     def test_one_token_reused_for_six_requests_and_response_values_not_exported(self):
         requests = []
         def fetch(request, stage):
