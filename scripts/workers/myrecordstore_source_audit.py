@@ -1,6 +1,8 @@
 """Read-only coverage check of the production My Record Store price collector."""
 import json
 import os
+import re
+from urllib.parse import urljoin, urlsplit
 from pathlib import Path
 import subprocess
 import sys
@@ -54,7 +56,16 @@ def main():
         index = content.find('/item/search')
         if index >= 0:
             scripts.append(content[max(0,index-300):index+800])
-    print('::notice title=Public search controls::' + json.dumps({'controls': controls, 'scripts': scripts[:2]}).replace('%','%25'))
+    for tag in soup.select('script[src]')[:15]:
+        asset = urljoin(response.url, tag['src'])
+        if urlsplit(asset).netloc != 'myrecordstore.nl':
+            continue
+        javascript = requests.get(asset, timeout=20)
+        javascript.raise_for_status()
+        for match in re.finditer(r'.{0,100}/item/search.{0,250}', javascript.text):
+            scripts.append(match.group(0))
+    scripts = scripts[:6]
+    print('::notice title=Public search controls::' + json.dumps({'controls': controls, 'scripts': scripts}).replace('%','%25'))
     text = json.dumps(report).replace('%', '%25').replace('\n', '%0A').replace('\r', '%0D')
     print('::notice title=My Record Store catalogue coverage audit::' + text)
     return 0 if report['status'] == 'green' else 1
