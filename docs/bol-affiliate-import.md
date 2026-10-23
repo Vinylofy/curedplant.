@@ -47,7 +47,7 @@ source's canonical titles/covers. The importer never publishes a bol cover.
 | Refresh | Overview says every two hours, available at 01:30, 05:30, 07:30, …, 23:30; 03:30 skipped. No timezone is specified there: confirm before scheduling. A daily import cannot promise the same freshness as a two-hour feed. |
 | Content | [Terms](https://affiliate.bol.com/nl/algemene-voorwaarden/): article 3.4 explicitly requires `Copyright Muze UK Ltd` or `© Muze UK Ltd` near music content; 3.6 requires keeping displayed price/availability current; 3.9 limits links to registered channels. API terms allow local content storage and require removal on request/termination. No specific universal 24-hour cache limit was established in these pages. |
 | Application scope | Terms mention exclusions including spider/stock-alert sites. Having credentials does not prove approval of Vinylofy's particular registered channel. Confirm the actual approved channel/use; this is not a finding that this comparison website is prohibited. |
-| Marketing API | [Catalog overview](https://api.bol.com/marketing/docs/catalog-api/index.html) is the affiliate API, distinct from Retailer API. No API calls, API keys or speculative enrichment are added: no necessary missing field has yet been demonstrated in the real feed. |
+| Marketing API | [Catalog overview](https://api.bol.com/marketing/docs/catalog-api/index.html) is the affiliate API, distinct from Retailer API. The separate manual `bol-api-review.yml` workflow tests Marketing API authentication and inspects three existing vinyl EANs for NL/BE while FTPS is unreachable. It does not import products, prices or images. |
 
 ## Selection and data rules
 
@@ -218,3 +218,22 @@ It creates 20 explicitly fictitious products with 40 NL/BE offers. This proves
 the processing flow, **not** live feed contents, real matching counts,
 production write compatibility or affiliate account attribution. Real feed
 and database match counts remain unknown until secure access is configured.
+
+## Marketing API connectivity review
+
+Add repository Actions secrets `BOL_API_CLIENT_ID` and `BOL_API_CLIENT_SECRET`
+from affiliate Account → Open API → Marketing API. These are separate from
+productfeed credentials. Dispatch `.github/workflows/bol-api-review.yml`.
+It runs on Linux, receives no database credentials, requests one OAuth token
+from `https://login.bol.com/token`, then checks three known vinyl EANs against
+`https://api.bol.com/marketing/catalog/v1/products/{ean}` for NL and BE.
+The fixed probes may be absent from Bol; HTTP 404 is recorded, not imported.
+At most six catalogue calls are made, one second apart. Authentication errors,
+rate limits and other HTTP errors stop the review without retrying the token.
+Redirects are rejected to protect authorization headers.
+
+The output includes only status, EAN/country and response field paths/types.
+Tokens, raw response values and credentials are neither printed nor uploaded.
+The API field mapping, condition/new-vinyl gates and publication are **not**
+implemented or approved by a successful connectivity test. Inspect the live
+schema and official API contract before building an importer.

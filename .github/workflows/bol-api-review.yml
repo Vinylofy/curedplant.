@@ -1,0 +1,33 @@
+name: "Curedplant | Affiliate | bol | API review"
+run-name: "bol | Marketing API | 3 EANs | NL + BE | no database writes"
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: bol-api-review
+  cancel-in-progress: false
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Review authentication and six catalogue responses without database credentials
+        env:
+          BOL_API_CLIENT_ID: ${{ secrets.BOL_API_CLIENT_ID }}
+          BOL_API_CLIENT_SECRET: ${{ secrets.BOL_API_CLIENT_SECRET }}
+        run: python -m scripts.importers.bol_api_review
+      - name: Save safe schema evidence only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bol-api-review-${{ github.run_id }}
+          path: output/bol-api/review.json
+          retention-days: 1
+          if-no-files-found: ignore
