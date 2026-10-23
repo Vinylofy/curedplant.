@@ -27,8 +27,8 @@ def main():
     session = requests.Session()
     session.headers.update(source.HEADERS)
     report = {'database_writes': 0, 'registered_active_prices': len(rows), 'sources': []}
-    for scope in ('nieuw', 'op-voorraad'):
-        url = f'https://myrecordstore.nl/item/{scope}?type=LP'
+    for scope in ('search?tags=Voorraad&type=LP',):
+        url = f'https://myrecordstore.nl/item/{scope}'
         response = session.get(url, timeout=45)
         response.raise_for_status()
         links, offers = source.parse_listing_page(response.text, listing_url=response.url, page=1,
@@ -37,7 +37,7 @@ def main():
         pages = []
         for a in soup.select('a[href]'):
             parsed = urlsplit(source.normalize_url(a.get('href')))
-            if parsed.path != f'/item/{scope}':
+            if parsed.path != '/item/' + scope.split('?')[0]:
                 continue
             page = parse_qs(parsed.query).get('page', [''])[0]
             if page.isdigit():
