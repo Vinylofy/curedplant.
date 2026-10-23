@@ -18,7 +18,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
-      - name: Review authentication and twenty catalogue responses without database credentials
+      - name: Review authentication and bounded public offers without database credentials
         env:
           BOL_INSPECT_BEST_OFFER: 'true'
           BOL_API_CLIENT_ID: ${{ secrets.BOL_API_CLIENT_ID }}

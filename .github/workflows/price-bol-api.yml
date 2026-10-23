@@ -1,6 +1,8 @@
 name: "Curedplant | Price | Bol NL API"
-run-name: "Bol NL | API prices | write=${{ inputs.write }} | sample=${{ inputs.sample }} | limit=${{ inputs.limit }}"
+run-name: "Bol NL | API prices | ${{ github.event_name == 'schedule' && 'scheduled write | limit=1000' || format('write={0} | sample={1} | limit={2}', inputs.write, inputs.sample, inputs.limit) }}"
 on:
+  schedule:
+    - cron: "7,37 * * * *"
   workflow_dispatch:
     inputs:
       limit:
@@ -28,7 +30,7 @@ jobs:
     steps:
       - name: Require main for price writes
         env:
-          WRITE: ${{ inputs.write }}
+          WRITE: ${{ github.event_name == 'schedule' || inputs.write }}
           BRANCH: ${{ github.ref }}
         run: |
           if [ "$WRITE" = true ] && [ "$BRANCH" != refs/heads/main ]; then
@@ -49,16 +51,16 @@ jobs:
           BOL_API_CLIENT_ID: ${{ secrets.BOL_API_CLIENT_ID }}
           BOL_API_CLIENT_SECRET: ${{ secrets.BOL_API_CLIENT_SECRET }}
           BOL_SITE_ID: ${{ vars.BOL_SITE_ID }}
-          BOL_PRICE_LIMIT: ${{ inputs.limit }}
-          BOL_PRICE_WRITE: ${{ inputs.write }}
-          BOL_PRICE_SAMPLE: ${{ inputs.sample }}
+          BOL_PRICE_LIMIT: ${{ github.event_name == 'schedule' && '1000' || inputs.limit }}
+          BOL_PRICE_WRITE: ${{ github.event_name == 'schedule' || inputs.write }}
+          BOL_PRICE_SAMPLE: ${{ github.event_name != 'schedule' && inputs.sample }}
         run: |
           args=(--limit "$BOL_PRICE_LIMIT")
           if [ "$BOL_PRICE_WRITE" = true ]; then args+=(--write); fi
           if [ "$BOL_PRICE_SAMPLE" = true ]; then args+=(--sample); fi
           python -u -m scripts.importers.bol_api_prices "${args[@]}"
       - name: Persist successful catalogue cursor
-        if: success() && inputs.write && !inputs.sample
+        if: success() && (github.event_name == 'schedule' || inputs.write) && (github.event_name == 'schedule' || !inputs.sample)
         uses: actions/github-script@v8
         with:
           script: |

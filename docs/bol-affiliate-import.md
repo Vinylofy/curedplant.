@@ -1,7 +1,8 @@
 # bol Affiliate feed import — implementation and approval checklist
 
-Status: implemented and locally tested; **not live**. No production writes,
-shop registrations, website changes or schedules have been performed. This
+FTPS feed status: implemented and locally tested; **not live**. The separate
+[Marketing API price updater](bol-marketing-api.md) is live for existing NL vinyl
+products, with verified writes and a bounded schedule. No BE shop was created. This
 document is the central status for this import. The current repository is
 `Vinylofy/curedplant.`; `Vinylofy/Vinylofy` was inspected read-only for the
 database and website contracts.
@@ -47,7 +48,7 @@ source's canonical titles/covers. The importer never publishes a bol cover.
 | Refresh | Overview says every two hours, available at 01:30, 05:30, 07:30, …, 23:30; 03:30 skipped. No timezone is specified there: confirm before scheduling. A daily import cannot promise the same freshness as a two-hour feed. |
 | Content | [Terms](https://affiliate.bol.com/nl/algemene-voorwaarden/): article 3.4 explicitly requires `Copyright Muze UK Ltd` or `© Muze UK Ltd` near music content; 3.6 requires keeping displayed price/availability current; 3.9 limits links to registered channels. API terms allow local content storage and require removal on request/termination. No specific universal 24-hour cache limit was established in these pages. |
 | Application scope | Terms mention exclusions including spider/stock-alert sites. Having credentials does not prove approval of Vinylofy's particular registered channel. Confirm the actual approved channel/use; this is not a finding that this comparison website is prohibited. |
-| Marketing API | [Catalog overview](https://api.bol.com/marketing/docs/catalog-api/index.html) is the affiliate API, distinct from Retailer API. The separate manual `bol-api-review.yml` workflow tests Marketing API authentication and inspects three existing vinyl EANs for NL/BE while FTPS is unreachable. It does not import products, prices or images. |
+| Marketing API | [Catalog overview](https://api.bol.com/marketing/docs/catalog-api/index.html) is the affiliate API, distinct from Retailer API. The separate manual `bol-api-review.yml` workflow tests Marketing API authentication and inspects ten existing vinyl EANs for NL/BE while FTPS is unreachable. It does not import products, prices or images. |
 
 ## Selection and data rules
 
@@ -221,19 +222,11 @@ and database match counts remain unknown until secure access is configured.
 
 ## Marketing API connectivity review
 
-Add repository Actions secrets `BOL_API_CLIENT_ID` and `BOL_API_CLIENT_SECRET`
-from affiliate Account → Open API → Marketing API. These are separate from
-productfeed credentials. Dispatch `.github/workflows/bol-api-review.yml`.
-It runs on Linux, receives no database credentials, requests one OAuth token
-from `https://login.bol.com/token`, then checks three known vinyl EANs against
-`https://api.bol.com/marketing/catalog/v1/products/{ean}` for NL and BE.
-The fixed probes may be absent from Bol; HTTP 404 is recorded, not imported.
-At most six catalogue calls are made, one second apart. Authentication errors,
-rate limits and other HTTP errors stop the review without retrying the token.
-Redirects are rejected to protect authorization headers.
-
-The output includes only status, EAN/country and response field paths/types.
-Tokens, raw response values and credentials are neither printed nor uploaded.
-The API field mapping, condition/new-vinyl gates and publication are **not**
-implemented or approved by a successful connectivity test. Inspect the live
-schema and official API contract before building an importer.
+See [Bol Marketing API prices](bol-marketing-api.md) for the production updater.
+The separate manual `bol-api-review.yml` receives no database credentials. It
+uses `BOL_API_CLIENT_ID` and `BOL_API_CLIENT_SECRET`, distinct from FTPS credentials.
+It checks ten fixed vinyl EANs for NL/BE, and inspects available NL best offers.
+At most 30 catalogue calls are made, at most one/second. Tokens are reused.
+The reports include whitelisted public product/offer fields and schema paths;
+never access tokens, credentials, full descriptions or images. A successful
+connectivity review alone does not authorize arbitrary product creation.
