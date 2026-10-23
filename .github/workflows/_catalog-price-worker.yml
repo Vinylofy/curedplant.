@@ -99,6 +99,10 @@ jobs:
           if [ -n "${{ inputs.approved_dry_run_id }}" ]; then args+=(--approved-source-run "${{ inputs.approved_dry_run_id }}" --approved-source-dir output/approved-price-source); fi
           python -u -m scripts.workers.run_catalog_price "${args[@]}"
 
+      - name: Publish JPC diagnostic counts without credentials
+        if: always() && inputs.worker == 'jpc' && inputs.source_version == 'current'
+        run: python -m scripts.workers.jpc_run_diagnostics
+
       - name: Upload price source and database verification evidence
         if: always() && inputs.source_version == 'current'
         uses: actions/upload-artifact@v4
