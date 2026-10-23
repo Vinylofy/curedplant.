@@ -105,6 +105,22 @@ def review(client_id, client_secret):
                     if exc.status != 404:
                         raise
                     item.update(http_status=404, found=False)
+                if item.get('http_status') == 200 and country == 'NL' and os.environ.get('BOL_INSPECT_BEST_OFFER') == 'true':
+                    try:
+                        best_request = urllib.request.Request(CATALOG_URL + ean + '/offers/best?' + urllib.parse.urlencode({'country-code': country}), headers={
+                            'Authorization': 'Bearer ' + token, 'Accept': 'application/json', 'Accept-Language': 'nl'})
+                        time.sleep(1)
+                        best = request_json(best_request, 'best_offer')
+                        item['best_offer_schema'] = schema_paths(best)
+                        if isinstance(best, dict):
+                            item['best_offer_sample'] = {k: best[k] for k in (
+                                'price', 'condition', 'availability', 'deliveryDescription',
+                                'shippingCost', 'shippingCosts', 'currency', 'sellerType',
+                                'isDeliverable', 'offer', 'offers', 'seller', 'retailer') if k in best}
+                    except ReviewError as exc:
+                        item['best_offer_error'] = {'reason': exc.reason, 'http_status': exc.status}
+                        if exc.status != 404:
+                            raise
                 result['products'].append(item)
                 time.sleep(1)  # At most one catalogue request/second; no token retries.
         result['status'] = 'review' if any(p['http_status'] == 200 for p in result['products']) else 'no_matches'
@@ -120,7 +136,7 @@ def main():
     output.write_text(json.dumps(result, indent=2) + '\n')
     # Schema details stay in the artifact; bounded safe counts are API-readable annotations.
     concise = {k: v for k, v in result.items() if k != 'products'}
-    concise['products'] = [{k: v for k, v in p.items() if k not in {'schema', 'public_sample'}} for p in result['products']]
+    concise['products'] = [{k: v for k, v in p.items() if k not in {'schema', 'public_sample', 'best_offer_schema', 'best_offer_sample'}} for p in result['products']]
     for product in result['products']:
         if product.get('http_status') == 200:
             sample = json.dumps(product)

@@ -20,6 +20,7 @@ jobs:
           python-version: '3.12'
       - name: Review authentication and twenty catalogue responses without database credentials
         env:
+          BOL_INSPECT_BEST_OFFER: 'true'
           BOL_API_CLIENT_ID: ${{ secrets.BOL_API_CLIENT_ID }}
           BOL_API_CLIENT_SECRET: ${{ secrets.BOL_API_CLIENT_SECRET }}
         run: python -m scripts.importers.bol_api_review
