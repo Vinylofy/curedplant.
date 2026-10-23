@@ -8,18 +8,18 @@
   },
   "budget": {
     "date": "2026-10-23",
-    "reserved": 100
+    "reserved": 1
   },
   "last_result": {
-    "day": "2026-10-22",
-    "attempted": 16,
-    "details_started": 16,
-    "valid_eans": 13,
+    "day": "2026-10-23",
+    "attempted": 1,
+    "details_started": 1,
+    "valid_eans": 1,
     "missing_ean": 0,
     "unavailable": 0,
     "excluded_non_vinyl": 0,
-    "technical_errors": 3,
-    "status": "red",
+    "technical_errors": 0,
+    "status": "green",
     "outcome": "completed"
   }
 }
