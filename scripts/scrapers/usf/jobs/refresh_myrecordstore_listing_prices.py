@@ -4,10 +4,12 @@ from __future__ import annotations
 import argparse
 import hashlib
 import html as html_lib
+import json
+import os
 import re
 import time
 from datetime import datetime, timezone
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit, parse_qsl, urlencode, urlunsplit
 
 import requests
 from bs4 import BeautifulSoup
@@ -373,6 +375,23 @@ def main() -> int:
             break
 
         links, offers = parse_listing_page(response.text, listing_url=url, page=page, seen_at=seen_at)
+        if os.environ.get('CUREDPLANT_PRICE_EVIDENCE') and pages_done < 2:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            navigation = []
+            for anchor in soup.select('a[href]'):
+                target = urlsplit(normalize_url(anchor.get('href')))
+                if target.netloc not in {'myrecordstore.nl', 'www.myrecordstore.nl'}:
+                    continue
+                params = [(k, v) for k, v in parse_qsl(target.query) if k.lower() in {
+                    'type', 'page', 'p', 'start', 'offset', 'limit', 'pagina', 'pn'}]
+                if '/item' in target.path or params or 'next' in anchor.get('rel', []):
+                    navigation.append({'text': clean(anchor.get_text(' ', strip=True))[:60],
+                        'url': urlunsplit((target.scheme, target.netloc, target.path, urlencode(params), ''))})
+            diagnostic = {'page': page, 'http_status': response.status_code,
+                'response_url': response.url, 'selected_products': len(links),
+                'navigation': navigation[:35]}
+            message = json.dumps(diagnostic).replace('%', '%25').replace('\n', '%0A').replace('\r', '%0D')
+            print('::notice title=My Record Store source diagnosis::' + message, flush=True)
         signature = tuple(sorted(link.source_url for link in links))
         if not links:
             print("[MYRECORDSTORE-LISTING] stop no_products", {"page": page}, flush=True)
