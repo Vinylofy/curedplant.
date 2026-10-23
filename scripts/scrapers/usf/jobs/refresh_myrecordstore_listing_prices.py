@@ -9,7 +9,7 @@ import os
 import re
 import time
 from datetime import datetime, timezone
-from urllib.parse import urljoin, urlsplit, parse_qsl, urlencode, urlunsplit
+from urllib.parse import urljoin, urlsplit, parse_qs, parse_qsl, urlencode, urlunsplit
 
 import requests
 from bs4 import BeautifulSoup
@@ -26,6 +26,8 @@ SHOP_DOMAIN = "myrecordstore.nl"
 SHOP_COUNTRY = "NL"
 BASE_URL = "https://myrecordstore.nl"
 SEED_URL = "https://myrecordstore.nl/item/nieuw?type=LP"
+STOCK_URL = "https://myrecordstore.nl/item/search?tags=Voorraad&type=LP"
+MAX_CATALOGUE_PAGES = 500
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 Vinylofy MyRecordStore listing refresh",
@@ -42,8 +44,25 @@ WEEK_RE = re.compile(r"(?:(?:circa|ca\.?)\s*)?([0-9]{1,2})\s*weken?", re.I)
 def clean(value: object) -> str:
     return re.sub(r"\s+", " ", str(value or "")).strip()
 
-def page_url(page: int) -> str:
-    return SEED_URL if page <= 1 else f"{SEED_URL}&page={page}"
+def page_url(page: int, seed: str | None = None) -> str:
+    seed = seed or SEED_URL
+    return seed if page <= 1 else f"{seed}&page={page}"
+
+
+def advertised_last_page(html: str, listing_url: str) -> int:
+    """Only trust pagination for this exact source and its active filters."""
+    current = urlsplit(listing_url)
+    filters = {k: v for k, v in parse_qs(current.query).items() if k != "page"}
+    pages = [1]
+    for anchor in BeautifulSoup(html, "html.parser").select("a[href]"):
+        target = urlsplit(urljoin(listing_url, anchor["href"]))
+        query = parse_qs(target.query)
+        if (target.netloc == current.netloc and target.path == current.path
+                and {k: v for k, v in query.items() if k != "page"} == filters):
+            value = query.get("page", [""])[0]
+            if value.isdigit():
+                pages.append(int(value))
+    return max(pages)
 
 def normalize_url(href: str) -> str:
     return urljoin(BASE_URL, html_lib.unescape(href or "")).split("#", 1)[0].strip()
@@ -192,6 +211,8 @@ def parse_listing_page(html: str, *, listing_url: str, page: int, seen_at: datet
     position = 0
     for a in title_links:
         source_url = normalize_url(a.get("href") or "")
+        if not re.fullmatch(r"/item/[^/]+/lp/(?:[^/]+/)+(\d+)", urlsplit(source_url).path.rstrip("/"), re.I):
+            continue
         if source_url in links:
             continue
 
@@ -358,57 +379,44 @@ def main() -> int:
 
     all_links = {}
     all_offers = {}
-    seen_signatures = set()
-    page = args.start_page
+    if args.start_page < 1 or args.max_pages < 0:
+        raise ValueError("start-page must be positive and max-pages nonnegative")
+    if args.delist_missing:
+        raise ValueError("Recent arrivals and stock are partial scopes; delisting is unsafe")
     pages_done = 0
-
-    while args.max_pages == 0 or pages_done < args.max_pages:
-        url = page_url(page)
-        print("[MYRECORDSTORE-LISTING] page", {"page": page, "url": url}, flush=True)
-        response = session.get(url, timeout=45)
-
-        if response.status_code == 429:
-            print("[MYRECORDSTORE-LISTING-WARN] HTTP 429; stopping safely", {"page": page}, flush=True)
+    # The stock tag is linked by the shop. /item/op-voorraad does not provide
+    # the bounded stock search and must not be used as an unlimited fallback.
+    for seed in (SEED_URL, STOCK_URL):
+        seen_signatures = set()
+        page = args.start_page
+        while args.max_pages == 0 or pages_done < args.max_pages:
+            url = page_url(page, seed)
+            print("[MYRECORDSTORE-LISTING] page", {"page": page, "url": url}, flush=True)
+            response = session.get(url, timeout=45)
+            response.raise_for_status()
+            last_page = advertised_last_page(response.text, url)
+            if args.max_pages == 0 and last_page > MAX_CATALOGUE_PAGES:
+                raise RuntimeError(f"My Record Store scope exceeds safe page budget: {last_page}")
+            links, offers = parse_listing_page(response.text, listing_url=url, page=page, seen_at=seen_at)
+            signature = tuple(sorted(link.source_url for link in links))
+            if not links:
+                raise RuntimeError(f"My Record Store missing product prices on {url}")
+            if signature in seen_signatures:
+                raise RuntimeError(f"My Record Store repeated page before catalogue end: {url}")
+            seen_signatures.add(signature)
+            for link in links:
+                all_links[link.source_url] = link
+            for offer in offers:
+                all_offers[offer.source_url] = offer
+            pages_done += 1
+            if page >= last_page:
+                break
+            if page >= MAX_CATALOGUE_PAGES:
+                raise RuntimeError("My Record Store incomplete scope at safe page budget")
+            page += 1
+            time.sleep(args.sleep)
+        if args.max_pages and pages_done >= args.max_pages:
             break
-        if response.status_code >= 400:
-            print("[MYRECORDSTORE-LISTING-WARN] HTTP error; stopping", {"page": page, "status": response.status_code}, flush=True)
-            break
-
-        links, offers = parse_listing_page(response.text, listing_url=url, page=page, seen_at=seen_at)
-        if os.environ.get('CUREDPLANT_PRICE_EVIDENCE') and pages_done < 2:
-            soup = BeautifulSoup(response.text, 'html.parser')
-            navigation = []
-            for anchor in soup.select('a[href]'):
-                target = urlsplit(normalize_url(anchor.get('href')))
-                if target.netloc not in {'myrecordstore.nl', 'www.myrecordstore.nl'}:
-                    continue
-                params = [(k, v) for k, v in parse_qsl(target.query) if k.lower() in {
-                    'type', 'page', 'p', 'start', 'offset', 'limit', 'pagina', 'pn'}]
-                if '/item' in target.path or params or 'next' in anchor.get('rel', []):
-                    navigation.append({'text': clean(anchor.get_text(' ', strip=True))[:60],
-                        'url': urlunsplit((target.scheme, target.netloc, target.path, urlencode(params), ''))})
-            diagnostic = {'page': page, 'http_status': response.status_code,
-                'response_url': response.url, 'selected_products': len(links),
-                'navigation': navigation[:35]}
-            message = json.dumps(diagnostic).replace('%', '%25').replace('\n', '%0A').replace('\r', '%0D')
-            print('::notice title=My Record Store source diagnosis::' + message, flush=True)
-        signature = tuple(sorted(link.source_url for link in links))
-        if not links:
-            print("[MYRECORDSTORE-LISTING] stop no_products", {"page": page}, flush=True)
-            break
-        if signature in seen_signatures:
-            print("[MYRECORDSTORE-LISTING] stop repeated_signature", {"page": page}, flush=True)
-            break
-        seen_signatures.add(signature)
-
-        for link in links:
-            all_links[link.source_url] = link
-        for offer in offers:
-            all_offers[offer.source_url] = offer
-
-        pages_done += 1
-        page += 1
-        time.sleep(args.sleep)
 
     print("[MYRECORDSTORE-LISTING] collected", {"links": len(all_links), "offers": len(all_offers), "write": args.write}, flush=True)
 

@@ -44,6 +44,11 @@ def url_key(value):
         match = re.match(r"/music/(\d{12,14})(?:/|$)", path)
         if match:
             path = "/music/" + match[1]
+    if host == "myrecordstore.nl":
+        # Genre and artist slugs change; the shop article number stays stable.
+        match = re.fullmatch(r"/item/[^/]+/lp/(?:[^/]+/)+(\d+)", path, re.IGNORECASE)
+        if match:
+            path = "/item/lp/" + match[1]
     if host == "jpc.de":
         match = re.search(r"/hnum/(\d+)(?:/|$)", path)
         if match:

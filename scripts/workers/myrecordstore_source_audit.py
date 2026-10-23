@@ -1,16 +1,14 @@
-"""Read-only comparison of recent arrivals and in-stock My Record Store pages."""
+"""Read-only coverage check of the production My Record Store price collector."""
 import json
 import os
-import time
-from datetime import datetime, timezone
-from urllib.parse import urlsplit, parse_qs
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
 
 import psycopg
-from bs4 import BeautifulSoup
-import requests
 
-from scripts.scrapers.usf.jobs import refresh_myrecordstore_listing_prices as source
-from scripts.workers.price_evidence import url_key
+from scripts.workers.price_evidence import assess, url_key
 
 SHOP = 'd066e318-b6a4-4780-8893-2a4b1b2d1d25'
 
@@ -18,42 +16,36 @@ SHOP = 'd066e318-b6a4-4780-8893-2a4b1b2d1d25'
 def main():
     with psycopg.connect(os.environ['DATABASE_URL'], prepare_threshold=None) as conn:
         conn.execute('set transaction read only')
-        rows = conn.execute('select product_url,last_seen_at from public.prices where shop_id=%s and is_active=true', (SHOP,)).fetchall()
-    known_urls = {url_key(row[0]) for row in rows}
-    known_by_id = {}
-    for row in rows:
-        known_by_id.setdefault(urlsplit(row[0]).path.rstrip('/').rsplit('/', 1)[-1], []).append(row[0])
-    known_ids = set(known_by_id)
-    session = requests.Session()
-    session.headers.update(source.HEADERS)
-    report = {'database_writes': 0, 'registered_active_prices': len(rows), 'sources': []}
-    for scope in ('search?tags=Voorraad&type=LP',):
-        url = f'https://myrecordstore.nl/item/{scope}'
-        response = session.get(url, timeout=45)
-        response.raise_for_status()
-        links, offers = source.parse_listing_page(response.text, listing_url=response.url, page=1,
-            seen_at=datetime.now(timezone.utc))
-        soup = BeautifulSoup(response.text, 'html.parser')
-        pages = []
-        for a in soup.select('a[href]'):
-            parsed = urlsplit(source.normalize_url(a.get('href')))
-            if parsed.path != '/item/' + scope.split('?')[0]:
-                continue
-            page = parse_qs(parsed.query).get('page', [''])[0]
-            if page.isdigit():
-                pages.append(int(page))
-        report['sources'].append({'scope': scope, 'url': response.url, 'first_page_products': len(links),
-            'advertised_last_page': max(pages) if pages else None,
-            'existing_url_matches': sum(url_key(x.source_url) in known_urls for x in links),
-            'existing_numeric_id_matches': sum(source.source_product_id_from_url(x.source_url) in known_ids for x in links),
-            'availability': {kind: sum(x.availability == kind for x in offers) for kind in ('in_stock', 'unknown', 'out_of_stock')},
-            'changed_path_samples': [{'current_url': x.source_url, 'registered_urls': known_by_id[source.source_product_id_from_url(x.source_url)]}
-                for x in links if source.source_product_id_from_url(x.source_url) in known_ids and url_key(x.source_url) not in known_urls][:5],
-            'filter_links': [{'text': a.get_text(' ', strip=True)[:50], 'href': a.get('href')} for a in soup.select('a[href]') if ('type=' in a.get('href', '') or 'voorraad' in a.get_text().lower() or a.get_text(' ', strip=True).upper() in ('LP', 'VINYL', 'ALLES'))][:50], 'forms': [{'action': f.get('action'), 'fields': [{'name': e.get('name'), 'value': e.get('value') if e.name in ('option', 'input') and e.get('type') not in ('hidden', 'password') else None, 'text': e.get_text(' ', strip=True)[:100] if e.name == 'option' else None} for e in f.select('input[name],select[name],option')]} for f in soup.select('form')], 'sample_urls': [x.source_url for x in links[:3]]})
-        time.sleep(1)
+        registered = conn.execute(
+            'select product_url from public.prices where shop_id=%s and is_active=true',
+            (SHOP,),
+        ).fetchall()
+    known = {url_key(row[0]) for row in registered}
+    with tempfile.TemporaryDirectory() as directory:
+        evidence = Path(directory) / 'prices.jsonl'
+        env = dict(os.environ, CUREDPLANT_PRICE_EVIDENCE=str(evidence), DATABASE_URL='',
+                   PGOPTIONS='-c default_transaction_read_only=on')
+        result = subprocess.run([
+            sys.executable, '-u', '-m',
+            'scripts.scrapers.usf.jobs.refresh_myrecordstore_listing_prices',
+            '--max-pages', '0',
+        ], env=env, check=False)
+        records = [json.loads(line) for line in evidence.read_text().splitlines()] if evidence.exists() else []
+    prices, assessment = assess(records)
+    report = {
+        'database_writes': 0,
+        'status': assessment['status'] if result.returncode == 0 else 'red',
+        'source_returncode': result.returncode,
+        'registered_active_prices': len(registered),
+        'current_listing_prices': len(prices),
+        'registered_prices_found': sum(url_key(row['source_url']) in known for row in prices),
+        'errors': assessment['errors'],
+        'samples': [{'url': row['source_url'], 'price': row['price']} for row in prices[:3]],
+    }
     text = json.dumps(report).replace('%', '%25').replace('\n', '%0A').replace('\r', '%0D')
-    print('::notice title=My Record Store catalogue scope audit::' + text)
+    print('::notice title=My Record Store catalogue coverage audit::' + text)
+    return 0 if report['status'] == 'green' else 1
 
 
 if __name__ == '__main__':
-    main()
+    raise SystemExit(main())

@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       limit:
-        description: "0 = native full catalogue; positive = pages/products pilot"
+        description: "0 = all arrivals and stock listing pages; positive = total page budget"
         required: true
         default: "0"
         type: string
