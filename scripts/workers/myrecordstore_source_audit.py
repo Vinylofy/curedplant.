@@ -49,7 +49,7 @@ def main():
             'availability': {kind: sum(x.availability == kind for x in offers) for kind in ('in_stock', 'unknown', 'out_of_stock')},
             'changed_path_samples': [{'current_url': x.source_url, 'registered_urls': known_by_id[source.source_product_id_from_url(x.source_url)]}
                 for x in links if source.source_product_id_from_url(x.source_url) in known_ids and url_key(x.source_url) not in known_urls][:5],
-            'forms': [{'action': f.get('action'), 'fields': [{'name': e.get('name'), 'value': e.get('value') if e.name in ('option', 'input') and e.get('type') not in ('hidden', 'password') else None, 'text': e.get_text(' ', strip=True)[:100] if e.name == 'option' else None} for e in f.select('input[name],select[name],option')]} for f in soup.select('form')], 'sample_urls': [x.source_url for x in links[:3]]})
+            'filter_links': [{'text': a.get_text(' ', strip=True)[:50], 'href': a.get('href')} for a in soup.select('a[href]') if ('type=' in a.get('href', '') or 'voorraad' in a.get_text().lower() or a.get_text(' ', strip=True).upper() in ('LP', 'VINYL', 'ALLES'))][:50], 'forms': [{'action': f.get('action'), 'fields': [{'name': e.get('name'), 'value': e.get('value') if e.name in ('option', 'input') and e.get('type') not in ('hidden', 'password') else None, 'text': e.get_text(' ', strip=True)[:100] if e.name == 'option' else None} for e in f.select('input[name],select[name],option')]} for f in soup.select('form')], 'sample_urls': [x.source_url for x in links[:3]]})
         time.sleep(1)
     text = json.dumps(report).replace('%', '%25').replace('\n', '%0A').replace('\r', '%0D')
     print('::notice title=My Record Store catalogue scope audit::' + text)
