@@ -261,7 +261,7 @@ def review_matches(plan, dsn):
                 match_status="read_only_checked", match_conflicts=rejected)
 
 
-def publish(plan, dsn, shops, approved=False):
+def publish(plan, dsn, shops, approved=False, existing_only=False):
     """One transaction for all selected markets; never registers/activates shops.
 
     No shared bol titles/covers/descriptions are published. New barcode products
@@ -303,6 +303,8 @@ def publish(plan, dsn, shops, approved=False):
                 product_url=offer["product_url"], price=Decimal(offer["price"]), currency="EUR",
                 availability=offer["availability"], captured_at=captured, product_handle=None,
                 detail_status="ok", is_secondhand=False, raw={})
+            if product_id is None and existing_only:
+                raise FeedError('existing_product_required')
             if product_id is None:
                 # Savepoint handles a concurrent non-bol importer winning EAN.
                 cur.execute("savepoint bol_new_product")

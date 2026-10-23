@@ -65,6 +65,24 @@ def schema_paths(value, prefix='', depth=0):
     return []
 
 
+def authenticate(client_id, client_secret):
+    if not client_id or not client_secret:
+        raise ReviewError('configuration', 'missing_api_credentials')
+    credentials = base64.b64encode(f'{client_id}:{client_secret}'.encode()).decode()
+    request = urllib.request.Request(TOKEN_URL,
+        data=urllib.parse.urlencode({'grant_type': 'client_credentials'}).encode(),
+        headers={'Authorization': 'Basic ' + credentials, 'Accept': 'application/json',
+                 'Content-Type': 'application/x-www-form-urlencoded'}, method='POST')
+    data = request_json(request, 'authentication')
+    token = data.get('access_token') if isinstance(data, dict) else None
+    if not isinstance(token, str) or not token or any(c.isspace() for c in token):
+        raise ReviewError('authentication', 'missing_or_invalid_access_token')
+    lifetime = data.get('expires_in', 300)
+    if not isinstance(lifetime, (int, float)) or not 60 <= lifetime <= 86400:
+        raise ReviewError('authentication', 'invalid_token_lifetime')
+    return token, lifetime
+
+
 def review(client_id, client_secret):
     result = {'status': 'blocked', 'database_writes': 0, 'token_requests': 0,
               'authentication': 'not_tested', 'products': [], 'errors': []}
@@ -73,16 +91,8 @@ def review(client_id, client_secret):
         return result
     stage = 'authentication'
     try:
-        credentials = base64.b64encode(f'{client_id}:{client_secret}'.encode()).decode()
-        request = urllib.request.Request(TOKEN_URL,
-            data=urllib.parse.urlencode({'grant_type': 'client_credentials'}).encode(),
-            headers={'Authorization': 'Basic ' + credentials, 'Accept': 'application/json',
-                     'Content-Type': 'application/x-www-form-urlencoded'}, method='POST')
         result['token_requests'] = 1
-        token_data = request_json(request, stage)
-        token = token_data.get('access_token') if isinstance(token_data, dict) else None
-        if not isinstance(token, str) or not token or any(c.isspace() for c in token):
-            raise ReviewError(stage, 'missing_or_invalid_access_token')
+        token, _ = authenticate(client_id, client_secret)
         result['authentication'] = 'success'
         for country in ('NL', 'BE'):
             for ean in EANS:
@@ -114,6 +124,7 @@ def review(client_id, client_secret):
                         item['best_offer_schema'] = schema_paths(best)
                         if isinstance(best, dict):
                             item['best_offer_sample'] = {k: best[k] for k in (
+                                'ean', 'countryCode', 'url', 'isPreOrder', 'minDeliveryDate', 'maxDeliveryDate',
                                 'price', 'condition', 'availability', 'deliveryDescription',
                                 'shippingCost', 'shippingCosts', 'currency', 'sellerType',
                                 'isDeliverable', 'offer', 'offers', 'seller', 'retailer') if k in best}

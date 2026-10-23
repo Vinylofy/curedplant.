@@ -1,0 +1,86 @@
+name: "Curedplant | Price | Bol NL API"
+run-name: "Bol NL | API prices | write=${{ inputs.write }} | sample=${{ inputs.sample }} | limit=${{ inputs.limit }}"
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Existing vinyl products to check (1-2000)"
+        type: string
+        default: '20'
+        required: true
+      sample:
+        description: "Only the fixed verification EANs; never advance the catalogue cursor"
+        type: boolean
+        default: true
+      write:
+        description: "Publish verified NEW NL offers for existing vinyl products"
+        type: boolean
+        default: false
+permissions:
+  contents: write
+concurrency:
+  group: bol-api-nl-prices
+  cancel-in-progress: false
+jobs:
+  prices:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Require main for price writes
+        env:
+          WRITE: ${{ inputs.write }}
+          BRANCH: ${{ github.ref }}
+        run: |
+          if [ "$WRITE" = true ] && [ "$BRANCH" != refs/heads/main ]; then
+            echo 'Price writes require main'
+            exit 1
+          fi
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install importer dependencies
+        run: python -m pip install 'psycopg[binary]>=3.2,<4' 'python-dotenv>=1,<2' 'lxml>=5,<6'
+      - name: Refresh verified NL offers without product or cover creation
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          BOL_API_CLIENT_ID: ${{ secrets.BOL_API_CLIENT_ID }}
+          BOL_API_CLIENT_SECRET: ${{ secrets.BOL_API_CLIENT_SECRET }}
+          BOL_SITE_ID: ${{ vars.BOL_SITE_ID }}
+          BOL_PRICE_LIMIT: ${{ inputs.limit }}
+          BOL_PRICE_WRITE: ${{ inputs.write }}
+          BOL_PRICE_SAMPLE: ${{ inputs.sample }}
+        run: |
+          args=(--limit "$BOL_PRICE_LIMIT")
+          if [ "$BOL_PRICE_WRITE" = true ]; then args+=(--write); fi
+          if [ "$BOL_PRICE_SAMPLE" = true ]; then args+=(--sample); fi
+          python -u -m scripts.importers.bol_api_prices "${args[@]}"
+      - name: Persist successful catalogue cursor
+        if: success() && inputs.write && !inputs.sample
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('node:fs/promises');
+            const path = 'state/bol-api/nl.json';
+            let content;
+            try { content = await fs.readFile(path, 'utf8'); }
+            catch (error) { if (error.code === 'ENOENT') return; throw error; }
+            const state = JSON.parse(content);
+            if (state.country !== 'NL') throw new Error('Wrong progress market');
+            let sha;
+            try {
+              const current = await github.rest.repos.getContent({...context.repo, path, ref: 'main'});
+              sha = current.data.sha;
+            } catch (error) { if (error.status !== 404) throw error; }
+            await github.rest.repos.createOrUpdateFileContents({...context.repo, path, branch: 'main', sha,
+              message: 'Advance Bol NL API catalogue cursor', content: Buffer.from(content).toString('base64')});
+      - name: Save price verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bol-api-prices-${{ github.run_id }}
+          path: output/bol-api-prices/review.json
+          retention-days: 3
+          if-no-files-found: ignore
