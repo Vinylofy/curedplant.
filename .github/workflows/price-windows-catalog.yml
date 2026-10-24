@@ -87,7 +87,7 @@ jobs:
           }
           uv pip install --python $python 'requests>=2.31,<3' 'beautifulsoup4>=4.12,<5' 'psycopg[binary]>=3.2,<4' 'python-dotenv>=1,<2' 'playwright>=1.50,<2'
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $env:PLAYWRIGHT_BROWSERS_PATH = Join-Path $env:LOCALAPPDATA 'Vinylofy\playwright-browsers'
+          $env:PLAYWRIGHT_BROWSERS_PATH = Join-Path $env:LOCALAPPDATA 'Vinylofy\shop-price-browsers'
           Add-Content -LiteralPath $env:GITHUB_ENV -Encoding UTF8 -Value "SHOP_PYTHON=$python"
           Add-Content -LiteralPath $env:GITHUB_ENV -Encoding UTF8 -Value "PLAYWRIGHT_BROWSERS_PATH=$env:PLAYWRIGHT_BROWSERS_PATH"
       - name: Reuse or install Chromium
@@ -97,7 +97,7 @@ jobs:
         working-directory: ${{ runner.temp }}
         run: |
           $ErrorActionPreference = 'Stop'
-          & $env:SHOP_PYTHON -m playwright install chromium
+          & $env:SHOP_PYTHON -m playwright install --only-shell chromium
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Collect current listings and verify existing prices
         env:
