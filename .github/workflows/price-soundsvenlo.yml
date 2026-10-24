@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       source_version:
-        description: "Linux source: Windows baseline is read-only (max 3 pages / 25 details)"
+        description: "current = Windows collector; windows-baseline = read-only Linux comparison"
         required: true
         default: current
         type: choice
@@ -30,15 +30,24 @@ on:
 
 permissions:
   contents: read
-  actions: read
+  actions: write
 
 jobs:
-  worker:
+  windows:
+    if: inputs.source_version != 'windows-baseline' && !inputs.approved_dry_run_id
+    uses: ./.github/workflows/price-windows-catalog.yml
+    with:
+      worker: soundsvenlo
+      limit: ${{ github.event_name == 'schedule' && '0' || inputs.limit }}
+      write: ${{ github.event_name == 'schedule' || inputs.write }}
+    secrets: inherit
+  reviewed-source-or-baseline:
+    if: inputs.source_version == 'windows-baseline' || inputs.approved_dry_run_id
     uses: ./.github/workflows/_catalog-price-worker.yml
     with:
       source_version: ${{ inputs.source_version || 'current' }}
       approved_dry_run_id: ${{ inputs.approved_dry_run_id || '' }}
       worker: soundsvenlo
-      limit: ${{ github.event_name == 'schedule' && '0' || inputs.limit }}
-      write: ${{ github.event_name == 'schedule' || inputs.write }}
+      limit: ${{ inputs.limit }}
+      write: ${{ inputs.write }}
     secrets: inherit

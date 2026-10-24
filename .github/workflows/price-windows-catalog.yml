@@ -1,6 +1,20 @@
 name: 'Curedplant | Price | Windows shops'
 run-name: 'Windows price | ${{ inputs.worker }} | write=${{ inputs.write }} | limit=${{ inputs.limit }}'
 on:
+  workflow_call:
+    inputs:
+      worker:
+        type: string
+        required: true
+      limit:
+        type: string
+        default: '2'
+      write:
+        type: boolean
+        default: false
+    secrets:
+      DATABASE_URL:
+        required: false
   workflow_dispatch:
     inputs:
       worker:
@@ -120,7 +134,7 @@ jobs:
         if: always() && env.SHOP_SOURCE_DIR != ''
         uses: actions/upload-artifact@v4
         with:
-          name: windows-price-${{ inputs.worker }}-${{ github.run_id }}
+          name: price-evidence-${{ inputs.worker }}-${{ github.run_id }}
           path: ${{ env.SHOP_SOURCE_DIR }}/output/price-verification/
           retention-days: 3
           if-no-files-found: ignore
@@ -135,7 +149,7 @@ jobs:
             const deadline = Date.now() + 10 * 60 * 1000;
             while (Date.now() < deadline) {
               const {data} = await github.rest.actions.listJobsForWorkflowRun({...context.repo, run_id: context.runId});
-              const job = data.jobs.find(item => item.name === 'Windows shop collector');
+              const job = data.jobs.find(item => item.name.endsWith('Windows shop collector'));
               if (job && ['in_progress', 'completed'].includes(job.status)) {
                 core.notice('Windows runner accepted the shop job.');
                 return;
