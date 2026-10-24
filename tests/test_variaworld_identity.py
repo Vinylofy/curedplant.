@@ -65,6 +65,16 @@ class VariaworldIdentityTests(unittest.TestCase):
                 enrich_identities([{'source_url': NEW}], [], budget=1, cache_path=path, session=session, sleeper=Mock())
             self.assertFalse(path.exists())
 
+    def test_old_cache_proofs_require_reverification_after_parser_change(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'cache.json'
+            path.write_text(json.dumps({'version': 1, 'entries': {url_key(NEW):
+                {'gtin': EAN, 'observed_at': datetime.now(timezone.utc).isoformat()}}}))
+            rows = [{'source_url': NEW, 'price': '32.00'}]
+            stats = enrich_identities(rows, [], budget=0, cache_path=path, session=Mock(), sleeper=Mock())
+            self.assertEqual((stats['pending'], stats['cache_hits']), (1, 0))
+            self.assertNotIn('identity_proof', rows[0])
+
     def test_checkpoint_resumes_without_repeating_verified_details_or_changing_price(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'cache.json'
@@ -78,10 +88,6 @@ class VariaworldIdentityTests(unittest.TestCase):
             self.assertEqual((stats['verified'], stats['cache_hits']), (1, 1))
             session.get.assert_called_once()
             self.assertEqual(second[0]['price'], '31.00')
-
-
-if __name__ == '__main__':
-    unittest.main()
 
 class VariaworldOptionalIdentityTests(unittest.TestCase):
     def test_identity_timeout_does_not_stop_verified_listing_price_publication(self):
@@ -113,3 +119,7 @@ class VariaworldOptionalIdentityTests(unittest.TestCase):
             summary = json.loads((Path(directory) / 'output/price-verification/variaworld/summary.json').read_text())
             self.assertEqual(summary['identity_review']['status'], 'deferred')
             self.assertEqual(summary['identity_review']['pending'], 1)
+
+
+if __name__ == '__main__':
+    unittest.main()

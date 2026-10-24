@@ -62,6 +62,9 @@ class PriceVerificationTests(unittest.TestCase):
 
     def test_source_commands_never_enable_details_or_native_writes(self):
         for file in Path(".github/workflows").glob("price-*.yml"):
+            # Dedicated API/aggregate workflows are not native worker IDs.
+            if "./.github/workflows/_catalog-price-worker.yml" not in file.read_text():
+                continue
             worker = file.stem.removeprefix("price-")
             command = command_for(worker, 0, write=True)
             self.assertNotIn("--write", command)
