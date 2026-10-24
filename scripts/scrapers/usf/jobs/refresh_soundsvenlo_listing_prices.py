@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import argparse
+import json
+import os
 import re
 import time
 from datetime import datetime, timezone
@@ -490,6 +492,14 @@ def run_listing(args, session) -> int:
             continue
 
         consecutive_failures = 0
+        if pages_done == 0 and os.environ.get('GITHUB_ACTIONS') == 'true':
+            navigation = []
+            for anchor in BeautifulSoup(html, 'html.parser').select('a[href]'):
+                target = urlparse(normalize_product_url(anchor['href']))
+                if target.hostname in SHOP_NETLOCS and re.fullmatch(r'/vinyl/(?:p\d+/?)?', target.path):
+                    navigation.append({'text': anchor.get_text(' ', strip=True)[:40], 'path': target.path})
+            diagnostic = {'start_page': page, 'pagination_links': navigation[:30]}
+            print('::notice title=Sounds Venlo catalogue navigation::' + json.dumps(diagnostic).replace('%', '%25'), flush=True)
 
         links, offers = parse_listing_page(
             html,
