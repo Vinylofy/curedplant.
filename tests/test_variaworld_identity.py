@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+import requests
 from unittest.mock import Mock
 
 from scripts.workers.variaworld_identity import detail_gtin, enrich_identities, fallback_matches, PROOF_KIND
@@ -11,7 +12,7 @@ from scripts.workers.price_evidence import url_key
 OLD = 'https://www.variaworld.nl/artikel/detail.php?at=9076318000'
 NEW = 'https://www.variaworld.nl/artikel/detail.php?at=7002617000'
 EAN = '0888072686212'
-HTML = '<div class="detail_tekstblok"><div class="detail_artikeltekst">Drager: lp nieuw</div><div class="detail_artikeltekst">EAN: ' + EAN + '</div></div>'
+HTML = '<div class="detail_tekst_container"><div class="detail_tekstblok"><div class="detail_artikeltekst">Drager: lp nieuw</div><div class="detail_artikeltekst">EAN: ' + EAN + '</div></div></div>'
 
 
 def record(url=NEW):
@@ -44,6 +45,25 @@ class VariaworldIdentityTests(unittest.TestCase):
         forged = record()
         forged['identity_proof']['url_key'] = url_key(OLD)
         self.assertEqual(fallback_matches([forged], [target]), {})
+
+    def test_transient_timeout_retries_same_identity_and_does_not_touch_price(self):
+        with tempfile.TemporaryDirectory() as directory:
+            session = Mock()
+            session.get.side_effect = [requests.Timeout('temporary'), Mock(status_code=200, text=HTML, url=NEW)]
+            rows = [{'source_url': NEW, 'price': '32.00'}]
+            stats = enrich_identities(rows, [], budget=1, cache_path=Path(directory) / 'cache.json', session=session, sleeper=Mock())
+            self.assertEqual(stats['verified'], 1)
+            self.assertEqual([call.args[0] for call in session.get.call_args_list], [NEW, NEW])
+            self.assertEqual(rows[0]['price'], '32.00')
+
+    def test_challenge_page_is_not_cached_as_missing_barcode(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'cache.json'
+            session = Mock()
+            session.get.return_value = Mock(status_code=200, text='<h1>Verify you are human</h1>', url=NEW)
+            with self.assertRaisesRegex(RuntimeError, 'Blocked Variaworld'):
+                enrich_identities([{'source_url': NEW}], [], budget=1, cache_path=path, session=session, sleeper=Mock())
+            self.assertFalse(path.exists())
 
     def test_checkpoint_resumes_without_repeating_verified_details_or_changing_price(self):
         with tempfile.TemporaryDirectory() as directory:

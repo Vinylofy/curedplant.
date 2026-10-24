@@ -28,7 +28,10 @@ def detail_gtin(html):
     """Only the current product's carrier/EAN block, never related items."""
     soup = BeautifulSoup(html, 'html.parser')
     codes = set()
-    for block in soup.select('.detail_tekstblok'):
+    for block in soup.select('.detail_tekst_container .detail_tekstblok'):
+        container = block.find_parent(class_='detail_tekst_container')
+        if re.search(r'bijna nieuw|zeer goed|gebruikt|tweedehands', container.get_text(' ', strip=True), re.I):
+            return None
         text = block.get_text(' ', strip=True)
         if not re.search(r'Drager:\s*(?:lp nieuw|12.?inch nieuw)', text, re.I):
             continue
@@ -109,7 +112,13 @@ def enrich_identities(records, known_urls, *, budget=200, cache_path=CACHE_PATH,
             stats['cache_hits'] += 1
         elif stats['lookups'] < budget:
             for attempt in range(3):
-                response = session.get(url, timeout=(10, 30))
+                try:
+                    response = session.get(url, timeout=(10, 30))
+                except (requests.Timeout, requests.ConnectionError):
+                    if attempt == 2:
+                        raise
+                    sleeper(5 * (attempt + 1))
+                    continue
                 if response.status_code >= 500 and attempt < 2:
                     sleeper(5 * (attempt + 1))
                     continue
@@ -119,6 +128,9 @@ def enrich_identities(records, known_urls, *, budget=200, cache_path=CACHE_PATH,
                     response.raise_for_status()
                     if url_key(response.url) != key:
                         raise ValueError('Variaworld identity lookup redirected to another article')
+                    visible = BeautifulSoup(response.text, 'html.parser').get_text(' ', strip=True).lower()
+                    if any(marker in visible for marker in ('verify you are human', 'access denied', 'checking your browser')):
+                        raise RuntimeError('Blocked Variaworld identity page; do not cache as missing EAN')
                     code = detail_gtin(response.text)
                 break
             entry = {'gtin': code, 'observed_at': now.isoformat()}
