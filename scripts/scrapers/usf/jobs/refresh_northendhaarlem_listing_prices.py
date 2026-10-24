@@ -214,6 +214,9 @@ def fetch_html(url: str, timeout: int = 45, attempts: int = 3, session=None) -> 
                 headers=REQUEST_HEADERS,
                 timeout=(10, timeout),
             )
+            if response.status_code >= 500 and attempt < attempts:
+                time.sleep(attempt * 5)
+                continue
             return response.status_code, response.text
         except requests.exceptions.RequestException as exc:
             last_error = exc

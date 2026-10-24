@@ -484,9 +484,8 @@ def run_listing(args, session) -> int:
                 flush=True,
             )
             if consecutive_failures >= args.max_page_failures:
-                break
-            page += 1
-            pages_done += 1
+                raise RuntimeError(f"Incomplete Sounds Venlo catalogue at page {page}") from exc
+            # Retry this exact page; never silently skip its offers.
             time.sleep(args.sleep)
             continue
 

@@ -1,0 +1,132 @@
+name: 'Curedplant | Price | Windows shops'
+run-name: 'Windows price | ${{ inputs.worker }} | write=${{ inputs.write }} | limit=${{ inputs.limit }}'
+on:
+  workflow_dispatch:
+    inputs:
+      worker:
+        type: choice
+        required: true
+        options: [soundsvenlo, northendhaarlem]
+      limit:
+        description: '0 = complete catalogue; positive = pages (one category for North End)'
+        type: string
+        default: '2'
+        required: true
+      write:
+        type: boolean
+        default: false
+permissions:
+  contents: read
+  actions: write
+concurrency:
+  group: curedplant-${{ inputs.worker }}-source
+  cancel-in-progress: false
+jobs:
+  price:
+    name: Windows shop collector
+    runs-on: [self-hosted, Windows, "${{ vars.BOL_FEED_RUNNER || 'X64' }}"]
+    timeout-minutes: 180
+    defaults:
+      run:
+        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0}
+        working-directory: ${{ runner.temp }}
+    steps:
+      - name: Require main and validate scope
+        env:
+          BRANCH: ${{ github.ref }}
+          WORKER: ${{ inputs.worker }}
+          LIMIT: ${{ inputs.limit }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:BRANCH -ne 'refs/heads/main') { throw 'Windows source runs require main' }
+          if ($env:WORKER -notin @('soundsvenlo', 'northendhaarlem')) { throw 'Unsupported shop' }
+          if ($env:LIMIT -notmatch '^\d+$') { throw 'Limit must be a nonnegative integer' }
+      - name: Download exact source commit to a Windows-safe path
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('node:fs/promises');
+            const path = require('node:path');
+            const destination = path.join(process.env.RUNNER_TEMP,
+              `shop-source-${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT}`);
+            await fs.mkdir(destination);
+            const {data} = await github.rest.repos.downloadZipballArchive({...context.repo, ref: context.sha});
+            await fs.writeFile(path.join(destination, 'source.zip'), Buffer.from(data));
+            core.exportVariable('SHOP_ARCHIVE_DIR', destination);
+      - name: Extract immutable source
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Expand-Archive -LiteralPath (Join-Path $env:SHOP_ARCHIVE_DIR 'source.zip') -DestinationPath $env:SHOP_ARCHIVE_DIR
+          $sources = @(Get-ChildItem -LiteralPath $env:SHOP_ARCHIVE_DIR -Directory)
+          if ($sources.Count -ne 1) { throw 'Unexpected source archive layout' }
+          Add-Content -LiteralPath $env:GITHUB_ENV -Encoding UTF8 -Value "SHOP_SOURCE_DIR=$($sources[0].FullName)"
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
+        with:
+          version: '0.12.15'
+          working-directory: ${{ runner.temp }}
+          enable-cache: false
+        env:
+          UV_CACHE_DIR: ${{ runner.temp }}/shop-uv-cache
+      - name: Prepare persistent shop Python environment
+        env:
+          WORKER: ${{ inputs.worker }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:LOCALAPPDATA) { throw 'LOCALAPPDATA is required' }
+          $env:UV_PYTHON_INSTALL_DIR = Join-Path $env:LOCALAPPDATA 'Vinylofy\shop-price-python'
+          $venv = Join-Path $env:LOCALAPPDATA "Vinylofy\$($env:WORKER)-price-venv"
+          $python = Join-Path $venv 'Scripts\python.exe'
+          if (-not (Test-Path -LiteralPath $python)) {
+            uv venv --no-project --seed --managed-python --python 3.12 --link-mode copy $venv
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          uv pip install --python $python -r (Join-Path $env:SHOP_SOURCE_DIR 'requirements.txt') playwright
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $env:PLAYWRIGHT_BROWSERS_PATH = Join-Path $env:LOCALAPPDATA 'Vinylofy\shop-price-browsers'
+          & $python -m playwright install chromium
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Add-Content -LiteralPath $env:GITHUB_ENV -Encoding UTF8 -Value "SHOP_PYTHON=$python"
+          Add-Content -LiteralPath $env:GITHUB_ENV -Encoding UTF8 -Value "PLAYWRIGHT_BROWSERS_PATH=$env:PLAYWRIGHT_BROWSERS_PATH"
+      - name: Collect current listings and verify existing prices
+        env:
+          DATABASE_URL: ${{ inputs.write && secrets.DATABASE_URL || '' }}
+          WORKER: ${{ inputs.worker }}
+          LIMIT: ${{ inputs.limit }}
+          WRITE: ${{ inputs.write }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-Location -LiteralPath $env:SHOP_SOURCE_DIR
+          $arguments = @('-u', '-m', 'scripts.workers.run_catalog_price', '--worker', $env:WORKER, '--limit', $env:LIMIT)
+          if ($env:WRITE -eq 'true') { $arguments += '--write' }
+          & $env:SHOP_PYTHON @arguments
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Save verification evidence
+        if: always() && env.SHOP_SOURCE_DIR != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-price-${{ inputs.worker }}-${{ github.run_id }}
+          path: ${{ env.SHOP_SOURCE_DIR }}/output/price-verification/
+          retention-days: 3
+          if-no-files-found: ignore
+  queue-watchdog:
+    name: Detect unavailable Windows runner
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/github-script@v8
+        with:
+          script: |
+            const deadline = Date.now() + 10 * 60 * 1000;
+            while (Date.now() < deadline) {
+              const {data} = await github.rest.actions.listJobsForWorkflowRun({...context.repo, run_id: context.runId});
+              const job = data.jobs.find(item => item.name === 'Windows shop collector');
+              if (job && ['in_progress', 'completed'].includes(job.status)) {
+                core.notice('Windows runner accepted the shop job.');
+                return;
+              }
+              await new Promise(resolve => setTimeout(resolve, 30000));
+            }
+            core.error('No Windows runner accepted this job within 10 minutes. Check the Windows Actions runner service; no scrape or database write started.');
+            await core.summary.addHeading('Windows runner unavailable')
+              .addRaw('The job remained queued for 10 minutes. Start the Actions runner service on the Windows host and rerun this workflow.').write();
+            await github.rest.actions.cancelWorkflowRun({...context.repo, run_id: context.runId});
