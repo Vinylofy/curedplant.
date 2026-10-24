@@ -104,7 +104,9 @@ def main() -> int:
     identity_review = None
     if args.worker == "variaworld" and source_returncode == 0 and not args.approved_source_run:
         import psycopg
-        from scripts.workers.variaworld_identity import enrich_identities, fallback_matches
+        from scripts.workers.variaworld_identity import enrich_identities, fallback_matches, verified_gtin
+        from scripts.workers.price_evidence import url_key
+        from requests import RequestException
         from psycopg.rows import dict_row
         with psycopg.connect(os.environ["DATABASE_URL"], prepare_threshold=None, row_factory=dict_row) as conn:
             conn.execute('set transaction read only')
@@ -112,8 +114,18 @@ def main() -> int:
                 from public.prices pr join public.shops sh on sh.id=pr.shop_id
                 join public.products p on p.id=pr.product_id where sh.domain='variaworld.nl'""").fetchall()
             known_urls = [row['product_url'] for row in registered]
-        identity_review = enrich_identities(records, known_urls,
-            budget=int(os.environ.get('VARIAWORLD_IDENTITY_BUDGET', '200')))
+        try:
+            identity_review = enrich_identities(records, known_urls,
+                budget=int(os.environ.get('VARIAWORLD_IDENTITY_BUDGET', '200')))
+        except (RequestException, RuntimeError) as exc:
+            # Optional identity verification must not stop current listing-price
+            # refreshes. Unverified replacements receive no identity proof and
+            # cannot match an existing offer through GTIN.
+            known = {url_key(url) for url in known_urls}
+            identity_review = {'status': 'deferred', 'reason': type(exc).__name__,
+                'verified': sum(bool(verified_gtin(row)) for row in records),
+                'pending': sum(url_key(row['source_url']) not in known and not verified_gtin(row) for row in records)}
+            print('::warning title=Variaworld identity verification deferred::Current listing prices remain eligible; unverified replacements are skipped and identity progress is retained.', flush=True)
         # The enriched evidence is the exact evidence reviewed by the writer.
         evidence.write_text("".join(json.dumps(row, ensure_ascii=False, default=str) + "\n" for row in records))
     rows, summary = assess(records)
