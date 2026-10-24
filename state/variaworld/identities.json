@@ -4,9 +4,45 @@
       "gtin": null,
       "observed_at": "2026-10-24T19:02:28.641247+00:00"
     },
+    "variaworld.nl/artikel/detail.php?at=0003122300": {
+      "gtin": null,
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=0035183900": {
+      "gtin": null,
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=0042254700": {
+      "gtin": null,
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=0043887400": {
+      "gtin": null,
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=0046562400": {
+      "gtin": null,
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
     "variaworld.nl/artikel/detail.php?at=0047725200": {
       "gtin": "03700477840976",
       "observed_at": "2026-10-24T19:02:28.641247+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=0047847400": {
+      "gtin": null,
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=0048607100": {
+      "gtin": null,
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=0048611600": {
+      "gtin": null,
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=0048657900": {
+      "gtin": null,
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
     },
     "variaworld.nl/artikel/detail.php?at=7000082000": {
       "gtin": "00012414167910",
@@ -76,9 +112,281 @@
       "gtin": "06417138666376",
       "observed_at": "2026-10-24T19:02:28.641247+00:00"
     },
+    "variaworld.nl/artikel/detail.php?at=7000103000": {
+      "gtin": "05065007965719",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000104000": {
+      "gtin": "00075678598791",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000106000": {
+      "gtin": "08719262039315",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000107000": {
+      "gtin": "04029759206811",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000108000": {
+      "gtin": "00603497812561",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000109000": {
+      "gtin": "00194399867716",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000110000": {
+      "gtin": "00886974657118",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000111000": {
+      "gtin": "00194399566411",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000114000": {
+      "gtin": "00075678615429",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000115000": {
+      "gtin": "00843563177631",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000116000": {
+      "gtin": "00790692069316",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000117000": {
+      "gtin": "00075678632365",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000118000": {
+      "gtin": "00075678632372",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000119000": {
+      "gtin": "00190295526283",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000121000": {
+      "gtin": "04030433613818",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000122000": {
+      "gtin": "04030433607213",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000123000": {
+      "gtin": "07640159731252",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000124000": {
+      "gtin": "05052442022206",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000125000": {
+      "gtin": "00691835876139",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000127000": {
+      "gtin": "00885150342237",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000130000": {
+      "gtin": "00194606010331",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000132000": {
+      "gtin": "05054197534140",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000133000": {
+      "gtin": "00602458172577",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000134000": {
+      "gtin": "00602445294169",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000135000": {
+      "gtin": "08719262019706",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000137000": {
+      "gtin": "00602448056627",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000138000": {
+      "gtin": "00602567863311",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000140000": {
+      "gtin": "00819873013617",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000142000": {
+      "gtin": "00843563153178",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000143000": {
+      "gtin": "00843563148013",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000144000": {
+      "gtin": "00199584094816",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000145000": {
+      "gtin": "00194399712214",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000146000": {
+      "gtin": "00196588051210",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000147000": {
+      "gtin": "00196588163616",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000148000": {
+      "gtin": "00602448476180",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000149000": {
+      "gtin": "00652637344011",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000150000": {
+      "gtin": "00652637323016",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000151000": {
+      "gtin": "00184923126716",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000152000": {
+      "gtin": "00850063560320",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000153000": {
+      "gtin": "00850063560313",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000154000": {
+      "gtin": "08719262027138",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000155000": {
+      "gtin": "05026328000831",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000156000": {
+      "gtin": "04050538368079",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000157000": {
+      "gtin": "00190295193218",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000159000": {
+      "gtin": "05054197422706",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000161000": {
+      "gtin": "00075678635090",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000162000": {
+      "gtin": "00075678645914",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000163000": {
+      "gtin": "00093624854449",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000164000": {
+      "gtin": "00602478117091",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000165000": {
+      "gtin": "00602547484314",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000166000": {
+      "gtin": "00602577685330",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000167000": {
+      "gtin": "00190759540510",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000169000": {
+      "gtin": "00198391315275",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000170000": {
+      "gtin": "00819873016212",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000171000": {
+      "gtin": "05400863080747",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000172000": {
+      "gtin": "00810162111557",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000173000": {
+      "gtin": "05060446124208",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000174000": {
+      "gtin": "00067003148917",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000175000": {
+      "gtin": "00781676527410",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000176000": {
+      "gtin": "00850018479929",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000177000": {
+      "gtin": "00602465127805",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000179000": {
+      "gtin": "05060257961757",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7000181000": {
+      "gtin": "00602577057847",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7002424000": {
+      "gtin": "04050538883756",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7002425000": {
+      "gtin": "04050538819564",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7002426000": {
+      "gtin": "04050538707205",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7002427000": {
+      "gtin": "04050538913033",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
+    },
     "variaworld.nl/artikel/detail.php?at=7002617000": {
       "gtin": "00888072686212",
       "observed_at": "2026-10-24T19:02:28.641247+00:00"
+    },
+    "variaworld.nl/artikel/detail.php?at=7002674000": {
+      "gtin": "00602577974496",
+      "observed_at": "2026-10-24T19:10:23.758119+00:00"
     }
   },
   "version": 1
