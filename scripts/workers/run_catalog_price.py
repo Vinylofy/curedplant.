@@ -101,7 +101,29 @@ def main() -> int:
         print("[CUREDPLANT] native listing (database write=false):", " ".join(command), flush=True)
         source_returncode = subprocess.run(command, check=False, env=env).returncode
         records = [json.loads(line) for line in evidence.read_text().splitlines() if line.strip()]
+    identity_review = None
+    if args.worker == "variaworld" and source_returncode == 0 and not args.approved_source_run:
+        import psycopg
+        from scripts.workers.variaworld_identity import enrich_identities, fallback_matches
+        from psycopg.rows import dict_row
+        with psycopg.connect(os.environ["DATABASE_URL"], prepare_threshold=None, row_factory=dict_row) as conn:
+            conn.execute('set transaction read only')
+            registered = conn.execute("""select pr.product_id,pr.product_url,p.ean,p.gtin_normalized
+                from public.prices pr join public.shops sh on sh.id=pr.shop_id
+                join public.products p on p.id=pr.product_id where sh.domain='variaworld.nl'""").fetchall()
+            known_urls = [row['product_url'] for row in registered]
+        identity_review = enrich_identities(records, known_urls,
+            budget=int(os.environ.get('VARIAWORLD_IDENTITY_BUDGET', '200')))
+        # The enriched evidence is the exact evidence reviewed by the writer.
+        evidence.write_text("".join(json.dumps(row, ensure_ascii=False, default=str) + "\n" for row in records))
     rows, summary = assess(records)
+    if identity_review is not None:
+        replacements = fallback_matches(rows, registered)
+        identity_review['replacement_matches'] = len(replacements)
+        identity_review['replacement_samples'] = [
+            {'product_id': key, 'url': row['source_url'], 'price': row['price']}
+            for key, row in list(replacements.items())[:5]]
+        summary["identity_review"] = identity_review
     summary.update(worker=args.worker, write=args.write, limit=args.limit,
                    started_at=started.isoformat(), source_returncode=source_returncode,
                    approved_source_run=args.approved_source_run,

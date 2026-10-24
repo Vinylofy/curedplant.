@@ -41,19 +41,31 @@ def update_existing(worker, records, started_at):
             # One narrowly scoped shop snapshot. Stable lock order prevents
             # two price writers taking these rows in opposite orders.
             cur.execute("""select product_id,product_url from public.prices where shop_id=%s""", (shop_id,))
-            target_ids = [r["product_id"] for r in cur.fetchall() if url_key(r["product_url"]) in expected]
+            registered = cur.fetchall()
+            fallbacks = {}
+            if worker == "variaworld" and any(row.get("identity_proof") for row in records):
+                from scripts.workers.variaworld_identity import fallback_matches
+                cur.execute("""select pr.product_id,pr.product_url,p.ean,p.gtin_normalized
+                    from public.prices pr join public.products p on p.id=pr.product_id
+                    where pr.shop_id=%s""", (shop_id,))
+                fallbacks = fallback_matches(records, cur.fetchall())
+            target_ids = [r["product_id"] for r in registered
+                          if url_key(r["product_url"]) in expected or str(r["product_id"]) in fallbacks]
             cur.execute("""select product_id, shop_id, product_url, price, currency,
                                   availability, last_seen_at, is_active
                            from public.prices where shop_id=%s
                              and product_id=any(%s)
                            order by product_id for update""", (shop_id, target_ids))
             targets = cur.fetchall()
+            target_records = {str(t["product_id"]): expected.get(url_key(t["product_url"]))
+                              or fallbacks.get(str(t["product_id"])) for t in targets}
             matched_keys = set()
             keys = [url_key(t["product_url"]) for t in targets]
             from collections import Counter
             counts = Counter(keys)
             ambiguous = {key for key, count in counts.items() if count > 1}
-            stats["quarantined_urls"] = [expected[key]["source_url"] for key in sorted(ambiguous)]
+            stats["quarantined_urls"] = sorted({target_records[str(t["product_id"])]["source_url"]
+                                         for t in targets if url_key(t["product_url"]) in ambiguous})
             # No arbitrary product choice: ambiguous URLs get no write. A
             # widespread identity problem still stops the entire shop.
             if ambiguous and len(ambiguous) / len(counts) > .1:
@@ -62,10 +74,10 @@ def update_existing(worker, records, started_at):
             changes = []
             for target in targets:
                 key = url_key(target["product_url"])
-                record = expected.get(key)
+                record = target_records.get(str(target["product_id"]))
                 if record is None:
                     continue
-                matched_keys.add(key)
+                matched_keys.add(url_key(record["source_url"]))
                 stats["matched"] += 1
                 if target["last_seen_at"] and target["last_seen_at"] > started_at:
                     stats["skipped_newer"] += 1
@@ -77,12 +89,14 @@ def update_existing(worker, records, started_at):
                 if availability == "unknown":
                     availability = target["availability"]
                 changed = value != target["price"] or availability != target["availability"]
-                changes.append({"product_id": str(target["product_id"]), "price": str(value),
+                product_url = (record["source_url"] if str(target["product_id"]) in fallbacks
+                               else target["product_url"])
+                changes.append({"product_id": str(target["product_id"]), "product_url": product_url, "price": str(value),
                                 "currency": record["currency"], "availability": availability,
                                 "changed": changed})
                 stats["updated"] += 1
                 stats["changed"] += int(changed)
-                written.append((target["product_id"], value, availability))
+                written.append((target["product_id"], value, availability, product_url))
                 if len(stats["samples"]) < 12:
                     stats["samples"].append({"url": record["source_url"], "before": str(target["price"]), "after": str(value), "currency": record["currency"]})
             stats["unmatched"] = len(expected) - len(matched_keys)
@@ -91,10 +105,10 @@ def update_existing(worker, records, started_at):
             for offset in range(0, len(changes), 2000):
                 batch = Jsonb(changes[offset:offset + 2000])
                 cur.execute("""update public.prices p
-                    set price=v.price,availability=v.availability,last_seen_at=%s,
+                    set price=v.price,availability=v.availability,product_url=v.product_url,last_seen_at=%s,
                         updated_at=now(),is_active=true
                     from jsonb_to_recordset(%s::jsonb)
-                         as v(product_id uuid,price numeric,availability text)
+                         as v(product_id uuid,price numeric,availability text,product_url text)
                     where p.product_id=v.product_id and p.shop_id=%s""", (started_at, batch, shop_id))
                 if cur.rowcount != len(changes[offset:offset + 2000]):
                     raise RuntimeError("Existing offer target count changed; rolling back")
@@ -105,20 +119,20 @@ def update_existing(worker, records, started_at):
                       (product_id uuid,price numeric,currency text,availability text,changed boolean)
                     where v.changed""", (shop_id, started_at, batch))
             # Verify before commit; a mismatch rolls back the entire write.
-            cur.execute("""select product_id,price,availability from public.prices
+            cur.execute("""select product_id,price,availability,product_url,last_seen_at from public.prices
                            where shop_id=%s and product_id=any(%s)""", (shop_id, [r[0] for r in written]))
-            actual = {str(r["product_id"]): (r["price"], r["availability"]) for r in cur.fetchall()}
-            for product_id, value, availability in written:
-                if actual.get(str(product_id)) != (value, availability):
+            actual = {str(r["product_id"]): (r["price"], r["availability"], r["product_url"], r["last_seen_at"]) for r in cur.fetchall()}
+            for product_id, value, availability, product_url in written:
+                if actual.get(str(product_id)) != (value, availability, product_url, started_at):
                     raise RuntimeError("Price postcondition failed; rolling back")
         conn.commit()
     # Independent connection proves committed values, not only transaction state.
     with psycopg.connect(os.environ["DATABASE_URL"], prepare_threshold=None) as conn, conn.cursor(row_factory=dict_row) as cur:
-        cur.execute("""select product_id,price,availability from public.prices
+        cur.execute("""select product_id,price,availability,product_url,last_seen_at from public.prices
                        where shop_id=%s and product_id=any(%s)""", (shop_id, [r[0] for r in written]))
-        actual = {str(r["product_id"]): (r["price"], r["availability"]) for r in cur.fetchall()}
-        for product_id, value, availability in written:
-            if actual.get(str(product_id)) != (value, availability):
+        actual = {str(r["product_id"]): (r["price"], r["availability"], r["product_url"], r["last_seen_at"]) for r in cur.fetchall()}
+        for product_id, value, availability, product_url in written:
+            if actual.get(str(product_id)) != (value, availability, product_url, started_at):
                 raise RuntimeError("Committed price verification failed; schedule must stay off")
             stats["verified"] += 1
     return stats

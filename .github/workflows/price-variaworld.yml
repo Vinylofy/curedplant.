@@ -1,37 +1,135 @@
 name: "Curedplant | Price | Variaworld"
-run-name: "Price | Variaworld | ${{ github.event_name == 'schedule' && 'scheduled write' || (inputs.write && 'write=true' || 'write=false') }} | limit=${{ github.event_name == 'schedule' && '0' || inputs.limit }}"
-
+run-name: "Variaworld | listing prices + verified identities | limit=${{ github.event_name == 'schedule' && '0' || inputs.limit }}"
 on:
   schedule:
     - cron: "48 4 * * *"
   workflow_dispatch:
     inputs:
       limit:
-        description: "0 = native full catalogue; positive = pages/products pilot"
+        description: '0 = all listing pages; positive = pages per category'
         required: true
-        default: "0"
+        default: '0'
+        type: string
+      identity_budget:
+        description: 'Maximum uncached identity lookups, 0–2000; prices always come from listings'
+        required: true
+        default: '20'
         type: string
       write:
-        description: "Write to database"
+        description: 'Update existing prices and verified replacement product links'
         required: true
         default: false
         type: boolean
       approved_dry_run_id:
-        description: "Optional source run ID: false=recheck, true=write reviewed prices; max 6 hours"
-        required: false
-        default: ""
+        description: 'Optional reviewed source run from the last 6 hours'
+        default: ''
         type: string
-
 permissions:
-  contents: read
+  contents: write
   actions: read
-
+concurrency:
+  group: curedplant-variaworld-price
+  cancel-in-progress: false
 jobs:
-  worker:
-    uses: ./.github/workflows/_catalog-price-worker.yml
-    with:
-      approved_dry_run_id: ${{ inputs.approved_dry_run_id || '' }}
-      worker: variaworld
-      limit: ${{ github.event_name == 'schedule' && '0' || inputs.limit }}
-      write: ${{ github.event_name == 'schedule' || inputs.write }}
-    secrets: inherit
+  price:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      VARIAWORLD_IDENTITY_BUDGET: ${{ github.event_name == 'schedule' && '2000' || inputs.identity_budget }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Require main
+        env:
+          BRANCH: ${{ github.ref }}
+        run: test "$BRANCH" = refs/heads/main
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Verify source evidence provenance
+        if: inputs.approved_dry_run_id != ''
+        uses: actions/github-script@v8
+        env:
+          SOURCE_RUN: ${{ inputs.approved_dry_run_id }}
+          WORKER: variaworld
+          WRITE: ${{ inputs.write }}
+          SOURCE_VERSION: current
+        with:
+          script: |
+            const id = Number(process.env.SOURCE_RUN);
+            if (!Number.isSafeInteger(id) || id <= 0 || process.env.SOURCE_VERSION !== 'current') {
+              throw new Error('Source reuse requires a positive run ID and the current source');
+            }
+            const {data: run} = await github.rest.actions.getWorkflowRun({...context.repo, run_id: id});
+            if (run.head_repository.full_name !== `${context.repo.owner}/${context.repo.repo}` ||
+                run.head_branch !== 'main' || run.event !== 'workflow_dispatch' ||
+                !(process.env.WRITE === 'true' ? ['success'] : ['success','failure']).includes(run.conclusion) ||
+                run.path !== `.github/workflows/price-${process.env.WORKER}.yml` ||
+                Date.now() - Date.parse(run.created_at) > 6 * 3600000) {
+              throw new Error('Source run must be a recent successful manual price run from this repository main');
+            }
+      - name: Download approved read-only price evidence
+        if: inputs.approved_dry_run_id != ''
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.approved_dry_run_id }}
+          name: price-evidence-variaworld-${{ inputs.approved_dry_run_id }}
+          path: output/approved-price-source
+      - name: Install scraper dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Collect listings and reconcile verified replacement articles
+        env:
+          LIMIT: ${{ github.event_name == 'schedule' && '0' || inputs.limit }}
+          WRITE: ${{ github.event_name == 'schedule' || inputs.write }}
+          APPROVED_RUN: ${{ inputs.approved_dry_run_id }}
+        run: |
+          args=(--worker variaworld --limit "$LIMIT")
+          if [ "$WRITE" = true ]; then args+=(--write); fi
+          if [ -n "$APPROVED_RUN" ]; then args+=(--approved-source-run "$APPROVED_RUN" --approved-source-dir output/approved-price-source); fi
+          python -u -m scripts.workers.run_catalog_price "${args[@]}"
+      - name: Persist verified identity progress even after a later fetch fails
+        if: always() && github.ref == 'refs/heads/main'
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('node:fs/promises');
+            const file = 'state/variaworld/identities.json';
+            let next;
+            try { next = JSON.parse(await fs.readFile(file, 'utf8')); }
+            catch (error) { if (error.code === 'ENOENT') return; throw error; }
+            if (next.version !== 1 || !next.entries || Array.isArray(next.entries)) throw new Error('Invalid identity checkpoint');
+            let sha, current;
+            try {
+              const {data} = await github.rest.repos.getContent({...context.repo, path: file, ref: 'main'});
+              sha = data.sha;
+              current = JSON.parse(Buffer.from(data.content, 'base64').toString('utf8'));
+            } catch (error) { if (error.status !== 404) throw error; }
+            for (const [key, entry] of Object.entries(current?.entries || {})) {
+              if (!next.entries[key] || Date.parse(entry.observed_at) > Date.parse(next.entries[key].observed_at)) next.entries[key] = entry;
+            }
+            if (JSON.stringify(next) === JSON.stringify(current)) return;
+            await github.rest.repos.createOrUpdateFileContents({...context.repo, path: file, branch: 'main', sha,
+              message: 'Save verified Variaworld article identity progress',
+              content: Buffer.from(JSON.stringify(next, null, 2) + '\n').toString('base64')});
+      - name: Publish price and identity coverage counts
+        if: always()
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          path = Path('output/price-verification/variaworld/summary.json')
+          if path.exists():
+              summary = json.loads(path.read_text())
+              report = {key: summary.get(key) for key in ('status', 'priced_products', 'identity_review', 'database_writes', 'database', 'errors')}
+              print('::notice title=Variaworld coverage::' + json.dumps(report, default=str).replace('%', '%25').replace('\n', '%0A').replace('\r', '%0D'))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: price-evidence-variaworld-${{ github.run_id }}
+          path: output/price-verification/
+          retention-days: 3
+          if-no-files-found: ignore
