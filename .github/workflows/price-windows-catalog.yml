@@ -141,22 +141,37 @@ jobs:
   queue-watchdog:
     name: Detect unavailable Windows runner
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 55
     steps:
       - uses: actions/github-script@v8
         with:
           script: |
-            const deadline = Date.now() + 10 * 60 * 1000;
-            while (Date.now() < deadline) {
+            let deadline = Date.now() + 10 * 60 * 1000;
+            const hardDeadline = Date.now() + 50 * 60 * 1000;
+            let busyReported = false;
+            while (Date.now() < deadline && Date.now() < hardDeadline) {
               const {data} = await github.rest.actions.listJobsForWorkflowRun({...context.repo, run_id: context.runId});
               const job = data.jobs.find(item => item.name.endsWith('Windows shop collector'));
               if (job && ['in_progress', 'completed'].includes(job.status)) {
                 core.notice('Windows runner accepted the shop job.');
                 return;
               }
+              // A working shared runner may still be processing the other shop.
+              // Count ten idle minutes, not ten minutes of legitimate work.
+              const active = await github.rest.actions.listWorkflowRunsForRepo({...context.repo, status: 'in_progress', per_page: 100});
+              for (const run of active.data.workflow_runs.filter(item => item.id !== context.runId &&
+                  /\/(price-windows-catalog|price-soundsvenlo|price-northendhaarlem|bol-feed-review)\.yml$/.test(item.path))) {
+                const jobs = await github.rest.actions.listJobsForWorkflowRun({...context.repo, run_id: run.id});
+                if (jobs.data.jobs.some(item => item.status === 'in_progress' && item.labels.includes('Windows'))) {
+                  deadline = Date.now() + 10 * 60 * 1000;
+                  if (!busyReported) core.notice('The shared Windows runner is busy with another job; allowing that job to finish.');
+                  busyReported = true;
+                  break;
+                }
+              }
               await new Promise(resolve => setTimeout(resolve, 30000));
             }
-            core.error('No Windows runner accepted this job within 10 minutes. The runner may be busy or offline; check the Windows Actions runner service. No scrape or database write started.');
+            core.error('Windows job remained queued beyond the available-runner grace period (maximum 50 minutes). The runner may be busy or offline; check the Windows Actions runner service. No scrape or database write started.');
             await core.summary.addHeading('Windows runner unavailable')
-              .addRaw('The job remained queued for 10 minutes. Start the Actions runner service on the Windows host and rerun this workflow.').write();
+              .addRaw('The job remained queued beyond the runner grace period. Start the Actions runner service on the Windows host and rerun this workflow.').write();
             await github.rest.actions.cancelWorkflowRun({...context.repo, run_id: context.runId});

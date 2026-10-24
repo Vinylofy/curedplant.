@@ -110,6 +110,11 @@ jobs:
             for (const [key, entry] of Object.entries(current?.entries || {})) {
               if (!next.entries[key] || Date.parse(entry.observed_at) > Date.parse(next.entries[key].observed_at)) next.entries[key] = entry;
             }
+            for (const [key, entry] of Object.entries(next.entries)) {
+              const observed = Date.parse(entry.observed_at);
+              const ttl = (entry.gtin ? 14 * 24 : 24) * 3600000;
+              if (!Number.isFinite(observed) || Date.now() - observed > ttl) delete next.entries[key];
+            }
             if (JSON.stringify(next) === JSON.stringify(current)) return;
             await github.rest.repos.createOrUpdateFileContents({...context.repo, path: file, branch: 'main', sha,
               message: 'Save verified Variaworld article identity progress',
