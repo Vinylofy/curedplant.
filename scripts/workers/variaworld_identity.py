@@ -13,7 +13,7 @@ import requests
 from scripts.importers.common import strict_normalize_gtin
 from scripts.workers.price_evidence import url_key
 
-PROOF_KIND = 'variaworld_product_metadata_v1'
+PROOF_KIND = 'variaworld_product_metadata_v2'
 CACHE_PATH = Path('state/variaworld/identities.json')
 
 
@@ -104,7 +104,7 @@ def enrich_identities(records, known_urls, *, budget=200, cache_path=CACHE_PATH,
         key = url_key(url)
         entry = entries.get(key)
         valid = False
-        if entry:
+        if entry and entry.get('proof_kind') == PROOF_KIND:
             observed = datetime.fromisoformat(entry['observed_at'])
             lifetime = timedelta(days=14) if entry.get('gtin') else timedelta(hours=24)
             valid = now - lifetime <= observed <= now
@@ -133,7 +133,7 @@ def enrich_identities(records, known_urls, *, budget=200, cache_path=CACHE_PATH,
                         raise RuntimeError('Blocked Variaworld identity page; do not cache as missing EAN')
                     code = detail_gtin(response.text)
                 break
-            entry = {'gtin': code, 'observed_at': now.isoformat()}
+            entry = {'gtin': code, 'observed_at': now.isoformat(), 'proof_kind': PROOF_KIND}
             entries[key] = entry
             stats['lookups'] += 1
             # A failed later fetch can resume from already verified identities.
