@@ -69,8 +69,11 @@ jobs:
         env:
           UV_CACHE_DIR: ${{ runner.temp }}/shop-uv-cache
       - name: Prepare persistent shop Python environment
+        timeout-minutes: 10
         env:
           WORKER: ${{ inputs.worker }}
+          UV_HTTP_TIMEOUT: '60'
+          UV_HTTP_RETRIES: '2'
         working-directory: ${{ runner.temp }}
         run: |
           $ErrorActionPreference = 'Stop'
@@ -82,13 +85,20 @@ jobs:
             uv venv --no-project --seed --managed-python --python 3.12 --link-mode copy $venv
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
-          uv pip install --python $python -r (Join-Path $env:SHOP_SOURCE_DIR 'requirements.txt') playwright
+          uv pip install --python $python 'requests>=2.31,<3' 'beautifulsoup4>=4.12,<5' 'psycopg[binary]>=3.2,<4' 'python-dotenv>=1,<2' 'playwright>=1.50,<2'
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $env:PLAYWRIGHT_BROWSERS_PATH = Join-Path $env:LOCALAPPDATA 'Vinylofy\shop-price-browsers'
-          & $python -m playwright install chromium
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $env:PLAYWRIGHT_BROWSERS_PATH = Join-Path $env:LOCALAPPDATA 'Vinylofy\playwright-browsers'
           Add-Content -LiteralPath $env:GITHUB_ENV -Encoding UTF8 -Value "SHOP_PYTHON=$python"
           Add-Content -LiteralPath $env:GITHUB_ENV -Encoding UTF8 -Value "PLAYWRIGHT_BROWSERS_PATH=$env:PLAYWRIGHT_BROWSERS_PATH"
+      - name: Reuse or install Chromium
+        timeout-minutes: 10
+        env:
+          PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT: '60000'
+        working-directory: ${{ runner.temp }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          & $env:SHOP_PYTHON -m playwright install chromium
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Collect current listings and verify existing prices
         env:
           DATABASE_URL: ${{ inputs.write && secrets.DATABASE_URL || '' }}
@@ -129,7 +139,7 @@ jobs:
               }
               await new Promise(resolve => setTimeout(resolve, 30000));
             }
-            core.error('No Windows runner accepted this job within 10 minutes. Check the Windows Actions runner service; no scrape or database write started.');
+            core.error('No Windows runner accepted this job within 10 minutes. The runner may be busy or offline; check the Windows Actions runner service. No scrape or database write started.');
             await core.summary.addHeading('Windows runner unavailable')
               .addRaw('The job remained queued for 10 minutes. Start the Actions runner service on the Windows host and rerun this workflow.').write();
             await github.rest.actions.cancelWorkflowRun({...context.repo, run_id: context.runId});
