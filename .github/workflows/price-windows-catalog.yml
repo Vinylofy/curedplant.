@@ -26,6 +26,9 @@ jobs:
     name: Windows shop collector
     runs-on: [self-hosted, Windows, "${{ vars.BOL_FEED_RUNNER || 'X64' }}"]
     timeout-minutes: 180
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
     defaults:
       run:
         shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0}

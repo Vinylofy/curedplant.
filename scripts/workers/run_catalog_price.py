@@ -89,7 +89,7 @@ def main() -> int:
         source_returncode = 0
         print(f"[CUREDPLANT] revalidate source run {args.approved_source_run}; no second catalogue fetch", flush=True)
     else:
-        env = dict(os.environ, DATABASE_URL="", CUREDPLANT_PRICE_EVIDENCE=str(evidence.resolve()),
+        env = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8", DATABASE_URL="", CUREDPLANT_PRICE_EVIDENCE=str(evidence.resolve()),
                    PGOPTIONS="-c default_transaction_read_only=on")
         # Native collection never receives a DB credential or a write flag.
         command = command_for(args.worker, args.limit, args.source_version, write=True)
@@ -144,7 +144,7 @@ def main() -> int:
     (directory / "validated-prices.json").write_text(json.dumps(rows, ensure_ascii=False, indent=2, default=str) + "\n")
     print("[PRICE-VERIFICATION]", json.dumps({k:v for k,v in summary.items() if k != "samples"}, default=str), flush=True)
     if os.environ.get("GITHUB_STEP_SUMMARY"):
-        with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as handle:
+        with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as handle:
             handle.write(f"### {args.worker} | Price | write={args.write}: {summary['status']}\n\n"
                          f"Products with valid prices: {len(rows)}; distinct prices: {summary['distinct_prices']}; "
                          f"database rows updated: {summary['database_writes']}.\n\n"
