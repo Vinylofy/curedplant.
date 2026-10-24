@@ -6,7 +6,7 @@ Sounds Venlo en North End Haarlem stonden nog automatisch op de Windows-runner v
 
 De Windows-runner `BOL` in curedplant accepteert de jobs en kan de bronnen lezen. Bij de eerste North End-proef volgde na succesvolle prijsdetectie een `UnicodeEncodeError` bij een vinkje in de log. Python en de bronprocessen gebruiken nu UTF-8.
 
-Tijdelijke fetchfouten konden Sounds Venlo bovendien een pagina laten overslaan. Die pagina wordt nu begrensd opnieuw geprobeerd; een blijvende fout laat de bron falen. North End probeert tijdelijke serverfouten opnieuw op dezelfde URL. HTTP 403/429 worden niet herhaald via nieuwe sessies of IP-adressen.
+Tijdelijke fetchfouten konden Sounds Venlo bovendien een pagina laten overslaan. Die pagina wordt nu begrensd opnieuw geprobeerd; een blijvende fout laat de bron falen. North End probeert tijdelijke serverfouten opnieuw op dezelfde URL. Na een blijvende HTTP 403/429 stopt de batch; er worden dan geen nieuwe sessies of IP-adressen geprobeerd.
 
 ## Nieuwe prijsplanning
 
@@ -34,7 +34,7 @@ Voor niet op URL gekoppelde listingprijzen controleert de worker het huidige pro
 
 De writer controleert de product-GTIN onafhankelijk opnieuw in de database en kan voor een bevestigde vervanging ook de productlink actualiseren. Prijs, availability, productlink en waarnemingstijd worden vóór en na de commit gecontroleerd. Er worden geen publieke producten of nieuwe aanbiedingen aangemaakt en geen EAN's of covers gewijzigd.
 
-Gecontroleerde identiteiten worden met een versie en waarnemingstijd bewaard in `state/variaworld/identities.json`. Positieve bewijzen verlopen na 14 dagen; ontbrekende barcodes worden na 24 uur opnieuw geprobeerd. Een parserwijziging maakt oudere bewijsversies ongeldig. Een latere fout kan de reeds gecontroleerde voortgang behouden. Een mislukte optionele identiteitcheck blokkeert de normale verversing van actuele, op URL gekoppelde listingprijzen niet; onbevestigde vervangingen worden overgeslagen en expliciet als uitgesteld gerapporteerd.
+Gecontroleerde identiteiten worden met een versie en waarnemingstijd bewaard in `state/variaworld/identities.json`. Positieve bewijzen verlopen na 14 dagen; ontbrekende barcodes worden na 24 uur opnieuw geprobeerd. Een parserwijziging maakt oudere bewijsversies ongeldig. Een latere fout kan de reeds gecontroleerde voortgang behouden. Een tijdelijke netwerkfout of siteblokkade tijdens de optionele identiteitcheck blokkeert de normale verversing van actuele, op URL gekoppelde listingprijzen niet; onbevestigde vervangingen worden overgeslagen en expliciet als uitgesteld gerapporteerd.
 
 ## Validatie
 
