@@ -29,13 +29,13 @@ jobs:
     defaults:
       run:
         shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0}
-        working-directory: ${{ runner.temp }}
     steps:
       - name: Require main and validate scope
         env:
           BRANCH: ${{ github.ref }}
           WORKER: ${{ inputs.worker }}
           LIMIT: ${{ inputs.limit }}
+        working-directory: ${{ runner.temp }}
         run: |
           $ErrorActionPreference = 'Stop'
           if ($env:BRANCH -ne 'refs/heads/main') { throw 'Windows source runs require main' }
@@ -54,6 +54,7 @@ jobs:
             await fs.writeFile(path.join(destination, 'source.zip'), Buffer.from(data));
             core.exportVariable('SHOP_ARCHIVE_DIR', destination);
       - name: Extract immutable source
+        working-directory: ${{ runner.temp }}
         run: |
           $ErrorActionPreference = 'Stop'
           Expand-Archive -LiteralPath (Join-Path $env:SHOP_ARCHIVE_DIR 'source.zip') -DestinationPath $env:SHOP_ARCHIVE_DIR
@@ -70,6 +71,7 @@ jobs:
       - name: Prepare persistent shop Python environment
         env:
           WORKER: ${{ inputs.worker }}
+        working-directory: ${{ runner.temp }}
         run: |
           $ErrorActionPreference = 'Stop'
           if (-not $env:LOCALAPPDATA) { throw 'LOCALAPPDATA is required' }
@@ -93,6 +95,7 @@ jobs:
           WORKER: ${{ inputs.worker }}
           LIMIT: ${{ inputs.limit }}
           WRITE: ${{ inputs.write }}
+        working-directory: ${{ runner.temp }}
         run: |
           $ErrorActionPreference = 'Stop'
           Set-Location -LiteralPath $env:SHOP_SOURCE_DIR
