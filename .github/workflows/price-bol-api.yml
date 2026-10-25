@@ -2,7 +2,7 @@ name: "Curedplant | Price | Bol NL API"
 run-name: "Bol NL | API prices | ${{ github.event_name == 'schedule' && 'scheduled write | limit=1500' || format('write={0} | sample={1} | limit={2}', inputs.write, inputs.sample, inputs.limit) }}"
 on:
   schedule:
-    - cron: "7,37 * * * *"
+    - cron: "0,30 * * * *"
   workflow_dispatch:
     inputs:
       limit:
