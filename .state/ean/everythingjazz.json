@@ -2,10 +2,9 @@
   "version": 1,
   "shop": "everythingjazz",
   "cursor": {
-    "page": 1,
+    "page": 2,
     "seed": 0,
-    "exhausted": true,
-    "exhausted_on": "2026-10-18"
+    "signature": "647ae84ceacd30120c73b395e0a603575b60f6da5dda58059a06d2fb7da34af3"
   },
   "budget": {
     "date": "2026-10-25",
