@@ -86,7 +86,7 @@ def run(source, store, directory, *, write=False, page_limit=50, batch_size=10,
     if state and state.get('version') != 1:
         raise ValueError('Unsupported checkpoint version')
     if state and state['phase'] == 'complete':
-        completed_day = datetime.fromisoformat(state['completed_at']).date()
+        completed_day = datetime.fromisoformat(state['cycle_started']).date()
         if scheduled and (completed_day >= now().date() or (now().hour, now().minute) < (3, 17)):
             return dict(summary, status='waiting_daily_cycle')
         state = None
@@ -168,7 +168,7 @@ def run(source, store, directory, *, write=False, page_limit=50, batch_size=10,
         summary['status'] = ('dry_run_checked' if not write else
                              'prices_verified' if summary['database_updates'] else 'checked_no_price_updates')
         summary['continue_cycle'] = write and state['phase'] == 'active'
-    summary['cycle'] = {k: state[k] for k in ('phase', 'route_index', 'page', 'totals')}
+    summary['cycle'] = {k: state[k] for k in ('phase', 'route_index', 'page', 'totals', 'cycle_started')}
     return summary
 
 
@@ -193,6 +193,12 @@ def main():
     except Exception as exc:
         # Do not expose database connection strings or token-bearing exceptions.
         summary['error'] = type(exc).__name__
+    if args.write and summary.get('cycle'):
+        try:
+            from scripts.workers.price_database import jpc_cycle_coverage
+            summary['coverage'] = jpc_cycle_coverage(datetime.fromisoformat(summary['cycle']['cycle_started']))
+        except Exception as exc:
+            summary['coverage_unavailable'] = type(exc).__name__
     atomic_json(directory/'summary.json', summary)
     print('[JPC-BOUNDED] result', json.dumps(summary), flush=True)
     if os.environ.get('GITHUB_OUTPUT'):

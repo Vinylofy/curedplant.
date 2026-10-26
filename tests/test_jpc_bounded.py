@@ -138,3 +138,15 @@ class BoundedCycleTests(unittest.TestCase):
              patch.object(source.native, 'request_listing_page', return_value=response), \
              self.assertRaises(requests.HTTPError):
             source.collect({'kind': 'page', 'route': self.routes[0], 'page': 5})
+
+    def test_cycle_that_finishes_next_day_does_not_skip_that_days_round(self):
+        from datetime import timedelta
+        fixed = datetime(2026, 10, 27, 12, tzinfo=timezone.utc)
+        self.store.state['cycle_started'] = (fixed-timedelta(days=1)).isoformat()
+        self.store.state['phase'] = 'complete'
+        self.store.state['completed_at'] = fixed.isoformat()
+        fetch = Mock(side_effect=[{'routes': self.routes}, page(1, terminal=True)])
+        with patch.object(cycle, 'now', return_value=fixed):
+            result = self.run_cycle(fetch, write=False, scheduled=True, page_limit=1)
+        self.assertEqual(result['status'], 'dry_run_checked')
+        self.assertEqual(fetch.call_count, 2)

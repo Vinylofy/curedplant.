@@ -138,3 +138,16 @@ def update_existing(worker, records, started_at, *, allow_no_matches=False):
                 raise RuntimeError("Committed price verification failed; schedule must stay off")
             stats["verified"] += 1
     return stats
+
+
+def jpc_cycle_coverage(started_at):
+    """Read-only coverage; duplicate category observations do not inflate it."""
+    with psycopg.connect(os.environ['DATABASE_URL'], prepare_threshold=None) as conn:
+        conn.execute('set transaction read only')
+        with conn.cursor(row_factory=dict_row) as cur:
+            cur.execute("""select count(*) as registered_offers,
+                count(*) filter (where p.last_seen_at >= %s) as offers_seen_since_cycle_start
+                from public.prices p join public.shops s on s.id=p.shop_id
+                where s.domain='jpc.de'""", (started_at,))
+            row = cur.fetchone()
+    return {key: int(row[key]) for key in ('registered_offers', 'offers_seen_since_cycle_start')}
