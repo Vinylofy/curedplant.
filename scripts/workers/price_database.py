@@ -23,7 +23,7 @@ def shop_domain(worker, rows):
     return get_shop_importer(worker).config.shop_domain
 
 
-def update_existing(worker, records, started_at):
+def update_existing(worker, records, started_at, *, allow_no_matches=False):
     """Never creates products/offers or changes EAN, covers or detail queues."""
     domain = shop_domain(worker, records)
     expected = {url_key(r["source_url"]): r for r in records}
@@ -100,6 +100,8 @@ def update_existing(worker, records, started_at):
                 if len(stats["samples"]) < 12:
                     stats["samples"].append({"url": record["source_url"], "before": str(target["price"]), "after": str(value), "currency": record["currency"]})
             stats["unmatched"] = len(expected) - len(matched_keys)
+            if not written and allow_no_matches and stats["matched"] == stats["skipped_newer"]:
+                return stats
             if not written:
                 raise RuntimeError(f"No existing prices updated: matched={stats['matched']}, newer={stats['skipped_newer']}")
             for offset in range(0, len(changes), 2000):

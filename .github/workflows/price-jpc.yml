@@ -1,37 +1,79 @@
 name: "Curedplant | Price | Jpc"
-run-name: "Price | Jpc | ${{ github.event_name == 'schedule' && 'scheduled write' || (inputs.write && 'write=true' || 'write=false') }} | limit=${{ github.event_name == 'schedule' && '0' || inputs.limit }}"
-
+run-name: "Price | Jpc | bounded | ${{ github.event_name == 'schedule' && 'scheduled write' || (inputs.write && 'write=true' || 'write=false') }}"
 on:
   schedule:
-    - cron: "17 3 * * *"
+    # One daily cycle from 03:17 UTC; hourly fallback resumes interrupted work.
+    - cron: "17 * * * *"
   workflow_dispatch:
     inputs:
       limit:
-        description: "0 = native full catalogue; positive = pages/products pilot"
-        required: true
-        default: "0"
+        description: "Maximum pages this run (1-100); default 50, resumes saved cursor"
         type: string
+        default: "50"
+        required: true
       write:
-        description: "Write to database where supported"
-        required: true
-        default: false
+        description: "Verify and publish existing prices; save progress after each portion"
         type: boolean
-      approved_dry_run_id:
-        description: "Optional source run ID: false=recheck, true=write reviewed prices; max 6 hours"
-        required: false
-        default: ""
-        type: string
-
+        default: false
+      continue_cycle:
+        description: "Automatically continue the daily cycle; requires enabled automation"
+        type: boolean
+        default: false
 permissions:
-  contents: read
-  actions: read
-
+  contents: write
+  actions: write
+concurrency:
+  group: curedplant-jpc-price
+  cancel-in-progress: false
 jobs:
-  worker:
-    uses: ./.github/workflows/_catalog-price-worker.yml
-    with:
-      approved_dry_run_id: ${{ inputs.approved_dry_run_id || '' }}
-      worker: jpc
-      limit: ${{ github.event_name == 'schedule' && '0' || inputs.limit }}
-      write: ${{ github.event_name == 'schedule' || inputs.write }}
-    secrets: inherit
+  bounded:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Require main for writes and continuation
+        env:
+          WRITE: ${{ github.event_name == 'schedule' || inputs.write }}
+          BRANCH: ${{ github.ref }}
+        run: |
+          if [ "$WRITE" = true ] && [ "$BRANCH" != refs/heads/main ]; then
+            echo 'Price writes require main'
+            exit 1
+          fi
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Collect, verify, publish and checkpoint bounded portions
+        id: cycle
+        timeout-minutes: 20
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          PAGE_LIMIT: ${{ github.event_name == 'schedule' && '50' || inputs.limit }}
+          WRITE: ${{ github.event_name == 'schedule' || inputs.write }}
+          SCHEDULED: ${{ github.event_name == 'schedule' || inputs.continue_cycle }}
+        run: |
+          args=(--limit "$PAGE_LIMIT")
+          if [ "$WRITE" = true ]; then args+=(--write); fi
+          if [ "$SCHEDULED" = true ]; then args+=(--scheduled); fi
+          python -u -m scripts.workers.jpc_bounded_prices "${args[@]}"
+      - name: Save page journals and price verification report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jpc-bounded-prices-${{ github.run_id }}
+          path: output/jpc-bounded/
+          retention-days: 3
+          if-no-files-found: warn
+      - name: Continue unfinished daily cycle
+        if: success() && steps.cycle.outputs.continue_cycle == 'true' && (github.event_name == 'schedule' || inputs.continue_cycle)
+        uses: actions/github-script@v8
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({...context.repo,
+              workflow_id: 'price-jpc.yml', ref: 'main',
+              inputs: {limit: '50', write: 'true', continue_cycle: 'true'}});
