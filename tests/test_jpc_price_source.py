@@ -24,6 +24,11 @@ class Process:
 
 
 class JpcPriceSourceTests(unittest.TestCase):
+    def setUp(self):
+        indexed = patch.object(source, "route_specs", return_value="rock=https://www.jpc.de/s/1238692_66733?searchtype=cid")
+        indexed.start()
+        self.addCleanup(indexed.stop)
+
     def test_two_native_price_shards_cover_all_page_residues_without_writes(self):
         for index in range(source.SHARDS):
             command = source.command_for(index,0)
@@ -39,6 +44,7 @@ class JpcPriceSourceTests(unittest.TestCase):
             target=Path(directory)/'records.jsonl'
             target.write_text('')
             def spawn(command, **kwargs):
+                self.assertNotIn('--include-route-index', command)
                 self.assertEqual(kwargs['env']['DATABASE_URL'],'')
                 self.assertTrue(kwargs['env']['CUREDPLANT_JPC_COOLDOWN'].endswith('/cooldown'))
                 index=command[command.index('--listing-page-shard-index')+1]
@@ -203,3 +209,41 @@ class JpcTransientRequestTests(unittest.TestCase):
         result, method = self.fetch([self.response(503, '3600')])
         self.assertEqual((result.status_code, method.call_count), (503, 1))
         sleep.assert_not_called()
+
+class JpcSharedIndexTests(unittest.TestCase):
+    @patch.object(source.subprocess, 'Popen')
+    @patch.object(source, 'route_specs', side_effect=requests.HTTPError('503'))
+    def test_unavailable_shared_index_stops_before_any_child_or_write(self, routes, spawn):
+        with tempfile.TemporaryDirectory() as directory, \
+             patch.dict(os.environ, {'CUREDPLANT_PRICE_EVIDENCE': str(Path(directory)/'records.jsonl')}):
+            self.assertEqual(source.run(2), 1)
+            spawn.assert_not_called()
+            evidence = json.loads((Path(directory)/'records.jsonl').read_text())
+            self.assertEqual(evidence['kind'], 'source_error')
+
+    def test_index_http_error_and_empty_index_cannot_reduce_category_coverage(self):
+        session = Mock()
+        for status in [403, 503]:
+            response = requests.Response()
+            response.status_code = status
+            response._content = b'unavailable'
+            with self.subTest(status=status), \
+                 patch.object(native, 'request_listing_page', return_value=response), \
+                 self.assertRaises(requests.HTTPError):
+                native.discover_route_index(session=session, timeout_seconds=25)
+        response.status_code = 200
+        with patch.object(native, 'request_listing_page', return_value=response), \
+             self.assertRaises(ValueError):
+            native.discover_route_index(session=session, timeout_seconds=25)
+
+    def test_both_processes_receive_identical_complete_route_snapshot(self):
+        routes = [native.RouteSpec('folk-americana', 'https://www.jpc.de/s/1238692_66705?searchtype=cid')]
+        with patch.object(native, 'build_session'), \
+             patch.object(native, 'discover_route_index', return_value=routes) as fetch:
+            specs = source.route_specs()
+        fetch.assert_called_once()
+        self.assertIn('folk-americana=', specs)
+        for index in range(source.SHARDS):
+            command = source.command_for(index, 2, specs)
+            self.assertEqual(command[command.index('--routes')+1], specs)
+            self.assertNotIn('--include-route-index', command)

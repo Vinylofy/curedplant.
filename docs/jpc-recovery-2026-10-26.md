@@ -18,7 +18,7 @@ De JPC-prijslimiet wordt 300 minuten, omdat de laatste volledige scan 5.067 pagi
 
 ## Validatie
 
-21 JPC-tests en 43 prijsgerelateerde tests slagen (7 database-integratietests overgeslagen zonder testdatabase). Actionlint controleert de twee betrokken prijsworkflows. Een aanvullende begrensde Actions-proef gebruikt write=false; een groene kleine proef bewijst geen volledige catalogusdekking of duurzame oplossing van JPC's 503-responsen.
+24 JPC-tests en 43 prijsgerelateerde tests slagen (7 database-integratietests overgeslagen zonder testdatabase). Actionlint controleert de twee betrokken prijsworkflows. Een aanvullende begrensde Actions-proef gebruikt write=false; een groene kleine proef bewijst geen volledige catalogusdekking of duurzame oplossing van JPC's 503-responsen.
 
 ## Tweede herstelpoging
 
@@ -27,3 +27,9 @@ De eerste begrensde proef [40271798250](https://github.com/Vinylofy/curedplant./
 De twee Linux-prijsprocessen delen nu één afkoeldeadline in een vergrendeld tijdelijk bestand. Een tijdelijke fout pauzeert daardoor beide ophalers vóór hun volgende listingaanvraag. Een tweede proces kan de wachttijd verlengen, maar nooit verkorten. De wachttijd wordt 60/120 seconden, zonder meer dan drie aanvragen per foutieve pagina. Standalone EAN-discovery heeft geen Linux-lock nodig en behoudt de afzonderlijke EAN-planning. Bestaande aanvragen kunnen bij het ingaan van een pauze nog afronden.
 
 Een nieuwe proef leest maximaal twee pagina's per route met write=false. Volledige catalogusdekking en volledige databaseactualisatie zijn daarmee nog niet bewezen.
+
+## Categorie-index: voorkom onterecht groen
+
+De tweede proef [40272558177](https://github.com/Vinylofy/curedplant./actions/runs/40272558177) eindigde technisch groen met 538 prijsproducten en nul databasewrites. Inhoudelijke controle keurde dit af: de eerste ophaler kreeg 503 op de categorie-index en viel terug naar vier standaardcategorieën; de andere vond wel 61 categorieën. De gezamenlijk afgekoelde 502-herpogingen slaagden, maar de categoriedekking was ongelijk. Dit is geen geldig groen bewijs.
+
+De prijsparent haalt de categorie-index nu eenmaal op, vóór het starten van kinderen, met dezelfde begrensde herpogingen. Beide kinderen krijgen exact dezelfde route-snapshot. Een HTTP-fout of index zonder bruikbare categorieën wordt een bronfout; er is geen stille terugval naar vier standaardcategorieën. Dit is met regressietests gecontroleerd. De derde proef gebruikt weer maximaal twee pagina's per categorie, write=false. De uitkomst wordt inhoudelijk gecontroleerd op dezelfde routes voor beide ophalers, inclusief Folk & Americana pagina 1.

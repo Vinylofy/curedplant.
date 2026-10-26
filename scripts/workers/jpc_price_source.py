@@ -11,14 +11,29 @@ import sys
 import tempfile
 import time
 
+import requests
+
 from scripts.workers.price_evidence import capture
+from scripts.scrapers.usf.jobs import discover_jpc_vinyl as native
 
 SHARDS = 2
 
 
-def command_for(index, limit):
+def route_specs():
+    session = native.build_session()
+    try:
+        indexed = native.discover_route_index(session=session, timeout_seconds=25)
+    finally:
+        session.close()
+    routes = native.merge_routes(native.parse_route_specs("default"), indexed)
+    print("[JPC-PRICE] shared category index", {"routes": len(routes)}, flush=True)
+    return ",".join(f"{route.name}={route.url}" for route in routes)
+
+
+def command_for(index, limit, routes=None):
     return [sys.executable, '-u', '-m', 'scripts.scrapers.usf.jobs.discover_jpc_vinyl',
-            '--routes', 'default', '--include-route-index', '--max-pages-per-route', str(limit),
+            '--routes', routes or 'default', *([] if routes else ['--include-route-index']),
+            '--max-pages-per-route', str(limit),
             '--listing-page-shard-index', str(index), '--listing-page-shard-count', str(SHARDS),
             '--pagination-fallback', 'ff', '--availability-filter', 'none', '--delay', '4.0']
 
@@ -39,6 +54,12 @@ def blocked_log(text):
 def run(limit):
     target = Path(os.environ['CUREDPLANT_PRICE_EVIDENCE'])
     processes, logs = [], []
+    try:
+        routes = route_specs()
+    except (requests.RequestException, ValueError):
+        capture({'kind': 'source_error', 'reason': 'JPC shared category index unavailable; no collection or writes'})
+        print('[JPC-PRICE] shared category index unavailable; stopped', flush=True)
+        return 1
     reason = None
     with tempfile.TemporaryDirectory(prefix='curedplant-jpc-prices-') as temporary:
         records = [Path(temporary)/f'shard-{i}.jsonl' for i in range(SHARDS)]
@@ -49,7 +70,7 @@ def run(limit):
                 logs.append(log)
                 env = dict(os.environ, DATABASE_URL='', CUREDPLANT_PRICE_EVIDENCE=str(records[index]),
                            CUREDPLANT_JPC_COOLDOWN=str(Path(temporary)/'cooldown'))
-                processes.append(subprocess.Popen(command_for(index, limit), stdout=log, stderr=subprocess.STDOUT, env=env))
+                processes.append(subprocess.Popen(command_for(index, limit, routes), stdout=log, stderr=subprocess.STDOUT, env=env))
                 print(f'[JPC-PRICE] started read-only page shard {index+1}/{SHARDS}', flush=True)
             last_report = 0
             while any(process.poll() is None for process in processes):

@@ -675,14 +675,16 @@ def discover_route_index(
     session: requests.Session,
     timeout_seconds: float,
 ) -> list[RouteSpec]:
-    response = session.get(VINYL_HOME_URL, timeout=timeout_seconds)
+    response = request_listing_page(session=session,
+        route=RouteSpec("vinyl-home", VINYL_HOME_URL), url=VINYL_HOME_URL,
+        page_number=1, timeout_seconds=timeout_seconds)
     if response.status_code >= 400:
         print(
             "[JPC-ROUTE-INDEX-SKIP]",
             {"url": VINYL_HOME_URL, "status_code": response.status_code},
             flush=True,
         )
-        return []
+        response.raise_for_status()
 
     soup = BeautifulSoup(response.text, "html.parser")
     routes_by_url: dict[str, RouteSpec] = {}
@@ -699,6 +701,8 @@ def discover_route_index(
         name = normalize_route_label(label or urlparse(href).path)
         routes_by_url[href] = RouteSpec(name=name, url=href, source="vinyl_home")
 
+    if not routes_by_url:
+        raise ValueError("JPC vinyl route index has no usable categories")
     return list(routes_by_url.values())
 
 
