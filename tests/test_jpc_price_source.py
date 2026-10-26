@@ -40,6 +40,7 @@ class JpcPriceSourceTests(unittest.TestCase):
             target.write_text('')
             def spawn(command, **kwargs):
                 self.assertEqual(kwargs['env']['DATABASE_URL'],'')
+                self.assertTrue(kwargs['env']['CUREDPLANT_JPC_COOLDOWN'].endswith('/cooldown'))
                 index=command[command.index('--listing-page-shard-index')+1]
                 Path(kwargs['env']['CUREDPLANT_PRICE_EVIDENCE']).write_text(json.dumps({'source_url':f'https://jpc.de/hnum/{index}','price':'24.99'})+'\n')
                 return Process()
@@ -170,7 +171,7 @@ class JpcTransientRequestTests(unittest.TestCase):
         self.assertIs(result, ok)
         self.assertEqual(method.call_count, 3)
         self.assertTrue(all(call == method.call_args_list[0] for call in method.call_args_list))
-        self.assertEqual([call.args[0] for call in sleep.call_args_list], [15, 30])
+        self.assertEqual([call.args[0] for call in sleep.call_args_list], [60, 120])
 
     @patch.object(native.time, 'sleep')
     def test_persistent_503_returns_failure_after_three_requests(self, sleep):

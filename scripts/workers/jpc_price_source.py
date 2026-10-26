@@ -30,7 +30,7 @@ def blocked_log(text):
         if '[JPC-DISCOVER-HTTP-SKIP]' in line:
             status = re.search(r"['\"]status_code['\"]\s*:\s*(\d+)", line)
             if status and int(status[1]) not in {404, 410}:
-                return 'JPC HTTP error; source collection incomplete'
+                return f'JPC HTTP{status[1]}; source collection incomplete'
         if '[JPC-DISCOVER-ERROR]' in line:
             return 'JPC network error; source collection incomplete'
     return None
@@ -47,17 +47,17 @@ def run(limit):
                 records[index].write_text('')
                 log = (target.parent/f'jpc-source-shard-{index}.log').open('w', encoding='utf-8')
                 logs.append(log)
-                env = dict(os.environ, DATABASE_URL='', CUREDPLANT_PRICE_EVIDENCE=str(records[index]))
+                env = dict(os.environ, DATABASE_URL='', CUREDPLANT_PRICE_EVIDENCE=str(records[index]),
+                           CUREDPLANT_JPC_COOLDOWN=str(Path(temporary)/'cooldown'))
                 processes.append(subprocess.Popen(command_for(index, limit), stdout=log, stderr=subprocess.STDOUT, env=env))
                 print(f'[JPC-PRICE] started read-only page shard {index+1}/{SHARDS}', flush=True)
             last_report = 0
             while any(process.poll() is None for process in processes):
                 for index, process in enumerate(processes):
-                    if process.poll() not in (None,0):
-                        reason = f'JPC source shard {index} exited with {process.returncode}'
-                        break
                     text = (target.parent/f'jpc-source-shard-{index}.log').read_text(errors='replace')
                     reason = blocked_log(text)
+                    if not reason and process.poll() not in (None, 0):
+                        reason = f'JPC source shard {index} exited with {process.returncode}'
                     if reason:
                         break
                 if reason:

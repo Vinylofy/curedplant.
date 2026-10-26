@@ -12,6 +12,7 @@ import requests
 from bs4 import BeautifulSoup, NavigableString, Tag
 
 from scripts.importers.common import normalize_text, parse_price
+from scripts.workers import jpc_cooldown
 from scripts.scrapers.usf.core.link_registry import upsert_discovered_links
 from scripts.scrapers.usf.core.models import DiscoveredLink
 
@@ -806,6 +807,7 @@ def request_listing_page(
     # Retry the same page only for transient transport/server failures. Access
     # denials and rate limits must reach the caller immediately.
     for attempt in range(3):
+        jpc_cooldown.wait()
         try:
             if route.post_params:
                 response = session.post(
@@ -824,7 +826,7 @@ def request_listing_page(
             return response
         if attempt == 2:
             return response
-        wait = 15 * (2 ** attempt)
+        wait = 60 * (2 ** attempt)
         if response is not None:
             # A longer Retry-After is a request to stop this bounded attempt,
             # not permission to retry sooner. Dates are handled below as well.
@@ -846,7 +848,7 @@ def request_listing_page(
         print("[JPC-DISCOVER-RETRY]", {"page": page_number, "attempt": attempt + 1,
               "status_code": response.status_code if response is not None else None,
               "wait_seconds": wait}, flush=True)
-        time.sleep(wait)
+        jpc_cooldown.defer(wait)
 
 
 
