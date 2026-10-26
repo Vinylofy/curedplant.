@@ -21,10 +21,12 @@ def report(directory: Path) -> dict:
         path = directory / f"jpc-source-shard-{index}.log"
         shard = {"index": index, "log_available": path.exists(), "pages": 0,
                  "last_page": None, "http_errors": [], "network_error": False,
-                 "duplicate_stops": 0}
+                 "duplicate_stops": 0, "transient_retries": 0}
         if path.exists():
             statuses = set()
             for line in path.read_text(errors="replace").splitlines():
+                if line.startswith("[JPC-DISCOVER-RETRY]"):
+                    shard["transient_retries"] += 1
                 if line.startswith("[JPC-DISCOVER-ERROR]"):
                     shard["network_error"] = True
                 if line.startswith("[JPC-DISCOVER-RATE-LIMIT]"):

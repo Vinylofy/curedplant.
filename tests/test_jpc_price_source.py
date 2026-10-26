@@ -24,16 +24,17 @@ class Process:
 
 
 class JpcPriceSourceTests(unittest.TestCase):
-    def test_four_native_price_shards_cover_all_page_residues_without_writes(self):
-        for index in range(4):
+    def test_two_native_price_shards_cover_all_page_residues_without_writes(self):
+        for index in range(source.SHARDS):
             command = source.command_for(index,0)
             self.assertIn('scripts.scrapers.usf.jobs.discover_jpc_vinyl', command)
             self.assertNotIn('--write',command)
+            self.assertEqual(command[command.index('--delay')+1], '4.0')
             self.assertEqual(command[command.index('--listing-page-shard-index')+1],str(index))
-            self.assertEqual(command[command.index('--listing-page-shard-count')+1],'4')
+            self.assertEqual(command[command.index('--listing-page-shard-count')+1],str(source.SHARDS))
             self.assertEqual(command[command.index('--max-pages-per-route')+1],'0')
 
-    def test_combines_all_four_read_only_sources(self):
+    def test_combines_both_read_only_sources(self):
         with tempfile.TemporaryDirectory() as directory:
             target=Path(directory)/'records.jsonl'
             target.write_text('')
@@ -45,14 +46,14 @@ class JpcPriceSourceTests(unittest.TestCase):
             with patch.dict(os.environ,{'CUREDPLANT_PRICE_EVIDENCE':str(target),'DATABASE_URL':'never-pass-this'}), \
                  patch.object(source.subprocess,'Popen',side_effect=spawn), contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(source.run(0),0)
-            self.assertEqual(len(target.read_text().splitlines()),4)
+            self.assertEqual(len(target.read_text().splitlines()),source.SHARDS)
 
     def test_a_failed_shard_cannot_yield_a_partial_green(self):
         with tempfile.TemporaryDirectory() as directory:
             target=Path(directory)/'records.jsonl'
             target.write_text('')
             with patch.dict(os.environ,{'CUREDPLANT_PRICE_EVIDENCE':str(target)}), \
-                 patch.object(source.subprocess,'Popen',side_effect=[Process(0),Process(1),Process(0),Process(0)]), \
+                 patch.object(source.subprocess,'Popen',side_effect=[Process(0),Process(1)]), \
                  contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(source.run(0),1)
             records=[json.loads(line) for line in target.read_text().splitlines()]
@@ -144,3 +145,60 @@ class JpcPaginationTests(unittest.TestCase):
                 self.assertEqual((len(links), count), (1, 2))
                 with self.assertRaises(requests.HTTPError):
                     self.discover([self.response(status=status)])
+
+class JpcTransientRequestTests(unittest.TestCase):
+    def fetch(self, outcomes, post=False):
+        session = Mock()
+        method = session.post if post else session.get
+        method.side_effect = outcomes
+        route = native.RouteSpec('test', 'https://www.jpc.de/s/test',
+                                 post_params=(('filter', 'stock'),) if post else ())
+        result = native.request_listing_page(session=session, route=route, url=route.url,
+                                             page_number=43, timeout_seconds=25)
+        return result, method
+
+    def response(self, status, retry_after=None):
+        response = Mock(status_code=status, headers={})
+        if retry_after is not None:
+            response.headers['Retry-After'] = retry_after
+        return response
+
+    @patch.object(native.time, 'sleep')
+    def test_503_then_timeout_then_success_retries_identical_page(self, sleep):
+        ok = self.response(200)
+        result, method = self.fetch([self.response(503), requests.Timeout(), ok])
+        self.assertIs(result, ok)
+        self.assertEqual(method.call_count, 3)
+        self.assertTrue(all(call == method.call_args_list[0] for call in method.call_args_list))
+        self.assertEqual([call.args[0] for call in sleep.call_args_list], [15, 30])
+
+    @patch.object(native.time, 'sleep')
+    def test_persistent_503_returns_failure_after_three_requests(self, sleep):
+        result, method = self.fetch([self.response(503) for _ in range(3)])
+        self.assertEqual(result.status_code, 503)
+        self.assertEqual(method.call_count, 3)
+
+    @patch.object(native.time, 'sleep')
+    def test_persistent_connection_error_is_raised(self, sleep):
+        with self.assertRaises(requests.ConnectionError):
+            self.fetch([requests.ConnectionError() for _ in range(3)])
+        self.assertEqual(sleep.call_count, 2)
+
+    @patch.object(native.time, 'sleep')
+    def test_access_denials_are_never_retried(self, sleep):
+        for status in [401, 403, 429, 404, 410]:
+            result, method = self.fetch([self.response(status)])
+            self.assertEqual(result.status_code, status)
+            self.assertEqual(method.call_count, 1)
+        sleep.assert_not_called()
+
+    @patch.object(native.time, 'sleep')
+    def test_retry_after_is_honoured_and_long_wait_aborts(self, sleep):
+        result, method = self.fetch([self.response(503, '60'), self.response(200)], post=True)
+        self.assertEqual(result.status_code, 200)
+        sleep.assert_called_once_with(60)
+        self.assertEqual(method.call_args_list[0], method.call_args_list[1])
+        sleep.reset_mock()
+        result, method = self.fetch([self.response(503, '3600')])
+        self.assertEqual((result.status_code, method.call_count), (503, 1))
+        sleep.assert_not_called()

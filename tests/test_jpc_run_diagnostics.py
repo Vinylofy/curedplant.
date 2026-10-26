@@ -18,13 +18,15 @@ class DiagnosticsTests(unittest.TestCase):
             (path / 'jpc-source-shard-0.log').write_text(
                 "[JPC-DISCOVER-PAGE] {'page': 5, 'url': 'secret-url'}\n"
                 "[JPC-DISCOVER-HTTP-SKIP] {'status_code': 503}\n"
-                "[JPC-DISCOVER-ERROR] {'error': 'secret-exception'}\n")
+                "[JPC-DISCOVER-ERROR] {'error': 'secret-exception'}\n"
+                "[JPC-DISCOVER-RETRY] {'page': 5, 'attempt': 1}\n")
             value = report(path)
             self.assertEqual(value['database_writes'], 0)
             self.assertEqual(value['shards'][0]['pages'], 1)
             self.assertEqual(value['shards'][0]['last_page'], 5)
             self.assertEqual(value['shards'][0]['http_errors'], [503])
             self.assertTrue(value['shards'][0]['network_error'])
+            self.assertEqual(value['shards'][0]['transient_retries'], 1)
             self.assertNotIn('secret', json.dumps(value))
 
     def test_no_summary_and_missing_logs_remain_explicitly_unknown(self):

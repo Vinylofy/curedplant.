@@ -1,4 +1,4 @@
-"""Collect JPC's existing four page shards inside one read-only price job."""
+"""Collect JPC's two paced page shards inside one read-only price job."""
 from __future__ import annotations
 
 import argparse
@@ -13,14 +13,14 @@ import time
 
 from scripts.workers.price_evidence import capture
 
-SHARDS = 4
+SHARDS = 2
 
 
 def command_for(index, limit):
     return [sys.executable, '-u', '-m', 'scripts.scrapers.usf.jobs.discover_jpc_vinyl',
             '--routes', 'default', '--include-route-index', '--max-pages-per-route', str(limit),
             '--listing-page-shard-index', str(index), '--listing-page-shard-count', str(SHARDS),
-            '--pagination-fallback', 'ff', '--availability-filter', 'none', '--delay', '3.0']
+            '--pagination-fallback', 'ff', '--availability-filter', 'none', '--delay', '4.0']
 
 
 def blocked_log(text):

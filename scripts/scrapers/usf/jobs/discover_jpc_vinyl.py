@@ -803,14 +803,51 @@ def request_listing_page(
     page_number: int,
     timeout_seconds: float,
 ) -> requests.Response:
-    if route.post_params:
-        return session.post(
-            url,
-            data=[*route.post_params, ("refresh", "2"), ("page", str(page_number))],
-            timeout=timeout_seconds,
-            allow_redirects=True,
-        )
-    return session.get(url, timeout=timeout_seconds, allow_redirects=True)
+    # Retry the same page only for transient transport/server failures. Access
+    # denials and rate limits must reach the caller immediately.
+    for attempt in range(3):
+        try:
+            if route.post_params:
+                response = session.post(
+                    url,
+                    data=[*route.post_params, ("refresh", "2"), ("page", str(page_number))],
+                    timeout=timeout_seconds,
+                    allow_redirects=True,
+                )
+            else:
+                response = session.get(url, timeout=timeout_seconds, allow_redirects=True)
+        except (requests.Timeout, requests.ConnectionError):
+            if attempt == 2:
+                raise
+            response = None
+        if response is not None and response.status_code not in {502, 503, 504}:
+            return response
+        if attempt == 2:
+            return response
+        wait = 15 * (2 ** attempt)
+        if response is not None:
+            # A longer Retry-After is a request to stop this bounded attempt,
+            # not permission to retry sooner. Dates are handled below as well.
+            retry_after = response.headers.get("Retry-After")
+            if retry_after:
+                from datetime import datetime, timezone
+                from email.utils import parsedate_to_datetime
+                try:
+                    requested = float(retry_after)
+                except ValueError:
+                    try:
+                        requested = (parsedate_to_datetime(retry_after) - datetime.now(timezone.utc)).total_seconds()
+                    except (ValueError, TypeError, OverflowError):
+                        return response
+                if not 0 <= requested <= 120:
+                    return response
+                wait = max(wait, requested)
+            response.close()
+        print("[JPC-DISCOVER-RETRY]", {"page": page_number, "attempt": attempt + 1,
+              "status_code": response.status_code if response is not None else None,
+              "wait_seconds": wait}, flush=True)
+        time.sleep(wait)
+
 
 
 def discover_links(
