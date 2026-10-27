@@ -68,24 +68,9 @@ jobs:
           persist-credentials: false
       - name: Refuse an unclassified previous writer failure
         id: history
-        uses: actions/github-script@v8
-        with:
-          script: |
-            const fs = require('node:fs/promises');
-            if (process.env.BOL_CHAIN_WRITE !== 'true' || process.env.BOL_CHAIN_SAMPLE === 'true' || process.env.BOL_CHAIN_RESUME === 'true') {
-              core.setOutput('safe','true'); return;
-            }
-            let state = {};
-            try { state = JSON.parse(await fs.readFile('state/bol-api/automation.json','utf8')); }
-            catch (e) { if (e.code !== 'ENOENT') throw e; }
-            const {data} = await github.rest.actions.listWorkflowRuns({...context.repo,
-              workflow_id:'price-bol-api.yml', status:'completed', per_page:50});
-            const previous = data.workflow_runs.find(run => run.id !== context.runId && run.head_branch === 'main' &&
-              !/write=false|sample=true/.test(run.display_title || ''));
-            const unknown = previous && ['failure','cancelled','timed_out'].includes(previous.conclusion) &&
-              String(previous.id) !== state.last_run_id;
-            core.setOutput('safe', unknown ? 'false' : 'true');
-            if (unknown) core.warning('Previous writer outcome was not checkpointed; investigate and explicitly resume the chain.');
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -u -m scripts.workers.bol_price_chain history
       - name: Recheck pause and circuit breaker
         id: ready
         if: steps.history.outputs.safe == 'true'

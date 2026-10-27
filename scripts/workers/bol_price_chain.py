@@ -112,13 +112,28 @@ def mode():
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('phase', choices=('gate', 'begin', 'finish'))
+    parser.add_argument('phase', choices=('gate', 'history', 'begin', 'finish'))
     parser.add_argument('--wait', action='store_true')
     args = parser.parse_args()
     config, state = read(CONFIG, {}), read(CONTROL, {})
     if state and (state.get('version') != 1 or state.get('country') != 'NL'):
         raise ValueError('Unexpected Bol automation state')
     managed, automatic, resume = mode()
+    if args.phase == 'history':
+        if not managed or resume:
+            output({'safe': True})
+            return
+        from scripts.workers.bol_price_watchdog import gh_api, uncheckpointed_writer_failure, REPO
+        runs = gh_api('repos/'+REPO+'/actions/workflows/price-bol-api.yml/runs?status=completed&per_page=50')['workflow_runs']
+        runs = [r for r in runs if str(r['id']) != os.environ.get('GITHUB_RUN_ID')
+                and r.get('head_branch') == 'main' and 'write=false' not in r.get('display_title', '')
+                and 'sample=true' not in r.get('display_title', '')]
+        failed = uncheckpointed_writer_failure(runs, state.get('last_run_id'),
+            lambda run_id: gh_api('repos/'+REPO+'/actions/runs/'+str(run_id)+'/jobs')['jobs'])
+        output({'safe': failed is None})
+        if failed is not None:
+            print('::warning::Previous importer started but its writer outcome was not checkpointed; investigate and explicitly resume.')
+        return
     if args.phase == 'gate':
         decision = gate(config, state, managed=managed, automatic=automatic, resume=resume)
         if args.wait and decision['wait_seconds']:

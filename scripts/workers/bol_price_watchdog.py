@@ -43,6 +43,22 @@ def decide(config, control, runs, now):
     return 'restart_stalled_chain'
 
 
+def uncheckpointed_writer_failure(runs, known_run_id, jobs_for):
+    """Queued/gate-only cancellations made no API or database calls."""
+    for run in runs:
+        if str(run['id']) == known_run_id:
+            break
+        if run.get('conclusion') not in {'failure', 'cancelled', 'timed_out'}:
+            continue
+        jobs = jobs_for(run['id'])
+        attempted = any(step.get('started_at') and step.get('conclusion') != 'skipped'
+            and step.get('name', '').startswith('Refresh verified NL offers')
+            for job in jobs for step in job.get('steps', []))
+        if attempted:
+            return run['id']
+    return None
+
+
 def gh_api(path, payload=None):
     command = ['gh', 'api', '--method', 'POST' if payload is not None else 'GET', path]
     if payload is not None:
@@ -78,7 +94,16 @@ def run(dispatch=False):
         return {'decision': 'automation_disabled', 'dispatched': False}
     control = content('state/bol-api/automation.json')
     runs = gh_api('repos/'+REPO+'/actions/workflows/'+WORKFLOW+'/runs?per_page=20')['workflow_runs']
-    decision = decide(config, control, runs, datetime.now(timezone.utc))
+    relevant = [r for r in runs if r.get('head_branch') == 'main'
+                and 'write=false' not in r.get('display_title', '') and 'sample=true' not in r.get('display_title', '')]
+    unknown = uncheckpointed_writer_failure(relevant, control.get('last_run_id'),
+        lambda run_id: gh_api('repos/'+REPO+'/actions/runs/'+str(run_id)+'/jobs')['jobs'])
+    if unknown:
+        return {'decision': 'unclassified_failure_requires_review', 'dispatched': False}
+    # Empty/gate-only cancelled runs have been proven harmless above.
+    effective_runs = [r for r in runs if r.get('conclusion') not in {'cancelled', 'failure', 'timed_out'}
+                      or str(r['id']) == control.get('last_run_id')]
+    decision = decide(config, control, effective_runs, datetime.now(timezone.utc))
     if decision == 'restart_stalled_chain' and dispatch:
         gh_api('repos/'+REPO+'/actions/workflows/'+WORKFLOW+'/dispatches',
                {'ref': 'main', 'inputs': {'limit': '1500', 'sample': 'false', 'write': 'true',

@@ -103,6 +103,34 @@ class WatchdogTests(unittest.TestCase):
         state['next_due_at'] = (NOW-timedelta(minutes=1)).isoformat()
         self.assertEqual(decide(CONFIG, state, runs, NOW), 'restart_stalled_chain')
 
+class WriterHistoryTests(unittest.TestCase):
+    def inspect(self, jobs):
+        from scripts.workers.bol_price_watchdog import uncheckpointed_writer_failure
+        runs = [{'id': 123, 'conclusion': 'cancelled'}, {'id': 100, 'conclusion': 'success'}]
+        return uncheckpointed_writer_failure(runs, '100', lambda run_id: jobs)
+
+    def test_cancelled_pending_run_with_no_jobs_never_blocks_chain(self):
+        self.assertIsNone(self.inspect([]))
+
+    def test_cancelled_gate_or_skipped_importer_never_blocks_chain(self):
+        self.assertIsNone(self.inspect([{'name': 'cadence', 'steps': []},
+            {'name': 'prices', 'steps': [{'name': 'Refresh verified NL offers', 'conclusion': 'skipped'}]}]))
+
+    def test_actual_importer_cancelled_after_start_still_blocks(self):
+        self.assertEqual(self.inspect([{'steps': [{'name': 'Refresh verified NL offers without product or cover creation',
+                          'started_at': NOW.isoformat(), 'conclusion': 'cancelled'}]}]), 123)
+
+    def test_green_noop_cannot_hide_earlier_uncheckpointed_writer(self):
+        from scripts.workers.bol_price_watchdog import uncheckpointed_writer_failure
+        runs = [{'id': 124, 'conclusion': 'success'}, {'id': 123, 'conclusion': 'failure'}]
+        jobs = [{'steps': [{'name': 'Refresh verified NL offers', 'started_at': NOW.isoformat(), 'conclusion': 'failure'}]}]
+        self.assertEqual(uncheckpointed_writer_failure(runs, '100', lambda _: jobs), 123)
+
+    def test_recorded_failure_is_controlled_by_its_persisted_breaker(self):
+        from scripts.workers.bol_price_watchdog import uncheckpointed_writer_failure
+        self.assertIsNone(uncheckpointed_writer_failure([{'id': 123, 'conclusion': 'failure'}], '123',
+                                                       lambda _: self.fail('Known outcome needs no inspection')))
+
 
 if __name__ == '__main__':
     unittest.main()
