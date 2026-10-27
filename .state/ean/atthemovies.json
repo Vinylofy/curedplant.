@@ -9,10 +9,10 @@
   },
   "budget": {
     "date": "2026-10-27",
-    "reserved": 100
+    "reserved": 0
   },
   "last_result": {
-    "day": "2026-10-26",
+    "day": "2026-10-27",
     "attempted": 0,
     "details_started": 0,
     "valid_eans": 0,
