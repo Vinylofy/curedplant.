@@ -40,3 +40,7 @@ Op 26 oktober 2026 geslaagde proeven:
 - Hervatproef [40400975300](https://github.com/Vinylofy/curedplant./actions/runs/40400975300): begon aantoonbaar op rock pagina 3, elf geldige prijsproducten, nul databasewrites en gedeelde cursor nog steeds pagina 3.
 
 Na deze controles is `enabled=true` gezet. De bestaande volledige-runworkflow en de nieuwe bounded worker zijn niet tegelijk ingepland; hetzelfde zichtbare prijsworkflowbestand is vervangen. Een cyclus die over middernacht loopt, voorkomt niet de nieuwe dagronde: de startdatum bepaalt welke dagronde is afgewerkt. De volgende volledige ronde blijft afhankelijk van de capaciteit en bereikbaarheid van de bron.
+
+## Daglimiet aangescherpt op 27 oktober
+
+Een nieuwe automatische volledige ronde mag pas starten als de vorige is afgerond én minimaal 24 uur sinds de start daarvan is verstreken. De kalenderdaggrens alleen is onvoldoende. Deelruns blijven dezelfde ronde hervatten en vormen geen nieuwe cataloguscrawl. De te vroeg begonnen herhaling van 27 oktober is onderbroken; `resume_after` houdt prijswrites tegen tot 27 oktober 22:02 Nederlandse tijd (21:02 UTC). Daarna hervat de hourly cron de opgeslagen cursor. EAN blijft afzonderlijk en beperkt tot het bestaande dagbudget.

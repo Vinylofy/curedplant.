@@ -150,3 +150,15 @@ class BoundedCycleTests(unittest.TestCase):
             result = self.run_cycle(fetch, write=False, scheduled=True, page_limit=1)
         self.assertEqual(result['status'], 'dry_run_checked')
         self.assertEqual(fetch.call_count, 2)
+
+    def test_midnight_does_not_allow_two_full_rounds_within_24_hours(self):
+        from datetime import timedelta
+        fixed = datetime(2026, 10, 27, 8, tzinfo=timezone.utc)
+        self.store.state['cycle_started'] = (fixed-timedelta(hours=10)).isoformat()
+        self.store.state['phase'] = 'complete'
+        self.store.state['completed_at'] = fixed.isoformat()
+        fetch = Mock()
+        with patch.object(cycle, 'now', return_value=fixed):
+            result = self.run_cycle(fetch, write=True, scheduled=True)
+        self.assertEqual(result['status'], 'waiting_daily_cycle')
+        fetch.assert_not_called()

@@ -87,7 +87,8 @@ def run(source, store, directory, *, write=False, page_limit=50, batch_size=10,
         raise ValueError('Unsupported checkpoint version')
     if state and state['phase'] == 'complete':
         completed_day = datetime.fromisoformat(state['cycle_started']).date()
-        if scheduled and (completed_day >= now().date() or (now().hour, now().minute) < (3, 17)):
+        if scheduled and (now() < datetime.fromisoformat(state['cycle_started'])+timedelta(hours=24)
+                          or completed_day >= now().date() or (now().hour, now().minute) < (3, 17)):
             return dict(summary, status='waiting_daily_cycle')
         state = None
     if state is None:
@@ -185,7 +186,11 @@ def main():
     summary = {'status': 'failed', 'continue_cycle': False, 'database_updates': None}
     try:
         enabled = json.loads(Path('config/jpc-price-cycle.json').read_text()).get('enabled') is True
-        if args.scheduled and not enabled:
+        resume_after = datetime.fromisoformat(config['resume_after']) if config.get('resume_after') else None
+        if (args.scheduled or args.write) and resume_after and now() < resume_after:
+            summary = {'status': 'waiting_source_rest', 'continue_cycle': False, 'database_updates': 0,
+                       'resume_after': config['resume_after']}
+        elif args.scheduled and not enabled:
             summary = {'status': 'automation_disabled', 'continue_cycle': False, 'database_updates': 0}
         else:
             summary = run(Source(directory), GitHubCheckpoint(), directory, write=args.write,
