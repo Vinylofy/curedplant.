@@ -2,11 +2,9 @@
   "version": 1,
   "shop": "blackvinyl",
   "cursor": {
-    "page": 4,
+    "page": 2,
     "seed": 0,
-    "exhausted": true,
-    "signature": "96a957e487b942c942cca7d32d056ce19472cf99222bdfcd269641f57ad9e0af",
-    "exhausted_on": "2026-10-20"
+    "signature": "1904a284065391906e0ea6d1b6b9ae3631af267b6a4d9116d73066fc7d343c64"
   },
   "budget": {
     "date": "2026-10-27",
