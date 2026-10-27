@@ -1,1 +1,1 @@
-{"enabled":false,"interval_minutes":30,"batch_limit":1500}
+{"enabled":true,"interval_minutes":30,"batch_limit":1500}

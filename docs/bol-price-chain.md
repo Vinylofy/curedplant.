@@ -27,7 +27,7 @@ In Actions staan de importer-summary en het artifact `bol-api-prices-<run-id>`, 
 
 De watchdog gebruikt de bestaande GitHub CLI-authenticatie van de Windows-taakaccount. Een installatiejobtoken wordt niet bewaard: die verloopt en is ongeschikt voor een blijvende taak. Vereist: `gh` lokaal aangemeld met toegang tot curedplant (Contents read, Actions read/write), een blijvende Python 3.11+, en rechten om een Windows Scheduled Task te registreren. Deel geen token in chat.
 
-De handmatige workflow **Curedplant | Bol | Windows watchdog setup** controleert deze voorwaarden. Als ze kloppen, installeert hij de taak onder dezelfde account. Anders bewaart hij een credentialvrij `setup-result.json` met wat nog ontbreekt. Hij activeert geen nieuwe credentials en verandert geen Windows-accountrechten.
+De handmatige workflow **Vinylofy | Bol | Windows watchdog setup** in `Vinylofy/Vinylofy` controleert deze voorwaarden. Als ze kloppen, installeert hij de taak onder dezelfde account. Anders bewaart hij een credentialvrij `setup-result.json` met wat nog ontbreekt. Hij activeert geen nieuwe credentials en verandert geen Windows-accountrechten.
 
 Voor lokale installatie onder een al geauthenticeerde Windows-account, in PowerShell als administrator:
 
@@ -40,3 +40,9 @@ Voor lokale installatie onder een al geauthenticeerde Windows-account, in PowerS
 Bij een serviceaccount kan de taak zonder interactieve login lopen. Bij een gewone gebruiker gebruikt hij Interactive-logon: die gebruiker moet ingelogd blijven. De taak bevat geen wachtwoord of token; de CLI-authenticatie moet voor diezelfde account beschikbaar zijn. De laatste beslissing staat in `%LOCALAPPDATA%\Vinylofy\BolPriceWatchdog\last-result.json`. Taaknaam: `Vinylofy Bol price watchdog`.
 
 Een extra startcontrole weigert een vorige mislukte/afgebroken writer waarvan de automationstatus niet is opgeslagen (bijvoorbeeld een harde runnercrash of mislukte cursor-publicatie). Onderzoek die run en gebruik daarna expliciet `resume_chain=true`. Dry-runs en sampleprobes veranderen deze controle niet.
+
+## Ingebruikname op 27 oktober 2026
+
+De dry-run [40486726996](https://github.com/Vinylofy/curedplant./actions/runs/40486726996) controleerde de volgende twintig catalogusproducten: status success, twintig gecontroleerd, nul fouten en nul databasewrites. Daarna is de keten aangezet voor de gecontroleerde write-proef en automatische vervolgbatches.
+
+De Windows-installatieflow staat in de private Vinylofy-repository op de bestaande `vinylofy-windows`-runner. Die downloadt de openbare watchdogcode van een vastgelegde curedplant-commit, zonder cross-repository credential. De installatie is pas bewezen wanneer het setup-rapport `installed=true` vermeldt; een wachtende job betekent nog geen actieve bewaking.
