@@ -1,5 +1,5 @@
 name: "Curedplant | Price | Bol NL API"
-run-name: "Bol NL | API prices | ${{ github.event_name == 'schedule' && 'scheduled write | limit=1500' || format('write={0} | sample={1} | limit={2}', inputs.write, inputs.sample, inputs.limit) }}"
+run-name: "Bol NL | API prices | ${{ github.event_name == 'schedule' && 'automatic chain' || format('write={0} | sample={1} | limit={2} | chain={3}', inputs.write, inputs.sample, inputs.limit, inputs.continue_chain) }}"
 on:
   schedule:
     - cron: "0,30 * * * *"
@@ -11,78 +11,159 @@ on:
         default: '20'
         required: true
       sample:
-        description: "Only the fixed verification EANs; never advance the catalogue cursor"
+        description: "Fixed verification EANs; never advance catalogue cursor or chain"
         type: boolean
         default: true
       write:
         description: "Publish verified NEW NL offers for existing vinyl products"
         type: boolean
         default: false
+      continue_chain:
+        description: "Continue normal 1500-product batches automatically near each half hour"
+        type: boolean
+        default: false
+      resume_chain:
+        description: "Explicitly reopen a stopped chain after investigating its error"
+        type: boolean
+        default: false
 permissions:
   contents: write
+  actions: write
 concurrency:
   group: bol-api-nl-prices
   cancel-in-progress: false
+env:
+  BOL_CHAIN_WRITE: ${{ github.event_name == 'schedule' || inputs.write }}
+  BOL_CHAIN_SAMPLE: ${{ github.event_name != 'schedule' && inputs.sample }}
+  BOL_CHAIN_AUTOMATIC: ${{ github.event_name == 'schedule' || inputs.continue_chain }}
+  BOL_CHAIN_RESUME: ${{ github.event_name == 'workflow_dispatch' && inputs.resume_chain }}
 jobs:
-  prices:
+  cadence:
+    name: Check chain and wait for next batch
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 35
+    outputs:
+      ready: ${{ steps.ready.outputs.ready }}
     steps:
-      - name: Require main for price writes
+      - name: Require main for writes
         env:
-          WRITE: ${{ github.event_name == 'schedule' || inputs.write }}
           BRANCH: ${{ github.ref }}
         run: |
-          if [ "$WRITE" = true ] && [ "$BRANCH" != refs/heads/main ]; then
-            echo 'Price writes require main'
-            exit 1
+          if [ "$BOL_CHAIN_WRITE" = true ] && [ "$BRANCH" != refs/heads/main ]; then
+            echo 'Price writes require main'; exit 1
+          fi
+          if [ "$BOL_CHAIN_RESUME" = true ] && { [ "$BOL_CHAIN_WRITE" != true ] || [ "$BOL_CHAIN_SAMPLE" = true ] || [ "$BOL_CHAIN_AUTOMATIC" != true ]; }; then
+            echo 'Resume requires a manual full-catalogue write with continuation'; exit 1
           fi
       - uses: actions/checkout@v5
         with:
+          ref: ${{ github.ref }}
+          persist-credentials: false
+      - name: Respect next due time without calling Bol
+        run: python3 -u -m scripts.workers.bol_price_chain gate --wait
+      - name: Refresh control configuration after waiting
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.ref }}
+          persist-credentials: false
+      - name: Refuse an unclassified previous writer failure
+        id: history
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('node:fs/promises');
+            if (process.env.BOL_CHAIN_WRITE !== 'true' || process.env.BOL_CHAIN_SAMPLE === 'true' || process.env.BOL_CHAIN_RESUME === 'true') {
+              core.setOutput('safe','true'); return;
+            }
+            let state = {};
+            try { state = JSON.parse(await fs.readFile('state/bol-api/automation.json','utf8')); }
+            catch (e) { if (e.code !== 'ENOENT') throw e; }
+            const {data} = await github.rest.actions.listWorkflowRuns({...context.repo,
+              workflow_id:'price-bol-api.yml', status:'completed', per_page:50});
+            const previous = data.workflow_runs.find(run => run.id !== context.runId && run.head_branch === 'main' &&
+              !/write=false|sample=true/.test(run.display_title || ''));
+            const unknown = previous && ['failure','cancelled','timed_out'].includes(previous.conclusion) &&
+              String(previous.id) !== state.last_run_id;
+            core.setOutput('safe', unknown ? 'false' : 'true');
+            if (unknown) core.warning('Previous writer outcome was not checkpointed; investigate and explicitly resume the chain.');
+      - name: Recheck pause and circuit breaker
+        id: ready
+        if: steps.history.outputs.safe == 'true'
+        run: python3 -u -m scripts.workers.bol_price_chain gate
+  prices:
+    needs: cadence
+    if: needs.cadence.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.ref }}
           persist-credentials: false
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
+      - name: Record cursor precondition
+        run: python -m scripts.workers.bol_price_chain begin
       - name: Install importer dependencies
         run: python -m pip install 'psycopg[binary]>=3.2,<4' 'python-dotenv>=1,<2' 'lxml>=5,<6'
       - name: Refresh verified NL offers without product or cover creation
+        id: importer
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           BOL_API_CLIENT_ID: ${{ secrets.BOL_API_CLIENT_ID }}
           BOL_API_CLIENT_SECRET: ${{ secrets.BOL_API_CLIENT_SECRET }}
           BOL_SITE_ID: ${{ vars.BOL_SITE_ID }}
           BOL_PRICE_LIMIT: ${{ github.event_name == 'schedule' && '1500' || inputs.limit }}
-          BOL_PRICE_WRITE: ${{ github.event_name == 'schedule' || inputs.write }}
-          BOL_PRICE_SAMPLE: ${{ github.event_name != 'schedule' && inputs.sample }}
         run: |
           args=(--limit "$BOL_PRICE_LIMIT")
-          if [ "$BOL_PRICE_WRITE" = true ]; then args+=(--write); fi
-          if [ "$BOL_PRICE_SAMPLE" = true ]; then args+=(--sample); fi
+          if [ "$BOL_CHAIN_WRITE" = true ]; then args+=(--write); fi
+          if [ "$BOL_CHAIN_SAMPLE" = true ]; then args+=(--sample); fi
           python -u -m scripts.importers.bol_api_prices "${args[@]}"
-      - name: Persist successful catalogue cursor
-        if: success() && (github.event_name == 'schedule' || inputs.write) && (github.event_name == 'schedule' || !inputs.sample)
+      - name: Classify result and prepare durable chain state
+        if: always() && !cancelled()
+        id: chain
+        run: python -m scripts.workers.bol_price_chain finish
+      - name: Save verified cursor and chain state with CAS
+        if: always() && !cancelled() && steps.chain.outputs.publish_control == 'true'
+        id: persist
         uses: actions/github-script@v8
+        env:
+          PUBLISH_CURSOR: ${{ steps.chain.outputs.publish_cursor }}
         with:
           script: |
             const fs = require('node:fs/promises');
-            const path = 'state/bol-api/nl.json';
-            let content;
-            try { content = await fs.readFile(path, 'utf8'); }
-            catch (error) { if (error.code === 'ENOENT') return; throw error; }
-            const state = JSON.parse(content);
-            if (state.country !== 'NL') throw new Error('Wrong progress market');
-            let sha;
-            try {
-              const current = await github.rest.repos.getContent({...context.repo, path, ref: 'main'});
-              sha = current.data.sha;
-            } catch (error) { if (error.status !== 404) throw error; }
-            await github.rest.repos.createOrUpdateFileContents({...context.repo, path, branch: 'main', sha,
-              message: 'Advance Bol NL API catalogue cursor', content: Buffer.from(content).toString('base64')});
-      - name: Save price verification evidence
+            const baseline = JSON.parse(await fs.readFile('output/bol-chain/baseline.json', 'utf8'));
+            async function save(path, content, expected, message) {
+              let current;
+              try { current = (await github.rest.repos.getContent({...context.repo, path, ref:'main'})).data; }
+              catch (e) { if (e.status !== 404) throw e; }
+              if ((current?.sha || null) !== expected) throw new Error('Concurrent Bol state change; retaining newer cursor');
+              await github.rest.repos.createOrUpdateFileContents({...context.repo, path, branch:'main',
+                sha:current?.sha, message, content:Buffer.from(content).toString('base64')});
+            }
+            if (process.env.PUBLISH_CURSOR === 'true') {
+              const content = await fs.readFile('state/bol-api/nl.json', 'utf8');
+              if (JSON.parse(content).country !== 'NL') throw new Error('Wrong progress market');
+              await save('state/bol-api/nl.json', content, baseline.cursor_sha, 'Advance verified Bol NL catalogue cursor');
+            }
+            await save('state/bol-api/automation.json', await fs.readFile('output/bol-chain/automation.json','utf8'),
+              baseline.automation_sha, 'Checkpoint Bol price chain outcome and cadence');
+      - name: Save price verification and automation evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: bol-api-prices-${{ github.run_id }}
-          path: output/bol-api-prices/review.json
+          path: |
+            output/bol-api-prices/review.json
+            output/bol-chain/
           retention-days: 3
-          if-no-files-found: ignore
+          if-no-files-found: warn
+      - name: Start next due batch or bounded transient retry
+        if: always() && !cancelled() && steps.persist.outcome == 'success' && steps.chain.outputs.continue_chain == 'true'
+        uses: actions/github-script@v8
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({...context.repo,
+              workflow_id:'price-bol-api.yml', ref:'main',
+              inputs:{limit:'1500',sample:'false',write:'true',continue_chain:'true',resume_chain:'false'}});
