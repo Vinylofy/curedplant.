@@ -2,9 +2,10 @@
   "version": 1,
   "shop": "colouredvinyl",
   "cursor": {
-    "page": 50,
+    "page": 1,
     "seed": 0,
-    "signature": "dda6dd000c873ce34936e93545c7fac31eb0f585bec89367ecc678e538583052"
+    "exhausted": true,
+    "exhausted_on": "2026-10-28"
   },
   "budget": {
     "date": "2026-10-28",
