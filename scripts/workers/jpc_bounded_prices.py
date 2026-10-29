@@ -199,6 +199,14 @@ def main():
     except Exception as exc:
         # Do not expose database connection strings or token-bearing exceptions.
         summary['error'] = type(exc).__name__
+        if isinstance(exc, NameError):
+            # NameError metadata contains no secret values or argument contents.
+            summary['undefined_name'] = exc.name
+            frame = exc.__traceback__
+            while frame and frame.tb_next:
+                frame = frame.tb_next
+            if frame:
+                summary['error_location'] = f"{Path(frame.tb_frame.f_code.co_filename).name}:{frame.tb_lineno}"
     if args.write and summary.get('cycle'):
         try:
             from scripts.workers.price_database import jpc_cycle_coverage
