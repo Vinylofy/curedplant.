@@ -185,7 +185,8 @@ def main():
     directory.mkdir(parents=True, exist_ok=True)
     summary = {'status': 'failed', 'continue_cycle': False, 'database_updates': None}
     try:
-        enabled = json.loads(Path('config/jpc-price-cycle.json').read_text()).get('enabled') is True
+        config = json.loads(Path('config/jpc-price-cycle.json').read_text())
+        enabled = config.get('enabled') is True
         resume_after = datetime.fromisoformat(config['resume_after']) if config.get('resume_after') else None
         if (args.scheduled or args.write) and resume_after and now() < resume_after:
             summary = {'status': 'waiting_source_rest', 'continue_cycle': False, 'database_updates': 0,
