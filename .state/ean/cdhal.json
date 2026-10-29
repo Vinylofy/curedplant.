@@ -10,15 +10,15 @@
     "reserved": 100
   },
   "last_result": {
-    "day": "2026-10-28",
-    "attempted": 3,
-    "details_started": 3,
-    "valid_eans": 0,
-    "missing_ean": 0,
-    "unavailable": 0,
+    "day": "2026-10-29",
+    "attempted": 100,
+    "details_started": 100,
+    "valid_eans": 89,
+    "missing_ean": 3,
+    "unavailable": 8,
     "excluded_non_vinyl": 0,
-    "technical_errors": 3,
-    "status": "red",
+    "technical_errors": 0,
+    "status": "green",
     "outcome": "completed"
   },
   "reservation_recovery_20261018": {
