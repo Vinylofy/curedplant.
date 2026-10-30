@@ -1,0 +1,93 @@
+name: "[non scraper] Cover Publish"
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Worker mode"
+        required: true
+        default: "publish"
+        type: choice
+        options:
+          - publish
+          - retry-failed
+      limit:
+        description: "Aantal queue-items om te publiceren"
+        required: true
+        default: "25"
+  schedule:
+    - cron: "45 */6 * * *"
+
+concurrency:
+  group: vinylofy-cover-pipeline
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  publish:
+    if: ${{ vars.COVER_PIPELINE_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+      VINYLOFY_COVER_STORAGE_BUCKET: ${{ vars.VINYLOFY_COVER_STORAGE_BUCKET }}
+      VINYLOFY_COVER_STORAGE_PREFIX: ${{ vars.VINYLOFY_COVER_STORAGE_PREFIX }}
+      VINYLOFY_COVER_SHOP_PRIORITY_JSON: ${{ vars.VINYLOFY_COVER_SHOP_PRIORITY_JSON }}
+    steps:
+      - name: Checkout private Vinylofy source
+        uses: actions/checkout@v5
+        with:
+          repository: Vinylofy/Vinylofy
+          ref: main
+          token: ${{ secrets.VINYLOFY_SOURCE_READ_TOKEN }}
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          pip install --requirement requirements-cover.txt
+
+      - name: Prepare folders
+        shell: bash
+        run: |
+          mkdir -p output/cover_pipeline
+
+      - name: Run cover worker
+        shell: bash
+        run: |
+          MODE_INPUT="${{ github.event.inputs.mode }}"
+          if [ -z "$MODE_INPUT" ]; then MODE_INPUT="publish"; fi
+          LIMIT_INPUT="${{ github.event.inputs.limit }}"
+          if [ -z "$LIMIT_INPUT" ]; then LIMIT_INPUT="25"; fi
+          python -u scripts/maintenance/cover_worker.py \
+            --mode "$MODE_INPUT" \
+            --limit "$LIMIT_INPUT" \
+            --output-json output/cover_pipeline/cover_publish_summary.json
+
+      - name: Write run summary
+        if: always()
+        shell: bash
+        run: |
+          python scripts/maintenance/cover_workflow_summary.py \
+            --title "Cover Publish" \
+            --status "${{ job.status }}" \
+            --summary-json \
+              "Cover worker=output/cover_pipeline/cover_publish_summary.json" \
+            >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: cover-publish-${{ github.run_id }}
+          path: output/cover_pipeline/**/*.json
+          if-no-files-found: warn
