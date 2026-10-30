@@ -1,0 +1,321 @@
+name: "[non scraper] Cover Backfill"
+
+on:
+  workflow_dispatch:
+    inputs:
+      refresh_limit:
+        description: "Producten per candidate-refresh batch"
+        required: true
+        default: "100"
+
+      publish_limit:
+        description: "Maximale worker-claims per batch"
+        required: true
+        default: "100"
+
+      max_batches:
+        description: "Maximaal aantal batches in deze run"
+        required: true
+        default: "3"
+
+      checkpoint:
+        description: "Resume checkpoint; leeg = start cataloguspass"
+        required: false
+        default: ""
+
+      include_covered:
+        description: "Ook expliciete bestaande-cover repairs meenemen"
+        required: true
+        default: false
+        type: boolean
+
+      dry_run:
+        description: "Geen database- of Storage-writes"
+        required: true
+        default: true
+        type: boolean
+
+  # Permanente, begrensde backfill: twee runs per dag (UTC).
+  # Elke run hervat het checkpoint; na een voltooide pass begint
+  # de volgende geplande run opnieuw bij de ontbrekende covers.
+  schedule:
+    - cron: "7 1,13 * * *"
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: vinylofy-cover-pipeline
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  backfill:
+    if: ${{ vars.COVER_PIPELINE_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+      VINYLOFY_COVER_STORAGE_BUCKET: ${{ vars.VINYLOFY_COVER_STORAGE_BUCKET }}
+      VINYLOFY_COVER_STORAGE_PREFIX: ${{ vars.VINYLOFY_COVER_STORAGE_PREFIX }}
+      VINYLOFY_COVER_SHOP_PRIORITY_JSON: ${{ vars.VINYLOFY_COVER_SHOP_PRIORITY_JSON }}
+
+    steps:
+      - name: Checkout private Vinylofy source
+        uses: actions/checkout@v5
+        with:
+          repository: Vinylofy/Vinylofy
+          ref: main
+          token: ${{ secrets.VINYLOFY_SOURCE_READ_TOKEN }}
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Resolve backfill parameters
+        id: params
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            {
+              echo "run_backfill=true"
+              echo "reason=manual"
+              echo "refresh_limit=${{ github.event.inputs.refresh_limit }}"
+              echo "publish_limit=${{ github.event.inputs.publish_limit }}"
+              echo "max_batches=${{ github.event.inputs.max_batches }}"
+              echo "checkpoint=${{ github.event.inputs.checkpoint }}"
+              echo "include_covered=${{ github.event.inputs.include_covered }}"
+              echo "dry_run=${{ github.event.inputs.dry_run }}"
+            } >> "$GITHUB_OUTPUT"
+
+            exit 0
+          fi
+
+          RUNS_JSON="$(
+            gh api \
+              -H "Accept: application/vnd.github+json" \
+              "/repos/${GITHUB_REPOSITORY}/actions/workflows/cover-backfill.yml/runs?status=completed&per_page=100"
+          )"
+
+          # Zodra scheduled bulk-runs bestaan, krijgen die voorrang.
+          # Alleen voor de eerste scheduled run vallen we terug op de
+          # meest recente handmatige live-backfill.
+          SCHEDULED_RUN_IDS="$(
+            printf '%s' "$RUNS_JSON" |
+              python -c '
+          import json
+          import sys
+          data = json.load(sys.stdin)
+          for run in data.get("workflow_runs", []):
+              if run.get("event") == "schedule":
+                  print(run["id"])
+          '
+          )"
+
+          MANUAL_RUN_IDS="$(
+            printf '%s' "$RUNS_JSON" |
+              python -c '
+          import json
+          import sys
+          data = json.load(sys.stdin)
+          for run in data.get("workflow_runs", []):
+              if run.get("event") == "workflow_dispatch":
+                  print(run["id"])
+          '
+          )"
+
+          RUN_IDS="$(
+            printf '%s\n%s\n' \
+              "$SCHEDULED_RUN_IDS" \
+              "$MANUAL_RUN_IDS"
+          )"
+
+          PREVIOUS_PROGRESS=""
+          PREVIOUS_RUN_ID=""
+          CHECKPOINT=""
+          COMPLETE="false"
+
+          while IFS= read -r RUN_ID; do
+            [ -n "$RUN_ID" ] || continue
+
+            TMP_DIR="/tmp/cover-backfill-${RUN_ID}"
+            rm -rf "$TMP_DIR"
+            mkdir -p "$TMP_DIR"
+
+            if ! gh run download "$RUN_ID" \
+              --repo "$GITHUB_REPOSITORY" \
+              --name "cover-backfill-${RUN_ID}" \
+              --dir "$TMP_DIR" \
+              >/dev/null 2>&1
+            then
+              continue
+            fi
+
+            PROGRESS="$(
+              find "$TMP_DIR" \
+                -type f \
+                -name backfill_progress.json \
+                -print \
+                -quit
+            )"
+
+            [ -n "$PROGRESS" ] || continue
+
+            mapfile -t META < <(
+              python - "$PROGRESS" <<'PYMETA'
+          import json
+          import sys
+
+          with open(sys.argv[1], encoding="utf-8") as handle:
+              payload = json.load(handle)
+
+          eligible = (
+              not bool(payload.get("dry_run"))
+              and not bool(payload.get("include_covered"))
+          )
+
+          complete = bool(payload.get("catalog_pass_complete"))
+
+          checkpoint = (
+              payload.get("resume_checkpoint")
+              or payload.get("checkpoint_end")
+              or ""
+          )
+
+          print("true" if eligible else "false")
+          print("true" if complete else "false")
+          print(checkpoint)
+          PYMETA
+            )
+
+            ELIGIBLE="${META[0]:-false}"
+            COMPLETE_CANDIDATE="${META[1]:-false}"
+            CHECKPOINT_CANDIDATE="${META[2]:-}"
+
+            [ "$ELIGIBLE" = "true" ] || continue
+
+            if [ "$COMPLETE_CANDIDATE" != "true" ] \
+              && [ -z "$CHECKPOINT_CANDIDATE" ]
+            then
+              continue
+            fi
+
+            PREVIOUS_PROGRESS="$PROGRESS"
+            PREVIOUS_RUN_ID="$RUN_ID"
+            COMPLETE="$COMPLETE_CANDIDATE"
+            CHECKPOINT="$CHECKPOINT_CANDIDATE"
+            break
+          done <<< "$RUN_IDS"
+
+          # Geen geldig artifact: veilig starten vanaf catalogusbegin.
+          # Een afgeronde pass opent bij de volgende run een nieuwe pass
+          # zodat nieuwe titels ook zonder einddatum verwerkt worden.
+          if [ -z "$PREVIOUS_PROGRESS" ]; then
+            echo "Geen hervatbaar artifact: start nieuwe cataloguspass."
+            CHECKPOINT=""
+          elif [ "$COMPLETE" = "true" ]; then
+            echo "Vorige cataloguspass gereed: start nieuwe pass."
+            CHECKPOINT=""
+          fi
+
+          echo "previous_run_id=$PREVIOUS_RUN_ID"
+
+          {
+            echo "run_backfill=true"
+            echo "reason=scheduled-recurring"
+            echo "previous_run_id=$PREVIOUS_RUN_ID"
+            echo "refresh_limit=100"
+            echo "publish_limit=100"
+            echo "max_batches=3"
+            echo "checkpoint=$CHECKPOINT"
+            echo "include_covered=false"
+            echo "dry_run=false"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Install dependencies
+        if: steps.params.outputs.run_backfill == 'true'
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          pip install --requirement requirements-cover.txt
+
+      - name: Prepare folders
+        if: steps.params.outputs.run_backfill == 'true'
+        shell: bash
+        run: |
+          mkdir -p output/cover_pipeline/backfill
+
+      # Central cover entrypoints remain the source of truth.
+      # The resumable orchestrator invokes:
+      # scripts/maintenance/cover_candidate_refresh.py
+      # scripts/maintenance/cover_worker.py
+      - name: Run bounded resumable backfill
+        if: steps.params.outputs.run_backfill == 'true'
+        shell: bash
+        run: |
+          INCLUDE_COVERED=""
+          DRY_RUN=""
+
+          if [ "${{ steps.params.outputs.include_covered }}" = "true" ]; then
+            INCLUDE_COVERED="--include-covered"
+          fi
+
+          if [ "${{ steps.params.outputs.dry_run }}" = "true" ]; then
+            DRY_RUN="--dry-run"
+          fi
+
+          echo "backfill_reason=${{ steps.params.outputs.reason }}"
+          echo "previous_run_id=${{ steps.params.outputs.previous_run_id }}"
+          echo "checkpoint=${{ steps.params.outputs.checkpoint }}"
+
+          python -u scripts/maintenance/cover_backfill.py \
+            --refresh-limit "${{ steps.params.outputs.refresh_limit }}" \
+            --publish-limit "${{ steps.params.outputs.publish_limit }}" \
+            --max-batches "${{ steps.params.outputs.max_batches }}" \
+            --checkpoint "${{ steps.params.outputs.checkpoint }}" \
+            $INCLUDE_COVERED \
+            $DRY_RUN \
+            --output-json \
+              output/cover_pipeline/backfill_progress.json
+
+      - name: Write run summary
+        if: always() && steps.params.outputs.run_backfill == 'true'
+        shell: bash
+        run: |
+          python scripts/maintenance/cover_workflow_summary.py \
+            --title "Cover Backfill" \
+            --status "${{ job.status }}" \
+            --summary-json \
+              "Backfill progress=output/cover_pipeline/backfill_progress.json" \
+            >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Write skip summary
+        if: steps.params.outputs.run_backfill != 'true'
+        shell: bash
+        run: |
+          printf '%s\n' \
+            "## Cover Backfill" \
+            "" \
+            "Bulk backfill niet uitgevoerd." \
+            "" \
+            "Reason: ${{ steps.params.outputs.reason }}" \
+            > "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload artifacts
+        if: always() && steps.params.outputs.run_backfill == 'true'
+        uses: actions/upload-artifact@v5
+        with:
+          name: cover-backfill-${{ github.run_id }}
+          path: output/cover_pipeline/**/*.json
+          if-no-files-found: warn
