@@ -1,0 +1,93 @@
+name: "[non scraper] Cover Candidate Refresh"
+
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Aantal producten voor candidate refresh"
+        required: true
+        default: "75"
+      max_offers_per_product:
+        description: "Maximaal aantal shop-URL's per product"
+        required: true
+        default: "3"
+      include_covered:
+        description: "Ook producten met bestaande cover meenemen"
+        required: true
+        default: false
+        type: boolean
+  schedule:
+    - cron: "15 */6 * * *"
+
+concurrency:
+  group: vinylofy-cover-pipeline
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  refresh:
+    if: ${{ vars.COVER_PIPELINE_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - name: Checkout private Vinylofy source
+        uses: actions/checkout@v5
+        with:
+          repository: Vinylofy/Vinylofy
+          ref: main
+          token: ${{ secrets.VINYLOFY_SOURCE_READ_TOKEN }}
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          pip install --requirement requirements-cover.txt
+
+      - name: Prepare folders
+        shell: bash
+        run: |
+          mkdir -p output/cover_pipeline
+
+      - name: Run candidate refresh
+        shell: bash
+        run: |
+          LIMIT_INPUT="${{ github.event.inputs.limit }}"
+          if [ -z "$LIMIT_INPUT" ]; then LIMIT_INPUT="75"; fi
+          OFFERS_INPUT="${{ github.event.inputs.max_offers_per_product }}"
+          if [ -z "$OFFERS_INPUT" ]; then OFFERS_INPUT="3"; fi
+          INCLUDE_COVERED=""
+          if [ "${{ github.event.inputs.include_covered }}" = "true" ]; then
+            INCLUDE_COVERED="--include-covered"
+          fi
+          python -u scripts/maintenance/cover_candidate_refresh.py \
+            --limit "$LIMIT_INPUT" \
+            --max-offers-per-product "$OFFERS_INPUT" \
+            $INCLUDE_COVERED \
+            --output-json output/cover_pipeline/candidate_refresh_summary.json
+
+      - name: Write run summary
+        if: always()
+        shell: bash
+        run: |
+          python scripts/maintenance/cover_workflow_summary.py \
+            --title "Cover Candidate Refresh" \
+            --status "${{ job.status }}" \
+            --summary-json \
+              "Candidate refresh=output/cover_pipeline/candidate_refresh_summary.json" \
+            >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: cover-candidate-refresh-${{ github.run_id }}
+          path: output/cover_pipeline/**/*.json
+          if-no-files-found: warn
