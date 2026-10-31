@@ -1,0 +1,179 @@
+name: "Curedplant | Full catalogue | North End detail + EAN writes"
+on:
+  workflow_dispatch:
+    inputs:
+      source_run:
+        description: Successful North End full-price source run
+        type: string
+        required: true
+        default: '41190630661'
+      checkpoint_run:
+        description: Resume from this full-catalogue run; blank starts a new chain
+        type: string
+        default: ''
+      batch_size:
+        description: Products per part (1..100); all parts continue automatically
+        type: string
+        default: '50'
+      write:
+        description: Write validated raw evidence and EAN products/prices
+        type: boolean
+        default: false
+      source_sha:
+        description: Internal immutable source revision for continuation
+        type: string
+        default: ''
+permissions:
+  contents: read
+  actions: write
+concurrency:
+  group: curedplant-northendhaarlem-source
+  cancel-in-progress: false
+jobs:
+  pilot:
+    runs-on: [self-hosted, Windows, "${{ vars.BOL_FEED_RUNNER || 'X64' }}"]
+    timeout-minutes: 110
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
+    defaults:
+      run:
+        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0}
+    steps:
+      - name: Require reviewed main branch
+        env:
+          BRANCH: ${{ github.ref }}
+        working-directory: ${{ runner.temp }}
+        run: |
+          if ($env:BRANCH -ne 'refs/heads/main') { throw 'Pilot requires main' }
+      - name: Download exact source commit to a Windows-safe path
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('node:fs/promises');
+            const path = require('node:path');
+            const destination = path.join(process.env.RUNNER_TEMP,
+              `northend-full-${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT}`);
+            await fs.mkdir(destination);
+            const sha = context.payload.inputs.source_sha || context.sha;
+            if (!/^[a-f0-9]{40}$/.test(sha)) throw new Error('Invalid source revision');
+            const {data} = await github.rest.repos.downloadZipballArchive({...context.repo, ref: sha});
+            core.exportVariable('NORTHEND_SOURCE_SHA', sha);
+            await fs.writeFile(path.join(destination, 'source.zip'), Buffer.from(data));
+            core.exportVariable('SHOP_ARCHIVE_DIR', destination);
+      - name: Extract immutable source
+        working-directory: ${{ runner.temp }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Expand-Archive -LiteralPath (Join-Path $env:SHOP_ARCHIVE_DIR 'source.zip') -DestinationPath $env:SHOP_ARCHIVE_DIR
+          $sources = @(Get-ChildItem -LiteralPath $env:SHOP_ARCHIVE_DIR -Directory)
+          if ($sources.Count -ne 1) { throw 'Unexpected source archive layout' }
+          Add-Content -LiteralPath $env:GITHUB_ENV -Encoding UTF8 -Value "SHOP_SOURCE_DIR=$($sources[0].FullName)"
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
+        with:
+          version: '0.12.15'
+          working-directory: ${{ runner.temp }}
+          enable-cache: false
+        env:
+          UV_CACHE_DIR: ${{ runner.temp }}/shop-uv-cache
+      - name: Prepare persistent shop Python environment
+        timeout-minutes: 10
+        env:
+          WORKER: northendhaarlem
+          UV_HTTP_TIMEOUT: '60'
+          UV_HTTP_RETRIES: '2'
+        working-directory: ${{ runner.temp }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:LOCALAPPDATA) { throw 'LOCALAPPDATA is required' }
+          $env:UV_PYTHON_INSTALL_DIR = Join-Path $env:LOCALAPPDATA 'Vinylofy\shop-price-python'
+          $venv = Join-Path $env:LOCALAPPDATA "Vinylofy\$($env:WORKER)-price-venv"
+          $python = Join-Path $venv 'Scripts\python.exe'
+          if (-not (Test-Path -LiteralPath $python)) {
+            uv venv --no-project --seed --managed-python --python 3.12 --link-mode copy $venv
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          uv pip install --python $python 'requests>=2.31,<3' 'beautifulsoup4>=4.12,<5' 'psycopg[binary]>=3.2,<4' 'python-dotenv>=1,<2' 'playwright>=1.50,<2'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $env:PLAYWRIGHT_BROWSERS_PATH = Join-Path $env:LOCALAPPDATA 'Vinylofy\shop-price-browsers'
+          Add-Content -LiteralPath $env:GITHUB_ENV -Encoding UTF8 -Value "SHOP_PYTHON=$python"
+          Add-Content -LiteralPath $env:GITHUB_ENV -Encoding UTF8 -Value "PLAYWRIGHT_BROWSERS_PATH=$env:PLAYWRIGHT_BROWSERS_PATH"
+      - name: Validate source and continuation identity
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const inputs = context.payload.inputs;
+            if (!/^\d+$/.test(inputs.source_run) || !/^\d+$/.test(inputs.batch_size) || +inputs.batch_size < 1 || +inputs.batch_size > 100)
+              throw new Error('Invalid source or batch size');
+            const source = (await github.rest.actions.getWorkflowRun({...context.repo, run_id: +inputs.source_run})).data;
+            if (source.path !== '.github/workflows/price-northendhaarlem.yml' || source.head_branch !== 'main' || source.conclusion !== 'success')
+              throw new Error('Seed must be a successful main North End price run');
+            if (inputs.checkpoint_run) {
+              if (!/^\d+$/.test(inputs.checkpoint_run)) throw new Error('Invalid checkpoint run');
+              const parent = (await github.rest.actions.getWorkflowRun({...context.repo, run_id: +inputs.checkpoint_run})).data;
+              if (parent.path !== '.github/workflows/northend-full-catalogue.yml' || parent.head_branch !== 'main')
+                throw new Error('Checkpoint belongs to another workflow');
+            }
+      - name: Download frozen source identities
+        if: inputs.checkpoint_run == ''
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.source_run }}
+          name: price-evidence-northendhaarlem-${{ inputs.source_run }}
+          path: ${{ env.SHOP_ARCHIVE_DIR }}/input
+      - name: Download previous checkpoint
+        if: inputs.checkpoint_run != ''
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.checkpoint_run }}
+          name: northend-full-catalogue-${{ inputs.checkpoint_run }}
+          path: ${{ env.SHOP_ARCHIVE_DIR }}/input
+      - name: Process next catalogue part
+        env:
+          DATABASE_URL: ${{ inputs.write && secrets.DATABASE_URL || '' }}
+          SOURCE_RUN: ${{ inputs.source_run }}
+          CHECKPOINT_RUN: ${{ inputs.checkpoint_run }}
+          BATCH_SIZE: ${{ inputs.batch_size }}
+          WRITE_ENABLED: ${{ inputs.write && 'true' || 'false' }}
+        working-directory: ${{ runner.temp }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-Location -LiteralPath $env:SHOP_SOURCE_DIR
+          $name = if ($env:CHECKPOINT_RUN) { 'checkpoint.json' } else { 'validated-prices.json' }
+          $files = @(Get-ChildItem -LiteralPath (Join-Path $env:SHOP_ARCHIVE_DIR 'input') -Filter $name -Recurse -File)
+          if ($files.Count -ne 1) { throw 'Expected exactly one source/checkpoint file' }
+          $argsList = @('-u', '-m', 'scripts.workers.northend_full_catalogue', '--source-run', $env:SOURCE_RUN, '--batch-size', $env:BATCH_SIZE)
+          if ($env:CHECKPOINT_RUN) { $argsList += @('--resume', $files[0].FullName) } else { $argsList += @('--seed', $files[0].FullName) }
+          if ($env:WRITE_ENABLED -eq 'true') { $argsList += '--write' }
+          & $env:SHOP_PYTHON @argsList
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Preserve complete checkpoint and evidence
+        if: always() && env.SHOP_SOURCE_DIR != ''
+        id: checkpoint
+        uses: actions/upload-artifact@v4
+        with:
+          name: northend-full-catalogue-${{ github.run_id }}
+          path: ${{ env.SHOP_SOURCE_DIR }}/output/northend-full-catalogue/checkpoint.json
+          retention-days: 30
+          if-no-files-found: error
+      - name: Report progress and dispatch next part
+        if: success()
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('node:fs/promises');
+            const path = require('node:path');
+            const state = JSON.parse(await fs.readFile(path.join(process.env.SHOP_SOURCE_DIR, 'output/northend-full-catalogue/checkpoint.json'), 'utf8'));
+            await core.summary.addHeading('North End full catalogue').addCodeBlock(JSON.stringify({status:state.status, ...state.summary}, null, 2)).write();
+            if (state.status === 'continue') {
+              const inputs = context.payload.inputs;
+              await github.rest.actions.createWorkflowDispatch({...context.repo, workflow_id:'northend-full-catalogue.yml', ref:'main', inputs:{
+                source_run:inputs.source_run, checkpoint_run:String(context.runId), batch_size:inputs.batch_size,
+                write:String(inputs.write === 'true'), source_sha:process.env.NORTHEND_SOURCE_SHA
+              }});
+              core.notice('Next catalogue part dispatched from checkpoint '+context.runId);
+            } else if (state.status !== 'completed') {
+              throw new Error('Catalogue paused: '+state.status);
+            }

@@ -37,7 +37,7 @@ def canonical_target(body,item):
     return None
 
 
-def parse_source(body,item,observed_at,canonical_body=None):
+def parse_source(body,item,observed_at,canonical_body=None,require_in_stock=True):
     soup=BeautifulSoup(body,'html.parser');scope=product_scope(soup)
     if scope is None:raise ValueError('Own product scope absent; possible access challenge')
     target=canonical_target(body,item)
@@ -53,7 +53,7 @@ def parse_source(body,item,observed_at,canonical_body=None):
         titles=[unicodedata.normalize('NFKC',clean(h.get_text(' ',strip=True))).casefold() if h else '' for h in headings]
         expected=unicodedata.normalize('NFKC',clean(item['title_raw'])).casefold()
         if not expected or titles!=[expected,expected]:raise ValueError('Canonical target title differs from listing/source')
-        verified=parse_source(canonical_body,{**item,'source_url':target,'source_product_id':source_identity(target)},observed_at)
+        verified=parse_source(canonical_body,{**item,'source_url':target,'source_product_id':source_identity(target)},observed_at,require_in_stock=require_in_stock)
     detail=parse_detail_page(body,listing_payload={'title_raw':item['title_raw'],'price':item['listing_price']})
     specs={}
     for row in scope.select('table.article-specs tr'):
@@ -68,7 +68,10 @@ def parse_source(body,item,observed_at,canonical_body=None):
         codes=[verified['gtin14']]
     price=detail.get('detail_price_seen')
     if price is None or Decimal(price)!=Decimal(item['listing_price']):raise ValueError('Listing/detail article price mismatch or unproven')
-    if detail.get('availability')!='in_stock':raise ValueError('Current detail does not prove in-stock availability')
+    availability=detail.get('availability')
+    if require_in_stock and availability!='in_stock':raise ValueError('Current detail does not prove in-stock availability')
+    if not require_in_stock and (availability not in ('in_stock','preorder','out_of_stock') or availability!=item.get('listing_availability')):
+        raise ValueError('Listing/detail availability mismatch or unknown')
     name=detail.get('title_raw') or ''
     if not re.search(r'\b(?:\d?LP|VINYL)\b',detail.get('format') or '',re.I):raise ValueError('Vinyl format not proven')
     if re.search(r'\b(?:used|pre[- ]owned|second[- ]hand|tweedehands|occasion|CD|DVD|bundle|box)\b',name,re.I):raise ValueError('Used/non-vinyl/bundle title requires review')
@@ -79,7 +82,7 @@ def parse_source(body,item,observed_at,canonical_body=None):
     return {**item,**evidence,'status':'validated','observed_at':observed_at,'source_sha256':hashlib.sha256(body.encode()).hexdigest(),
       'source_title':name,'source_artist':next((specs[k] for k in ('artiest','artist','uitvoerende') if specs.get(k)),None),
       'source_album':next((specs[k] for k in ('album','titel','title') if specs.get(k)),None),'source_specs':specs,
-      'price':item['listing_price'],'price_source':'listing','detail_price_crosscheck':price,'availability':'in_stock',
+      'price':item['listing_price'],'price_source':'listing','detail_price_crosscheck':price,'availability':availability,
       'format_status':'vinyl','condition_status':'new','condition_basis':'explicit_attribute' if state else 'no_used_signal_policy',
       'gtin14':codes[0] if codes else None,'route':'EAN' if codes else 'ARTIST_TITLE',
       'ean_status':'EAN_AVAILABLE' if codes else 'EAN_NOT_FOUND','production_write':False}
