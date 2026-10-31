@@ -204,6 +204,17 @@ def collect(conn,limit=50):
                     cur.execute("""update public.album_alternative_offers set price=%s,currency=%s,availability=%s,
                       last_seen_at=%s,last_price_checked_at=%s where id=%s and shop_id=%s and promotion_status='none'
                       and last_price_checked_at<=%s""",(record['price'],record['currency'],record['availability'],record['observed_at'],record['listing_observed_at'],row['offer_id'],row['shop_id'],record['listing_observed_at']))
+                if record.get('route')=='EAN':
+                    raw_shop=row['source_input'].get('raw_shop_id')
+                    if not raw_shop:raise ValueError('EAN delivery needs the existing raw shop mapping')
+                    raw_id=str(uuid.uuid5(uuid.NAMESPACE_URL,'album-source-ean:'+str(row['id'])+':'+record['gtin14']))
+                    payload={**record,'origin':'album_source_ean_discovery','price_source':'listing',
+                      'listing_seen_at':record['listing_observed_at'],'format':'LP','artist_raw':record.get('artist')}
+                    cur.execute("""insert into public.raw_shop_scrapes(id,run_id,shop_id,source_url,source_product_id,title_raw,
+                      ean_raw,price_raw,availability_raw,image_url_raw,payload)
+                      values(%s,null,%s,%s,%s,%s,%s,%s,%s,null,%s) on conflict(id) do nothing""",
+                      (raw_id,raw_shop,row['product_url'],row['source_product_id'],record['source_title'],record['gtin14'],record['price'],record['availability'],Jsonb(payload)))
+                    record['ean_destination']='raw_shop_scrapes'
                 if record.get('route')=='EAN' and row.get('offer_id'):
                     cur.execute("update public.album_alternative_offers set ean_status='EAN_AVAILABLE',promotion_status='pending' where id=%s and promotion_status='none'",(row['offer_id'],))
                 cur.execute("""update public.album_offer_queue set source_record=case when %s::jsonb->>'status'='validated' then %s::jsonb else source_record end,status=%s,reason=%s,
