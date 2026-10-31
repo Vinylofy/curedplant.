@@ -189,7 +189,10 @@ def run_batch(state,transport,*,batch_size=50,writer=None,budget_seconds=5400):
               'status':result['status'],'route':result.get('route'),'database':result.get('database',{}).get('status')}),flush=True)
         state['status']='completed' if state['cursor']==len(state['records']) else 'continue'
     except Exception as error:
-        state['status']='infrastructure_paused';state['stop_reason']=type(error).__name__;save(state);raise
+        message=str(error)
+        access=message in ('HTTP_401','HTTP_403','HTTP_429','ACCESS_CHALLENGE') or bool(re.fullmatch(r'HTTP_5\d\d',message))
+        state['status']='access_paused' if access else 'infrastructure_paused'
+        state['stop_reason']=message if access else type(error).__name__;save(state);raise
     finally:transport.close()
     save(state);return state
 

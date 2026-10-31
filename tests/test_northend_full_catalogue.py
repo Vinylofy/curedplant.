@@ -51,6 +51,12 @@ class FullCatalogue(unittest.TestCase):
             state=self.state()
             with self.assertRaises(RuntimeError):full.run_batch(state,Mock(),writer=Mock(side_effect=RuntimeError('db fault')))
             self.assertEqual((state['status'],state['cursor']),( 'infrastructure_paused',0))
+    def test_robots_access_denial_preserves_exact_reason_and_stops_before_details(self):
+        with tempfile.TemporaryDirectory() as folder,patch.object(full,'OUT',Path(folder)/'checkpoint.json'),patch.object(full,'verify_item') as verify:
+            state=self.state();transport=Mock();transport.start.side_effect=RuntimeError('HTTP_403')
+            with self.assertRaises(RuntimeError):full.run_batch(state,transport)
+            self.assertEqual((state['status'],state['stop_reason'],state['cursor']),('access_paused','HTTP_403',0))
+            verify.assert_not_called();transport.close.assert_called_once()
     def test_publication_uses_ean_writer_and_actual_listing_time(self):
         result=self.result();result['listing_observed_at']=full.now();conn=MagicMock();cur=conn.cursor.return_value.__enter__.return_value
         cur.fetchone.side_effect=[None,None]

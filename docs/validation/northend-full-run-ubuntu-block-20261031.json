@@ -1,0 +1,33 @@
+{
+  "date": "2026-10-31",
+  "windows_first_write_run": 41241785612,
+  "cancelled_windows_continuation": 41242086954,
+  "ubuntu_probe_run": 41242226096,
+  "ubuntu_target": "ubuntu-latest",
+  "ubuntu_failure": "HTTP_403 on https://www.northendhaarlem.nl/robots.txt before any product fetch",
+  "summary": {
+    "total": 4603,
+    "processed": 1,
+    "remaining": 4602,
+    "statuses": {
+      "validated": 1
+    },
+    "routes": {
+      "EAN": 1
+    },
+    "database_results": {
+      "ean_imported": 1
+    }
+  },
+  "first_write": {
+    "status": "ean_imported",
+    "raw_id": "57b573de-8329-5a3e-8f58-ed391a2b8d68",
+    "product_id": "fd3dd9ec-7900-4000-a1af-bc75762e5f6b",
+    "new_product": false,
+    "new_price": true,
+    "price_changed": false,
+    "history_inserted": true
+  },
+  "automatic_windows_fallback": false,
+  "local_tests_passed": 44
+}
