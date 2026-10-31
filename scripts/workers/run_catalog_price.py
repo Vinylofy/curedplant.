@@ -149,6 +149,9 @@ def main() -> int:
             stats = update_existing(args.worker, rows, started)
             summary["database"] = stats
             summary["database_writes"] = stats["updated"]
+            if args.worker == "northendhaarlem":
+                from scripts.workers.album_draft_prices import update_northend_drafts
+                summary["album_pilot_drafts"] = update_northend_drafts(rows, started)
         except Exception as exc:
             summary["status"] = "red"
             summary["errors"].append({"reason": "database_verification_failed", "error": str(exc)})
