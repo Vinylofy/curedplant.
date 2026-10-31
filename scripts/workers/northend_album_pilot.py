@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 import re
 import time
+import unicodedata
 from urllib.parse import urlsplit
 from urllib.robotparser import RobotFileParser
 import requests
@@ -27,11 +28,32 @@ def source_identity(url):
     return m.group(1)
 
 
-def parse_source(body,item,observed_at):
+def canonical_target(body,item):
+    """A shop-declared alias is a review target, never an automatic redirect."""
+    canonical=BeautifulSoup(body,'html.parser').select_one('link[rel="canonical"]')
+    if canonical:
+        url=canonical.get('href','')
+        if source_identity(url)!=item['source_product_id']:return url
+    return None
+
+
+def parse_source(body,item,observed_at,canonical_body=None):
     soup=BeautifulSoup(body,'html.parser');scope=product_scope(soup)
     if scope is None:raise ValueError('Own product scope absent; possible access challenge')
-    canonical=soup.select_one('link[rel="canonical"]')
-    if canonical and source_identity(canonical.get('href',''))!=item['source_product_id']:raise ValueError('Canonical product identity mismatch')
+    target=canonical_target(body,item)
+    verified=None
+    if target:
+        if canonical_body is None:raise ValueError('Canonical product verification required')
+        target_soup=BeautifulSoup(canonical_body,'html.parser')
+        target_canonical=target_soup.select_one('link[rel="canonical"]')
+        if not target_canonical or source_identity(target_canonical.get('href',''))!=source_identity(target):
+            raise ValueError('Canonical target is not self-canonical; no alias chains allowed')
+        target_scope=product_scope(target_soup)
+        headings=[scope.select_one('h1'),target_scope.select_one('h1') if target_scope else None]
+        titles=[unicodedata.normalize('NFKC',clean(h.get_text(' ',strip=True))).casefold() if h else '' for h in headings]
+        expected=unicodedata.normalize('NFKC',clean(item['title_raw'])).casefold()
+        if not expected or titles!=[expected,expected]:raise ValueError('Canonical target title differs from listing/source')
+        verified=parse_source(canonical_body,{**item,'source_url':target,'source_product_id':source_identity(target)},observed_at)
     detail=parse_detail_page(body,listing_payload={'title_raw':item['title_raw'],'price':item['listing_price']})
     specs={}
     for row in scope.select('table.article-specs tr'):
@@ -40,6 +62,10 @@ def parse_source(body,item,observed_at):
     barcode_fields=[v for k,v in specs.items() if re.fullmatch(r'ean|barcode|upc|gtin(?:8|12|13|14)?',k) and v]
     codes=sorted({normalize_ean(v) for v in barcode_fields if normalize_ean(v)})
     if barcode_fields and (len(codes)!=1 or any(not normalize_ean(v) for v in barcode_fields)):raise ValueError('Invalid or ambiguous source identifier')
+    if verified:
+        if codes and verified['gtin14'] and codes[0]!=verified['gtin14']:raise ValueError('Canonical target barcode conflicts with source')
+        if not verified['gtin14']:raise ValueError('Canonical alias requires a valid target barcode')
+        codes=[verified['gtin14']]
     price=detail.get('detail_price_seen')
     if price is None or Decimal(price)!=Decimal(item['listing_price']):raise ValueError('Listing/detail article price mismatch or unproven')
     if detail.get('availability')!='in_stock':raise ValueError('Current detail does not prove in-stock availability')
@@ -48,7 +74,9 @@ def parse_source(body,item,observed_at):
     if re.search(r'\b(?:used|pre[- ]owned|second[- ]hand|tweedehands|occasion|CD|DVD|bundle|box)\b',name,re.I):raise ValueError('Used/non-vinyl/bundle title requires review')
     state=next((v for k,v in specs.items() if k in ('state','condition','staat','conditie')),None)
     if state and state.casefold() not in ('nieuw','new','sealed'):raise ValueError('Condition attribute requires review: '+state)
-    return {**item,'status':'validated','observed_at':observed_at,'source_sha256':hashlib.sha256(body.encode()).hexdigest(),
+    evidence={'canonical_url':target,'canonical_source_product_id':verified['source_product_id'],
+      'canonical_sha256':verified['source_sha256'],'canonical_verification':'exact_title_price_stock_format_and_target_gtin'} if verified else {}
+    return {**item,**evidence,'status':'validated','observed_at':observed_at,'source_sha256':hashlib.sha256(body.encode()).hexdigest(),
       'source_title':name,'source_artist':next((specs[k] for k in ('artiest','artist','uitvoerende') if specs.get(k)),None),
       'source_album':next((specs[k] for k in ('album','titel','title') if specs.get(k)),None),'source_specs':specs,
       'price':item['listing_price'],'price_source':'listing','detail_price_crosscheck':price,'availability':'in_stock',
@@ -91,7 +119,10 @@ def main():
                 stamp=datetime.fromisoformat(item['listing_observed_at'])
                 if not 0<=(datetime.now(timezone.utc)-stamp).total_seconds()<48*3600:raise ValueError('Listing evidence expired')
                 if not robots.can_fetch(UA,item['source_url']):raise ValueError('robots_disallow')
-                body=get(item['source_url']);record=parse_source(body,item,datetime.now(timezone.utc).isoformat())
+                body=get(item['source_url']);target=canonical_target(body,item)
+                if target and not robots.can_fetch(UA,target):raise ValueError('canonical_robots_disallow')
+                target_body=get(target) if target else None
+                record=parse_source(body,item,datetime.now(timezone.utc).isoformat(),canonical_body=target_body)
             except Exception as error:
                 record={**item,'status':'blocked','reason':str(error)}
                 if str(error) in ('HTTP_401','HTTP_403','HTTP_429','ACCESS_CHALLENGE'):

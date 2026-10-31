@@ -1,0 +1,52 @@
+{
+  "created_at": "2026-10-31T20:48:10.224517+00:00",
+  "production_write": false,
+  "requests": [
+    {
+      "url": "https://www.northendhaarlem.nl/robots.txt",
+      "status": 200
+    },
+    {
+      "url": "https://www.northendhaarlem.nl/a-117366946/pop/amy-winehouse-back-to-black-lp/",
+      "status": 200
+    },
+    {
+      "url": "https://www.northendhaarlem.nl/a-23231593/aanbiedingen/amy-winehouse-back-to-black-lp/",
+      "status": 200
+    }
+  ],
+  "record": {
+    "source_product_id": "117366946",
+    "source_url": "https://www.northendhaarlem.nl/a-117366946/pop/amy-winehouse-back-to-black-lp/",
+    "title_raw": "Amy Winehouse Back to Black LP",
+    "listing_price": "29.99",
+    "currency": "EUR",
+    "listing_availability": "in_stock",
+    "listing_observed_at": "2026-10-30T11:01:58.334949+00:00",
+    "canonical_url": "https://www.northendhaarlem.nl/a-23231593/aanbiedingen/amy-winehouse-back-to-black-lp/",
+    "canonical_source_product_id": "23231593",
+    "canonical_sha256": "0e8cba7078e784ddf97eeb3c5cfaf7bb4ced2a44fcb5231f48483185a1399c03",
+    "canonical_verification": "exact_title_price_stock_format_and_target_gtin",
+    "status": "validated",
+    "observed_at": "2026-10-31T20:47:40.368222+00:00",
+    "source_sha256": "40145ba510b764c57c0904890d41cab640bcf1e80f1d04363170a31d5e7251e7",
+    "source_title": "Amy Winehouse Back to Black LP",
+    "source_artist": null,
+    "source_album": null,
+    "source_specs": {
+      "specificatie": "Omschrijving",
+      "barcode": "0602517341289"
+    },
+    "price": "29.99",
+    "price_source": "listing",
+    "detail_price_crosscheck": "29.99",
+    "availability": "in_stock",
+    "format_status": "vinyl",
+    "condition_status": "new",
+    "condition_basis": "no_used_signal_policy",
+    "gtin14": "00602517341289",
+    "route": "EAN",
+    "ean_status": "EAN_AVAILABLE",
+    "production_write": false
+  }
+}

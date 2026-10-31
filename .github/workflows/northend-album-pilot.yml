@@ -72,7 +72,7 @@ jobs:
           $env:PLAYWRIGHT_BROWSERS_PATH = Join-Path $env:LOCALAPPDATA 'Vinylofy\shop-price-browsers'
           Add-Content -LiteralPath $env:GITHUB_ENV -Encoding UTF8 -Value "SHOP_PYTHON=$python"
           Add-Content -LiteralPath $env:GITHUB_ENV -Encoding UTF8 -Value "PLAYWRIGHT_BROWSERS_PATH=$env:PLAYWRIGHT_BROWSERS_PATH"
-      - name: Read at most 25 reviewed North End product pages, no database access
+      - name: Validate at most 25 North End products with bounded canonical checks, no database access
         working-directory: ${{ runner.temp }}
         run: |
           $ErrorActionPreference = 'Stop'
