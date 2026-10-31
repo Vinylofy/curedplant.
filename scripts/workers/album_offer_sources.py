@@ -250,7 +250,9 @@ def collect(conn,limit=50):
                     transports[domain]=Transport(domain);transports[domain].start(row['product_url'])
                 record=verify_source(row,transports[domain]);status='ean_routed' if record['route']=='EAN' else 'pending_match'
             except requests.RequestException:status='source_retry';reason='source_network_failure';stopped.add(domain)
-            except RuntimeError as error:status='source_retry';reason=str(error);stopped.add(domain)
+            except RuntimeError as error:
+                if str(error) in ('HTTP_404','HTTP_410'):status='source_review';reason='source_url_not_found'
+                else:status='source_retry';reason=str(error);stopped.add(domain)
             except (ValueError,TypeError,KeyError,ArithmeticError) as error:reason=str(error)
             same_identity=bool(record) and norm(record.get('label',''))==norm(row['source_record'].get('label',''))
             if same_identity and row.get('offer_id') and row['match_result'].get('status')=='matched' and record.get('route')=='ARTIST_TITLE':
@@ -302,6 +304,16 @@ def main():
     p=argparse.ArgumentParser();p.add_argument('--limit',type=int,default=50);args=p.parse_args()
     if not 1<=args.limit<=50:raise ValueError('Source pilot limit is 1..50')
     with psycopg.connect(os.environ['DATABASE_URL'],autocommit=True,connect_timeout=20,prepare_threshold=None) as conn:
+        if conn.execute("select to_regclass('public.album_offer_queue')").fetchone()[0]:
+            # Repair the initial classifier's per-shop pause after a missing
+            # product page. Real access denials remain untouched.
+            conn.execute("""with affected as materialized(select distinct shop_id from album_offer_queue
+              where status='source_retry' and reason in ('HTTP_404','HTTP_410'))
+              update album_offer_queue q set status='pending_source',reason='missing_page_retry_classifier_fixed',next_attempt_at=now(),updated_at=now()
+              where q.status='source_retry' and q.reason in ('HTTP_404','HTTP_410','shop_access_paused')
+                and q.shop_id in(select shop_id from affected) and (q.lease_until is null or q.lease_until<now())
+                and not exists(select 1 from album_offer_queue denied where denied.shop_id=q.shop_id and denied.status='source_retry'
+                  and denied.reason in ('HTTP_401','HTTP_403','HTTP_429','ACCESS_CHALLENGE') and denied.next_attempt_at>now())""")
         report=collect(conn,args.limit) if conn.execute("select to_regclass('public.album_offer_queue')").fetchone()[0] else {'status':'not_installed','processed':0}
     path=Path('output/album-offer-sources/result.json');path.parent.mkdir(parents=True,exist_ok=True);path.write_text(json.dumps(report,indent=2)+'\n');print(json.dumps(report))
 if __name__=='__main__':main()

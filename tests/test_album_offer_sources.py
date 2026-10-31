@@ -63,6 +63,13 @@ class AlbumSource(unittest.TestCase):
  def test_description_and_own_specification_conflicting_codes_require_review(self):
   body='<main>'+self.html(description='EAN: 0602517341289')+'<table><tr><th>EANCode</th><td>842812109140</td></tr></table></main>'
   with self.assertRaisesRegex(ValueError,'conflicting_source_barcodes'):src.verify_source(self.row(),Mock(get=Mock(return_value=body),requests=[]))
+ def test_missing_product_does_not_pause_other_products_but_403_does(self):
+  rows=[{**self.row(),'id':str(i),'source_record':{},'match_result':{},'offer_id':None} for i in (1,2)]
+  result={'status':'validated','route':'ARTIST_TITLE','label':'Artist Album LP'}
+  for error,expected,calls in [('HTTP_404',{'source_review':1,'pending_match':1},2),('HTTP_403',{'source_retry':2},1)]:
+   conn=MagicMock();conn.cursor.return_value.__enter__.return_value.fetchone.return_value=('token',)
+   with patch.object(src,'claim',return_value=(rows,'token')),patch.object(src,'Transport'),patch.object(src,'verify_source',side_effect=[RuntimeError(error),result]) as verify:
+    self.assertEqual(src.collect(conn,2)['statuses'],expected);self.assertEqual(verify.call_count,calls)
  def test_source_prices_refresh_and_changed_identity_clears_previous_manual_decision(self):
   row={**self.row(),'id':'queue','source_record':{'label':'Different Artist Different Album'},'match_result':{'status':'matched'},'offer_id':'offer'}
   conn=MagicMock();conn.cursor.return_value.__enter__.return_value.fetchone.return_value=('token',);transport=self.transport()
