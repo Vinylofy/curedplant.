@@ -7,232 +7,232 @@
   "origin_listing_run": 41040560977,
   "database_context_run": 41179732372,
   "source_sha256": "4201c25e763ee22d520dcc74ea0fd38840b7a26068c8377e6f8666ff3ef278d6",
-  "selection": "first 25 in-stock source items without stored valid GTIN; vinyl, exclude complex edition titles for a bounded identity pilot",
+  "selection": "first 25 in-stock source items without stored valid GTIN, simple terminal LP format for an explicitly biased bounded identity pilot",
   "records": [
     {
-      "source_product_id": "93271376",
-      "source_url": "https://www.northendhaarlem.nl/a-93271376/coloured-vinyl/teddy-swims-i-ve-tried-everything-but-therapy-part-2-lp-orange-crush-vinyl/",
-      "title_raw": "Teddy Swims I've Tried Everything But Therapy (Part 2) LP - Orange Crush Vinyl-",
+      "source_product_id": "98532648",
+      "source_url": "https://www.northendhaarlem.nl/a-98532648/high-quality/sarah-vaughan-sings-george-gershwin-2lp/",
+      "title_raw": "Sarah Vaughan Sings George Gershwin 2LP",
+      "listing_price": "39.99",
+      "currency": "EUR",
+      "listing_availability": "in_stock",
+      "listing_observed_at": "2026-10-30T10:41:58.736109+00:00"
+    },
+    {
+      "source_product_id": "93469711",
+      "source_url": "https://www.northendhaarlem.nl/a-93469711/high-quality/teddy-edwards-howard-mcghee-together-again-lp/",
+      "title_raw": "Teddy Edwards & Howard Mcghee Together Again LP",
+      "listing_price": "41.99",
+      "currency": "EUR",
+      "listing_availability": "in_stock",
+      "listing_observed_at": "2026-10-30T10:41:58.736109+00:00"
+    },
+    {
+      "source_product_id": "89599892",
+      "source_url": "https://www.northendhaarlem.nl/a-89599892/high-quality/ismael-rivera-i-bring-everything-lp/",
+      "title_raw": "Ismael Rivera I Bring Everything LP",
       "listing_price": "34.99",
       "currency": "EUR",
       "listing_availability": "in_stock",
-      "listing_observed_at": "2026-10-30T10:25:58.726868+00:00"
+      "listing_observed_at": "2026-10-30T10:41:58.736109+00:00"
     },
     {
-      "source_product_id": "96064490",
-      "source_url": "https://www.northendhaarlem.nl/a-96064490/coloured-vinyl/hannah-mae-rode-draad-lp-red-vinyl/",
-      "title_raw": "Hannah Mae Rode Draad LP - Red Vinyl-",
-      "listing_price": "29.99",
+      "source_product_id": "87107158",
+      "source_url": "https://www.northendhaarlem.nl/a-87107158/high-quality/johnny-cash-at-folsom-prison-45rpm-2lp/",
+      "title_raw": "Johnny Cash At Folsom Prison 45rpm 2LP",
+      "listing_price": "79.99",
       "currency": "EUR",
       "listing_availability": "in_stock",
-      "listing_observed_at": "2026-10-30T10:25:58.726868+00:00"
+      "listing_observed_at": "2026-10-30T10:41:58.736109+00:00"
     },
     {
-      "source_product_id": "109030285",
-      "source_url": "https://www.northendhaarlem.nl/a-109030285/coloured-vinyl/roxy-dekker-mama-i-made-it-lp-pink-vinyl/",
-      "title_raw": "Roxy Dekker Mama I Made It LP - Pink Vinyl",
-      "listing_price": "29.99",
-      "currency": "EUR",
-      "listing_availability": "in_stock",
-      "listing_observed_at": "2026-10-30T10:25:58.726868+00:00"
-    },
-    {
-      "source_product_id": "99905847",
-      "source_url": "https://www.northendhaarlem.nl/a-99905847/coloured-vinyl/coldplay-a-rush-of-blood-to-the-head-lp-clear-vinyl/",
-      "title_raw": "Coldplay A Rush of Blood to the Head LP - Clear Vinyl-",
-      "listing_price": "22.99",
-      "currency": "EUR",
-      "listing_availability": "in_stock",
-      "listing_observed_at": "2026-10-30T10:25:58.726868+00:00"
-    },
-    {
-      "source_product_id": "83247386",
-      "source_url": "https://www.northendhaarlem.nl/a-83247386/coloured-vinyl/taylor-swift-1989-2lp-taylor-s-version-tangerine-vinyl/",
-      "title_raw": "Taylor Swift 1989 2LP (Taylor's Version) -Tangerine Vinyl-",
-      "listing_price": "39.99",
-      "currency": "EUR",
-      "listing_availability": "in_stock",
-      "listing_observed_at": "2026-10-30T10:25:58.726868+00:00"
-    },
-    {
-      "source_product_id": "108810355",
-      "source_url": "https://www.northendhaarlem.nl/a-108810355/coloured-vinyl/george-michael-faith-2lp-red-vinyl/",
-      "title_raw": "George Michael Faith 2LP - Red Vinyl-",
-      "listing_price": "44.99",
-      "currency": "EUR",
-      "listing_availability": "in_stock",
-      "listing_observed_at": "2026-10-30T10:25:58.726868+00:00"
-    },
-    {
-      "source_product_id": "112612930",
-      "source_url": "https://www.northendhaarlem.nl/a-112612930/coloured-vinyl/raye-this-music-may-contain-hope-2lp-yellow-vinyl/",
-      "title_raw": "Raye This Music May Contain Hope 2LP - Yellow Vinyl-",
-      "listing_price": "39.99",
-      "currency": "EUR",
-      "listing_availability": "in_stock",
-      "listing_observed_at": "2026-10-30T10:25:58.726868+00:00"
-    },
-    {
-      "source_product_id": "99905817",
-      "source_url": "https://www.northendhaarlem.nl/a-99905817/coloured-vinyl/coldplay-viva-la-vida-lp-clear-vinyl/",
-      "title_raw": "Coldplay Viva La Vida LP - Clear Vinyl-",
-      "listing_price": "27.99",
-      "currency": "EUR",
-      "listing_availability": "in_stock",
-      "listing_observed_at": "2026-10-30T10:25:58.726868+00:00"
-    },
-    {
-      "source_product_id": "99905784",
-      "source_url": "https://www.northendhaarlem.nl/a-99905784/coloured-vinyl/coldplay-parachutes-lp-clear-vinyl/",
-      "title_raw": "Coldplay Parachutes LP -Clear Vinyl-",
-      "listing_price": "22.99",
-      "currency": "EUR",
-      "listing_availability": "in_stock",
-      "listing_observed_at": "2026-10-30T10:25:58.726868+00:00"
-    },
-    {
-      "source_product_id": "37578571",
-      "source_url": "https://www.northendhaarlem.nl/a-37578571/coloured-vinyl/the-blues-brothers-the-blues-brothers-lp-blue-vinyl/",
-      "title_raw": "The Blues Brothers The Blues Brothers LP - Blue Vinyl-",
-      "listing_price": "29.99",
-      "currency": "EUR",
-      "listing_availability": "in_stock",
-      "listing_observed_at": "2026-10-30T10:26:31.194933+00:00"
-    },
-    {
-      "source_product_id": "116950295",
-      "source_url": "https://www.northendhaarlem.nl/a-116950295/coloured-vinyl/mac-miller-circles-2lp-clear-vinyl/",
-      "title_raw": "Mac Miller Circles 2LP - Clear Vinyl-",
-      "listing_price": "39.99",
-      "currency": "EUR",
-      "listing_availability": "in_stock",
-      "listing_observed_at": "2026-10-30T10:26:31.194933+00:00"
-    },
-    {
-      "source_product_id": "99906045",
-      "source_url": "https://www.northendhaarlem.nl/a-99906045/coloured-vinyl/coldplay-a-head-full-of-dreams-lp-clear-vinyl/",
-      "title_raw": "Coldplay A Head Full Of Dreams LP - Clear Vinyl-",
-      "listing_price": "22.99",
-      "currency": "EUR",
-      "listing_availability": "in_stock",
-      "listing_observed_at": "2026-10-30T10:26:31.194933+00:00"
-    },
-    {
-      "source_product_id": "99905829",
-      "source_url": "https://www.northendhaarlem.nl/a-99905829/coloured-vinyl/coldplay-mylo-xyloto-lp-clear-vinyl/",
-      "title_raw": "Coldplay Mylo Xyloto LP - Clear Vinyl-",
-      "listing_price": "27.99",
-      "currency": "EUR",
-      "listing_availability": "in_stock",
-      "listing_observed_at": "2026-10-30T10:26:31.194933+00:00"
-    },
-    {
-      "source_product_id": "99258972",
-      "source_url": "https://www.northendhaarlem.nl/a-99258972/coloured-vinyl/sef-lieve-monsters-lp-geel-vinyl/",
-      "title_raw": "Sef Lieve Monsters LP - Geel Vinyl-",
-      "listing_price": "34.99",
-      "currency": "EUR",
-      "listing_availability": "in_stock",
-      "listing_observed_at": "2026-10-30T10:26:31.194933+00:00"
-    },
-    {
-      "source_product_id": "101387768",
-      "source_url": "https://www.northendhaarlem.nl/a-101387768/coloured-vinyl/doja-cat-vie-2lp-magenta-vinyl/",
-      "title_raw": "Doja Cat Vie 2LP - Magenta Vinyl-",
-      "listing_price": "34.99",
-      "currency": "EUR",
-      "listing_availability": "in_stock",
-      "listing_observed_at": "2026-10-30T10:26:31.194933+00:00"
-    },
-    {
-      "source_product_id": "106277660",
-      "source_url": "https://www.northendhaarlem.nl/a-106277660/coloured-vinyl/madison-beer-locket-lp-cream-vinyl/",
-      "title_raw": "Madison Beer Locket LP - Cream Vinyl-",
-      "listing_price": "29.99",
-      "currency": "EUR",
-      "listing_availability": "in_stock",
-      "listing_observed_at": "2026-10-30T10:27:02.980381+00:00"
-    },
-    {
-      "source_product_id": "102345281",
-      "source_url": "https://www.northendhaarlem.nl/a-102345281/coloured-vinyl/gorillaz-mountain-2lp-yellow-vinyl/",
-      "title_raw": "Gorillaz Mountain 2LP - Yellow Vinyl-",
-      "listing_price": "39.99",
-      "currency": "EUR",
-      "listing_availability": "in_stock",
-      "listing_observed_at": "2026-10-30T10:27:02.980381+00:00"
-    },
-    {
-      "source_product_id": "101656359",
-      "source_url": "https://www.northendhaarlem.nl/a-101656359/coloured-vinyl/kensington-first-rodeo-lp-red-vinyl/",
-      "title_raw": "Kensington First Rodeo LP - Red Vinyl-",
-      "listing_price": "31.99",
-      "currency": "EUR",
-      "listing_availability": "in_stock",
-      "listing_observed_at": "2026-10-30T10:27:02.980381+00:00"
-    },
-    {
-      "source_product_id": "95828246",
-      "source_url": "https://www.northendhaarlem.nl/a-95828246/coloured-vinyl/mac-miller-balloonerism-2lp-white-vinyl/",
-      "title_raw": "Mac Miller Balloonerism 2LP - White Vinyl-",
-      "listing_price": "44.99",
-      "currency": "EUR",
-      "listing_availability": "in_stock",
-      "listing_observed_at": "2026-10-30T10:27:02.980381+00:00"
-    },
-    {
-      "source_product_id": "99883179",
-      "source_url": "https://www.northendhaarlem.nl/a-99883179/coloured-vinyl/twenty-one-pilots-breach-lp-red-vinyl/",
-      "title_raw": "Twenty One Pilots Breach LP - Red Vinyl-",
-      "listing_price": "31.99",
-      "currency": "EUR",
-      "listing_availability": "in_stock",
-      "listing_observed_at": "2026-10-30T10:27:02.980381+00:00"
-    },
-    {
-      "source_product_id": "102779384",
-      "source_url": "https://www.northendhaarlem.nl/a-102779384/coloured-vinyl/danny-vera-the-way-home-lp-blue-vinyl/",
-      "title_raw": "Danny Vera The Way Home LP - Blue Vinyl-",
-      "listing_price": "26.99",
-      "currency": "EUR",
-      "listing_availability": "in_stock",
-      "listing_observed_at": "2026-10-30T10:27:02.980381+00:00"
-    },
-    {
-      "source_product_id": "107297729",
-      "source_url": "https://www.northendhaarlem.nl/a-107297729/coloured-vinyl/bad-bunny-debi-tirar-mas-fotos-2lp-opaque-white-vinyl/",
-      "title_raw": "Bad Bunny Debi Tirar Mas Fotos 2LP- Opaque White Vinyl-",
+      "source_product_id": "74299182",
+      "source_url": "https://www.northendhaarlem.nl/a-74299182/high-quality/sun-ra-futuristic-sounds-of-sun-ra-lp/",
+      "title_raw": "Sun Ra Futuristic Sounds Of Sun Ra LP",
       "listing_price": "36.99",
       "currency": "EUR",
       "listing_availability": "in_stock",
-      "listing_observed_at": "2026-10-30T10:27:02.980381+00:00"
+      "listing_observed_at": "2026-10-30T10:41:58.736109+00:00"
     },
     {
-      "source_product_id": "117773461",
-      "source_url": "https://www.northendhaarlem.nl/a-117773461/coloured-vinyl/sef-lieve-monsters-lp-groen-vinyl/",
-      "title_raw": "Sef Lieve Monsters LP - Groen Vinyl-",
-      "listing_price": "34.99",
+      "source_product_id": "26437961",
+      "source_url": "https://www.northendhaarlem.nl/a-26437961/high-quality/the-doors-the-soft-parade-45rpm-2lp/",
+      "title_raw": "The Doors The Soft Parade 45rpm 2LP",
+      "listing_price": "79.99",
       "currency": "EUR",
       "listing_availability": "in_stock",
-      "listing_observed_at": "2026-10-30T10:27:02.980381+00:00"
+      "listing_observed_at": "2026-10-30T10:41:58.736109+00:00"
     },
     {
-      "source_product_id": "87262701",
-      "source_url": "https://www.northendhaarlem.nl/a-87262701/coloured-vinyl/wallows-model-2lp-orchid-orange-vinyl/",
-      "title_raw": "Wallows Model 2LP - Orchid Orange Vinyl-",
+      "source_product_id": "26438173",
+      "source_url": "https://www.northendhaarlem.nl/a-26438173/high-quality/doors-waiting-for-the-sun-45rpm-2lp/",
+      "title_raw": "Doors Waiting For The Sun 45rpm 2LP",
+      "listing_price": "79.99",
+      "currency": "EUR",
+      "listing_availability": "in_stock",
+      "listing_observed_at": "2026-10-30T10:43:05.299037+00:00"
+    },
+    {
+      "source_product_id": "45347638",
+      "source_url": "https://www.northendhaarlem.nl/a-45347638/high-quality/love-forever-changes-hq-45rpm-2lp/",
+      "title_raw": "Love Forever Changes HQ 45rpm 2LP",
+      "listing_price": "54.99",
+      "currency": "EUR",
+      "listing_availability": "in_stock",
+      "listing_observed_at": "2026-10-30T10:43:05.299037+00:00"
+    },
+    {
+      "source_product_id": "100093218",
+      "source_url": "https://www.northendhaarlem.nl/a-100093218/high-quality/funkadelic-funkadelic-45rpm-2lp/",
+      "title_raw": "Funkadelic Funkadelic 45rpm 2LP",
+      "listing_price": "79.99",
+      "currency": "EUR",
+      "listing_availability": "in_stock",
+      "listing_observed_at": "2026-10-30T10:43:05.299037+00:00"
+    },
+    {
+      "source_product_id": "88782270",
+      "source_url": "https://www.northendhaarlem.nl/a-88782270/high-quality/bill-evans-trio-s-waltz-for-debby-uhqr-2lp/",
+      "title_raw": "Bill Evans Trio\u2019s Waltz For Debby UHQR 2LP",
+      "listing_price": "199.99",
+      "currency": "EUR",
+      "listing_availability": "in_stock",
+      "listing_observed_at": "2026-10-30T10:43:05.299037+00:00"
+    },
+    {
+      "source_product_id": "101496670",
+      "source_url": "https://www.northendhaarlem.nl/a-101496670/high-quality/the-stooges-the-stooges-45rpm-2lp/",
+      "title_raw": "The Stooges The Stooges 45rpm 2LP",
+      "listing_price": "69.99",
+      "currency": "EUR",
+      "listing_availability": "in_stock",
+      "listing_observed_at": "2026-10-30T10:43:05.299037+00:00"
+    },
+    {
+      "source_product_id": "90612455",
+      "source_url": "https://www.northendhaarlem.nl/a-90612455/high-quality/mariah-carey-merry-christmas-45rpm-2lp/",
+      "title_raw": "Mariah Carey Merry Christmas 45rpm 2LP",
+      "listing_price": "79.99",
+      "currency": "EUR",
+      "listing_availability": "in_stock",
+      "listing_observed_at": "2026-10-30T10:43:37.818706+00:00"
+    },
+    {
+      "source_product_id": "68670319",
+      "source_url": "https://www.northendhaarlem.nl/a-68670319/high-quality/ravi-shankar-shankar-family-friends-lp/",
+      "title_raw": "Ravi Shankar Shankar Family & Friends LP",
       "listing_price": "39.99",
       "currency": "EUR",
       "listing_availability": "in_stock",
-      "listing_observed_at": "2026-10-30T10:27:02.980381+00:00"
+      "listing_observed_at": "2026-10-30T10:43:37.818706+00:00"
     },
     {
-      "source_product_id": "70540425",
-      "source_url": "https://www.northendhaarlem.nl/a-70540425/coloured-vinyl/beth-hart-better-than-home-lp-clear-vinyl/",
-      "title_raw": "Beth Hart Better Than Home LP - Clear Vinyl-",
+      "source_product_id": "89438549",
+      "source_url": "https://www.northendhaarlem.nl/a-89438549/high-quality/jeff-beck-jeff-beck-with-the-jan-hammer-group-live-lp/",
+      "title_raw": "Jeff Beck Jeff Beck with the Jan Hammer Group Live LP",
+      "listing_price": "44.99",
+      "currency": "EUR",
+      "listing_availability": "in_stock",
+      "listing_observed_at": "2026-10-30T10:43:37.818706+00:00"
+    },
+    {
+      "source_product_id": "21104571",
+      "source_url": "https://www.northendhaarlem.nl/a-21104571/high-quality/miles-davis-kind-of-blue-45rpm-2lp/",
+      "title_raw": "Miles Davis Kind Of Blue 45rpm 2LP",
+      "listing_price": "89.99",
+      "currency": "EUR",
+      "listing_availability": "in_stock",
+      "listing_observed_at": "2026-10-30T10:49:13.656532+00:00"
+    },
+    {
+      "source_product_id": "39180389",
+      "source_url": "https://www.northendhaarlem.nl/a-39180389/high-quality/dire-straits-brothers-in-arms-45rpm-2lp/",
+      "title_raw": "Dire Straits Brothers In Arms 45rpm 2LP",
+      "listing_price": "69.99",
+      "currency": "EUR",
+      "listing_availability": "in_stock",
+      "listing_observed_at": "2026-10-30T10:49:13.656532+00:00"
+    },
+    {
+      "source_product_id": "24806986",
+      "source_url": "https://www.northendhaarlem.nl/a-24806986/high-quality/alan-parsons-turn-of-a-friendly-card-lp/",
+      "title_raw": "Alan Parsons Turn Of A Friendly Card LP",
+      "listing_price": "34.99",
+      "currency": "EUR",
+      "listing_availability": "in_stock",
+      "listing_observed_at": "2026-10-30T10:49:47.071261+00:00"
+    },
+    {
+      "source_product_id": "97283673",
+      "source_url": "https://www.northendhaarlem.nl/a-97283673/high-quality/bob-marley-and-the-wailers-kaya-45rpm-2lp/",
+      "title_raw": "Bob Marley and The Wailers Kaya 45rpm 2LP",
+      "listing_price": "79.99",
+      "currency": "EUR",
+      "listing_availability": "in_stock",
+      "listing_observed_at": "2026-10-30T10:59:51.322951+00:00"
+    },
+    {
+      "source_product_id": "117366946",
+      "source_url": "https://www.northendhaarlem.nl/a-117366946/pop/amy-winehouse-back-to-black-lp/",
+      "title_raw": "Amy Winehouse Back to Black LP",
+      "listing_price": "29.99",
+      "currency": "EUR",
+      "listing_availability": "in_stock",
+      "listing_observed_at": "2026-10-30T11:01:58.334949+00:00"
+    },
+    {
+      "source_product_id": "117546611",
+      "source_url": "https://www.northendhaarlem.nl/a-117546611/pop/fleetwood-mac-rumours-lp/",
+      "title_raw": "Fleetwood Mac Rumours LP",
+      "listing_price": "24.99",
+      "currency": "EUR",
+      "listing_availability": "in_stock",
+      "listing_observed_at": "2026-10-30T11:01:58.334949+00:00"
+    },
+    {
+      "source_product_id": "117367056",
+      "source_url": "https://www.northendhaarlem.nl/a-117367056/pop/michael-jackson-thriller-lp/",
+      "title_raw": "Michael Jackson Thriller LP",
+      "listing_price": "24.99",
+      "currency": "EUR",
+      "listing_availability": "in_stock",
+      "listing_observed_at": "2026-10-30T11:01:58.334949+00:00"
+    },
+    {
+      "source_product_id": "117650891",
+      "source_url": "https://www.northendhaarlem.nl/a-117650891/pop/billie-eilish-hit-me-hard-and-soft-lp/",
+      "title_raw": "Billie Eilish Hit Me Hard And Soft LP",
       "listing_price": "27.99",
       "currency": "EUR",
       "listing_availability": "in_stock",
-      "listing_observed_at": "2026-10-30T10:27:35.703496+00:00"
+      "listing_observed_at": "2026-10-30T11:01:58.334949+00:00"
+    },
+    {
+      "source_product_id": "81901001",
+      "source_url": "https://www.northendhaarlem.nl/a-81901001/pop/olivia-rodrigo-guts-lp/",
+      "title_raw": "Olivia Rodrigo GUTS LP",
+      "listing_price": "31.99",
+      "currency": "EUR",
+      "listing_availability": "in_stock",
+      "listing_observed_at": "2026-10-30T11:01:58.334949+00:00"
+    },
+    {
+      "source_product_id": "117546771",
+      "source_url": "https://www.northendhaarlem.nl/a-117546771/pop/silk-sonic-an-evening-with-silk-sonic-lp/",
+      "title_raw": "Silk Sonic An Evening With Silk Sonic LP",
+      "listing_price": "29.99",
+      "currency": "EUR",
+      "listing_availability": "in_stock",
+      "listing_observed_at": "2026-10-30T11:01:58.334949+00:00"
+    },
+    {
+      "source_product_id": "99743778",
+      "source_url": "https://www.northendhaarlem.nl/a-99743778/pop/olivia-dean-the-art-of-loving-lp/",
+      "title_raw": "Olivia Dean The Art Of Loving LP",
+      "listing_price": "34.99",
+      "currency": "EUR",
+      "listing_availability": "in_stock",
+      "listing_observed_at": "2026-10-30T11:01:58.334949+00:00"
     }
   ]
 }
