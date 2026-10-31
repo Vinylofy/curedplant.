@@ -1,0 +1,89 @@
+name: "Curedplant | Manual pilot | North End album alternatives"
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: curedplant-northendhaarlem-source
+  cancel-in-progress: false
+jobs:
+  pilot:
+    runs-on: [self-hosted, Windows, "${{ vars.BOL_FEED_RUNNER || 'X64' }}"]
+    timeout-minutes: 40
+    env:
+      PYTHONUTF8: '1'
+      PYTHONIOENCODING: utf-8
+    defaults:
+      run:
+        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0}
+    steps:
+      - name: Require reviewed main branch
+        env:
+          BRANCH: ${{ github.ref }}
+        working-directory: ${{ runner.temp }}
+        run: |
+          if ($env:BRANCH -ne 'refs/heads/main') { throw 'Pilot requires main' }
+      - name: Download exact source commit to a Windows-safe path
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('node:fs/promises');
+            const path = require('node:path');
+            const destination = path.join(process.env.RUNNER_TEMP,
+              `shop-source-${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT}`);
+            await fs.mkdir(destination);
+            const {data} = await github.rest.repos.downloadZipballArchive({...context.repo, ref: context.sha});
+            await fs.writeFile(path.join(destination, 'source.zip'), Buffer.from(data));
+            core.exportVariable('SHOP_ARCHIVE_DIR', destination);
+      - name: Extract immutable source
+        working-directory: ${{ runner.temp }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Expand-Archive -LiteralPath (Join-Path $env:SHOP_ARCHIVE_DIR 'source.zip') -DestinationPath $env:SHOP_ARCHIVE_DIR
+          $sources = @(Get-ChildItem -LiteralPath $env:SHOP_ARCHIVE_DIR -Directory)
+          if ($sources.Count -ne 1) { throw 'Unexpected source archive layout' }
+          Add-Content -LiteralPath $env:GITHUB_ENV -Encoding UTF8 -Value "SHOP_SOURCE_DIR=$($sources[0].FullName)"
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
+        with:
+          version: '0.12.15'
+          working-directory: ${{ runner.temp }}
+          enable-cache: false
+        env:
+          UV_CACHE_DIR: ${{ runner.temp }}/shop-uv-cache
+      - name: Prepare persistent shop Python environment
+        timeout-minutes: 10
+        env:
+          WORKER: northendhaarlem
+          UV_HTTP_TIMEOUT: '60'
+          UV_HTTP_RETRIES: '2'
+        working-directory: ${{ runner.temp }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:LOCALAPPDATA) { throw 'LOCALAPPDATA is required' }
+          $env:UV_PYTHON_INSTALL_DIR = Join-Path $env:LOCALAPPDATA 'Vinylofy\shop-price-python'
+          $venv = Join-Path $env:LOCALAPPDATA "Vinylofy\$($env:WORKER)-price-venv"
+          $python = Join-Path $venv 'Scripts\python.exe'
+          if (-not (Test-Path -LiteralPath $python)) {
+            uv venv --no-project --seed --managed-python --python 3.12 --link-mode copy $venv
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          uv pip install --python $python 'requests>=2.31,<3' 'beautifulsoup4>=4.12,<5' 'psycopg[binary]>=3.2,<4' 'python-dotenv>=1,<2' 'playwright>=1.50,<2'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $env:PLAYWRIGHT_BROWSERS_PATH = Join-Path $env:LOCALAPPDATA 'Vinylofy\shop-price-browsers'
+          Add-Content -LiteralPath $env:GITHUB_ENV -Encoding UTF8 -Value "SHOP_PYTHON=$python"
+          Add-Content -LiteralPath $env:GITHUB_ENV -Encoding UTF8 -Value "PLAYWRIGHT_BROWSERS_PATH=$env:PLAYWRIGHT_BROWSERS_PATH"
+      - name: Read at most 25 reviewed North End product pages, no database access
+        working-directory: ${{ runner.temp }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Set-Location -LiteralPath $env:SHOP_SOURCE_DIR
+          & $env:SHOP_PYTHON -u -m scripts.workers.northend_album_pilot
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Save pilot source evidence
+        if: always() && env.SHOP_SOURCE_DIR != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: northend-album-pilot-${{ github.run_id }}
+          path: ${{ env.SHOP_SOURCE_DIR }}/output/northend-album-pilot/result.json
+          retention-days: 14
+          if-no-files-found: warn
