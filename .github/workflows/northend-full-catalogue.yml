@@ -144,7 +144,9 @@ jobs:
           $name = if ($env:CHECKPOINT_RUN) { 'checkpoint.json' } else { 'validated-prices.json' }
           $files = @(Get-ChildItem -LiteralPath (Join-Path $env:SHOP_ARCHIVE_DIR 'input') -Filter $name -Recurse -File)
           if ($files.Count -ne 1) { throw 'Expected exactly one source/checkpoint file' }
-          $argsList = @('-u', '-m', 'scripts.workers.northend_full_catalogue', '--source-run', $env:SOURCE_RUN, '--batch-size', $env:BATCH_SIZE)
+          # Verify the first real database write before dispatching larger parts.
+          $partSize = if ($env:CHECKPOINT_RUN) { $env:BATCH_SIZE } else { '1' }
+          $argsList = @('-u', '-m', 'scripts.workers.northend_full_catalogue', '--source-run', $env:SOURCE_RUN, '--batch-size', $partSize)
           if ($env:CHECKPOINT_RUN) { $argsList += @('--resume', $files[0].FullName) } else { $argsList += @('--seed', $files[0].FullName) }
           if ($env:WRITE_ENABLED -eq 'true') { $argsList += '--write' }
           & $env:SHOP_PYTHON @argsList
