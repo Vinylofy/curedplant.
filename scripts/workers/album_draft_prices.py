@@ -1,4 +1,4 @@
-"""Refresh only existing North End pilot drafts from validated catalogue prices.
+"""Refresh only existing North End pilot album offers from validated catalogue prices.
 Never creates offers, changes album/EAN identity, or publishes a draft.
 """
 from decimal import Decimal,InvalidOperation
@@ -42,12 +42,12 @@ def refresh_drafts(conn,records,observed_at):
       metadata=o.metadata||jsonb_build_object('listing_refresh_run',%s::text)
       from source s,public.shops shop
       where o.shop_id=shop.id and shop.domain='northendhaarlem.nl' and o.source_product_id=s.source_product_id
-        and o.metadata->>'pilot_id'=%s and o.publication_status='draft' and o.promotion_status='none'
+        and o.metadata->>'pilot_id'=%s and o.publication_status in ('draft','published') and o.promotion_status='none'
         and o.currency='EUR' and o.ean_status='EAN_NOT_FOUND'
         and (o.last_price_checked_at is null or o.last_price_checked_at<=%s::timestamptz)
       returning o.id""",(Jsonb(data),observed_at,observed_at,os.environ.get('GITHUB_RUN_ID','manual'),PILOT,observed_at))
     updated=len(result.fetchall())
-    return {'status':'existing_drafts_refreshed','updated':updated,'publications':0}
+    return {'status':'existing_album_offers_refreshed','updated':updated,'publications':0}
 
 
 def update_northend_drafts(records,observed_at):
