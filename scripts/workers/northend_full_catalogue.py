@@ -182,6 +182,7 @@ def run_batch(state,transport,*,batch_size=50,writer=None,budget_seconds=5400):
             if result['status']=='validated' and writer:
                 # Database faults are infrastructure failures. Stop at this same
                 # cursor; do not consume every remaining product as a failure.
+                result['production_write']=True
                 result['database']=writer(result)
             state['results'][item['source_product_id']]=result;state['cursor']+=1;save(state)
             print(json.dumps({'processed':state['cursor'],'total':len(state['records']),'source_product_id':item['source_product_id'],

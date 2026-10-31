@@ -19,6 +19,10 @@ on:
         description: Write validated raw evidence and EAN products/prices
         type: boolean
         default: false
+      probe:
+        description: Process one resume record before normal automatic continuation
+        type: boolean
+        default: false
       source_sha:
         description: Internal immutable source revision for continuation
         type: string
@@ -31,73 +35,28 @@ concurrency:
   cancel-in-progress: false
 jobs:
   pilot:
-    runs-on: [self-hosted, Windows, "${{ vars.BOL_FEED_RUNNER || 'X64' }}"]
+    name: North End | Ubuntu | full catalogue | write=${{ inputs.write }}
+    runs-on: ubuntu-latest
     timeout-minutes: 110
     env:
-      PYTHONUTF8: '1'
-      PYTHONIOENCODING: utf-8
-    defaults:
-      run:
-        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0}
+      PYTHONUNBUFFERED: '1'
+      SHOP_SOURCE_DIR: ${{ github.workspace }}
+      SHOP_ARCHIVE_DIR: ${{ github.workspace }}/.northend-full-input
+      NORTHEND_SOURCE_SHA: ${{ inputs.source_sha || github.sha }}
     steps:
-      - name: Require reviewed main branch
+      - name: Require main
         env:
           BRANCH: ${{ github.ref }}
-        working-directory: ${{ runner.temp }}
-        run: |
-          if ($env:BRANCH -ne 'refs/heads/main') { throw 'Pilot requires main' }
-      - name: Download exact source commit to a Windows-safe path
-        uses: actions/github-script@v8
+        run: test "$BRANCH" = refs/heads/main
+      - uses: actions/checkout@v5
         with:
-          script: |
-            const fs = require('node:fs/promises');
-            const path = require('node:path');
-            const destination = path.join(process.env.RUNNER_TEMP,
-              `northend-full-${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT}`);
-            await fs.mkdir(destination);
-            const sha = context.payload.inputs.source_sha || context.sha;
-            if (!/^[a-f0-9]{40}$/.test(sha)) throw new Error('Invalid source revision');
-            const {data} = await github.rest.repos.downloadZipballArchive({...context.repo, ref: sha});
-            core.exportVariable('NORTHEND_SOURCE_SHA', sha);
-            await fs.writeFile(path.join(destination, 'source.zip'), Buffer.from(data));
-            core.exportVariable('SHOP_ARCHIVE_DIR', destination);
-      - name: Extract immutable source
-        working-directory: ${{ runner.temp }}
-        run: |
-          $ErrorActionPreference = 'Stop'
-          Expand-Archive -LiteralPath (Join-Path $env:SHOP_ARCHIVE_DIR 'source.zip') -DestinationPath $env:SHOP_ARCHIVE_DIR
-          $sources = @(Get-ChildItem -LiteralPath $env:SHOP_ARCHIVE_DIR -Directory)
-          if ($sources.Count -ne 1) { throw 'Unexpected source archive layout' }
-          Add-Content -LiteralPath $env:GITHUB_ENV -Encoding UTF8 -Value "SHOP_SOURCE_DIR=$($sources[0].FullName)"
-      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
+          ref: ${{ inputs.source_sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v6
         with:
-          version: '0.12.15'
-          working-directory: ${{ runner.temp }}
-          enable-cache: false
-        env:
-          UV_CACHE_DIR: ${{ runner.temp }}/shop-uv-cache
-      - name: Prepare persistent shop Python environment
-        timeout-minutes: 10
-        env:
-          WORKER: northendhaarlem
-          UV_HTTP_TIMEOUT: '60'
-          UV_HTTP_RETRIES: '2'
-        working-directory: ${{ runner.temp }}
-        run: |
-          $ErrorActionPreference = 'Stop'
-          if (-not $env:LOCALAPPDATA) { throw 'LOCALAPPDATA is required' }
-          $env:UV_PYTHON_INSTALL_DIR = Join-Path $env:LOCALAPPDATA 'Vinylofy\shop-price-python'
-          $venv = Join-Path $env:LOCALAPPDATA "Vinylofy\$($env:WORKER)-price-venv"
-          $python = Join-Path $venv 'Scripts\python.exe'
-          if (-not (Test-Path -LiteralPath $python)) {
-            uv venv --no-project --seed --managed-python --python 3.12 --link-mode copy $venv
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          }
-          uv pip install --python $python 'requests>=2.31,<3' 'beautifulsoup4>=4.12,<5' 'psycopg[binary]>=3.2,<4' 'python-dotenv>=1,<2' 'playwright>=1.50,<2'
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $env:PLAYWRIGHT_BROWSERS_PATH = Join-Path $env:LOCALAPPDATA 'Vinylofy\shop-price-browsers'
-          Add-Content -LiteralPath $env:GITHUB_ENV -Encoding UTF8 -Value "SHOP_PYTHON=$python"
-          Add-Content -LiteralPath $env:GITHUB_ENV -Encoding UTF8 -Value "PLAYWRIGHT_BROWSERS_PATH=$env:PLAYWRIGHT_BROWSERS_PATH"
+          python-version: '3.12'
+      - name: Install source/import dependencies
+        run: python -m pip install 'requests>=2.31,<3' 'beautifulsoup4>=4.12,<5' 'psycopg[binary]>=3.2,<4' 'python-dotenv>=1,<2' 'playwright>=1.50,<2'
       - name: Validate source and continuation identity
         uses: actions/github-script@v8
         with:
@@ -137,20 +96,23 @@ jobs:
           CHECKPOINT_RUN: ${{ inputs.checkpoint_run }}
           BATCH_SIZE: ${{ inputs.batch_size }}
           WRITE_ENABLED: ${{ inputs.write && 'true' || 'false' }}
-        working-directory: ${{ runner.temp }}
+          PROBE: ${{ inputs.probe && 'true' || 'false' }}
         run: |
-          $ErrorActionPreference = 'Stop'
-          Set-Location -LiteralPath $env:SHOP_SOURCE_DIR
-          $name = if ($env:CHECKPOINT_RUN) { 'checkpoint.json' } else { 'validated-prices.json' }
-          $files = @(Get-ChildItem -LiteralPath (Join-Path $env:SHOP_ARCHIVE_DIR 'input') -Filter $name -Recurse -File)
-          if ($files.Count -ne 1) { throw 'Expected exactly one source/checkpoint file' }
-          # Verify the first real database write before dispatching larger parts.
-          $partSize = if ($env:CHECKPOINT_RUN) { $env:BATCH_SIZE } else { '1' }
-          $argsList = @('-u', '-m', 'scripts.workers.northend_full_catalogue', '--source-run', $env:SOURCE_RUN, '--batch-size', $partSize)
-          if ($env:CHECKPOINT_RUN) { $argsList += @('--resume', $files[0].FullName) } else { $argsList += @('--seed', $files[0].FullName) }
-          if ($env:WRITE_ENABLED -eq 'true') { $argsList += '--write' }
-          & $env:SHOP_PYTHON @argsList
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          input_dir="$SHOP_ARCHIVE_DIR/input"
+          if [ -n "$CHECKPOINT_RUN" ]; then
+            file_name=checkpoint.json
+            source_arg=--resume
+          else
+            file_name=validated-prices.json
+            source_arg=--seed
+          fi
+          mapfile -t source_files < <(find "$input_dir" -type f -name "$file_name")
+          test "${#source_files[@]}" -eq 1
+          part_size="$BATCH_SIZE"
+          if [ -z "$CHECKPOINT_RUN" ] || [ "$PROBE" = true ]; then part_size=1; fi
+          args=(--source-run "$SOURCE_RUN" --batch-size "$part_size" "$source_arg" "${source_files[0]}")
+          if [ "$WRITE_ENABLED" = true ]; then args+=(--write); fi
+          python -u -m scripts.workers.northend_full_catalogue "${args[@]}"
       - name: Preserve complete checkpoint and evidence
         if: always() && env.SHOP_SOURCE_DIR != ''
         id: checkpoint

@@ -81,5 +81,13 @@ class FullCatalogue(unittest.TestCase):
         with self.assertRaises(ValueError):parse_source(body,item,full.now())
         result=parse_source(body,item,full.now(),require_in_stock=False)
         self.assertEqual((result['route'],result['availability']),('EAN','preorder'))
+    def test_actual_listing_parser_provides_fresh_detail_price_and_ean(self):
+        fixture=pilot_tests.NorthEndPilotSource();item=full.seed_records([self.source()])[0]
+        listing='<ul><li><a href="/a-123/album/">Artist Album LP</a><p>Op voorraad € 25,00 Bestel dit nieuwe vinylalbum vandaag bij North End Haarlem</p></li></ul>'
+        transport=Mock();transport.get.side_effect=[listing,fixture.body('<tr><th>EAN</th><td>0602517341289</td></tr>')]
+        result=full.verify_item(item,transport,{})
+        self.assertEqual((result['route'],result['gtin14'],result['price']),('EAN','00602517341289','25.00'))
+        self.assertEqual(result['listing_source_url'],'https://www.northendhaarlem.nl/c-1234/pop/')
+        self.assertLess((datetime.now(timezone.utc)-datetime.fromisoformat(result['listing_observed_at'])).total_seconds(),10)
 
 if __name__=='__main__':unittest.main()
