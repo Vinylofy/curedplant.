@@ -20,6 +20,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from scripts.importers.common import strict_normalize_gtin
 
+REVISION=2
 UA='VinylofyAlbumSource/1.0 (https://vinylofy.com; contact: info@vinylofy.com)'
 
 def now():return datetime.now(timezone.utc)
@@ -88,52 +89,102 @@ def same_page(a,b):
 def availability(v):
     return {'InStock':'in_stock','PreOrder':'preorder','PreSale':'preorder','OutOfStock':'out_of_stock','SoldOut':'out_of_stock'}.get(str(v).rsplit('/',1)[-1],'unknown')
 
+def source_label(name,artist):
+    title=re.sub(r'^(?:[1-9]?LP|VINYL)\s*[-–—:]\s*','',name,flags=re.I)
+    if artist:
+        title=re.sub(r'^'+re.escape(artist)+r'(?:\s*[-–—:]\s*|\s+)','',title,flags=re.I)
+        title=re.sub(r'\s*[-–—]\s*'+re.escape(artist)+r'$','',title,flags=re.I)
+        return artist+' '+title
+    return title
+
+def heading_key(value):
+    value=re.sub(r'\s*[\[(](?:(?:red|blue|green|black|white|clear|colou?red|transparent|pink|purple|marble)\s+vinyl|[1-9]?LP|\d{2,3}\s*g)[\])]\s*$','',value,flags=re.I)
+    return norm(value)
+
+def expanded_offer(offer):
+    if offer.get('price') is not None:return offer
+    specs=offer.get('priceSpecification',[]);specs=[specs] if isinstance(specs,dict) else specs
+    specs=[s for s in specs if isinstance(s,dict) and s.get('price') is not None and not str(s.get('priceType','')).endswith(('StrikethroughPrice','ListPrice'))]
+    sales=[s for s in specs if str(s.get('priceType','')).endswith('SalePrice')]
+    selected=sales or specs
+    if len(selected)!=1:return offer
+    return {**offer,'price':selected[0]['price'],'priceCurrency':selected[0].get('priceCurrency') or offer.get('priceCurrency')}
+
+def visible_article_prices(area,domain):
+    found=set()
+    for node in area.select('[itemprop="price"][content], .summary .price .woocommerce-Price-amount, .summary .product-price-wrapper .price-container .woocommerce-Price-amount, .page__product__price .incl-price .ShowProductQuickOrderPrice'):
+        if node.find_parent('del'):continue
+        value=node.get('content') or node.get_text(' ',strip=True)
+        match=re.fullmatch(r'\s*(?:€\s*)?([0-9]{1,5}(?:[.,][0-9]{2})?)\s*(?:€)?\s*',value)
+        if match:found.add(Decimal(match.group(1).replace(',','.')))
+    return found
+
 def verify_source(row,transport):
     url=row['product_url'];domain=row['shop_domain'];approved_url(url,domain)
     html=transport.get(url);soup,nodes=json_products(html)
     canonical=soup.select_one('link[rel="canonical"]');canonical_url=urljoin(url,canonical.get('href','')) if canonical else url
     approved_url(canonical_url,domain)
-    own=[p for p in nodes if (p.get('url') or p.get('@id')) and (same_page(urljoin(url,str(p.get('url') or p['@id']).split('#')[0]),url) or same_page(urljoin(url,str(p.get('url') or p['@id']).split('#')[0]),canonical_url))]
+    def own_url(p):
+        subject=p.get('subjectOf') if isinstance(p.get('subjectOf'),dict) else {}
+        return p.get('url') or p.get('@id') or subject.get('url')
+    own=[p for p in nodes if own_url(p) and any(same_page(urljoin(url,str(own_url(p)).split('#')[0]),u) for u in (url,canonical_url))]
     if len(own)!=1:raise ValueError('own_structured_product_unproven')
-    product=own[0];name=text(product.get('name'));area=soup.select_one('[itemtype="https://schema.org/Product"], .product-page, main, article');h1=(area or soup).select_one('h1')
-    if not name or not h1 or norm(name)!=norm(h1.get_text(' ',strip=True)):raise ValueError('own_product_title_unproven')
+    product=own[0];name=text(product.get('name'))
+    area=soup.select_one('[itemtype="https://schema.org/Product"], [itemtype="http://schema.org/Product"], .product-page, .single-product .product, main, article, div.content')
+    h1=(area or soup).select_one('h1')
+    if not name or not h1:raise ValueError('own_product_title_unproven')
+    properties={}
+    props=product.get('additionalProperty',[]);props=[props] if isinstance(props,dict) else props
+    for p in props:
+        if isinstance(p,dict):properties[text(p.get('name')).casefold()]=text(p.get('value'))
+    own_area=BeautifulSoup(str(area),'html.parser') if area else None
+    if own_area:
+        for other in own_area.select('.related, .related-products, .related-product-card, .RelatedProducts, .products, .product-recommendations, .upsells, .cross-sells, [itemprop="isSimilarTo"], [itemprop="isRelatedTo"], nav, header, footer'):other.decompose()
+        for spec_row in own_area.select('table tr'):
+            cells=spec_row.find_all(['th','td'],recursive=False)
+            if len(cells)>=2:properties[text(cells[0].get_text()).casefold().rstrip(':')]=text(cells[1].get_text(' ',strip=True))
+    subject=product.get('subjectOf') if isinstance(product.get('subjectOf'),dict) else {}
+    artist=product.get('byArtist') or product.get('artist') or subject.get('byArtist')
+    if isinstance(artist,list):
+        artist=' & '.join(a['name'] for a in artist if isinstance(a,dict) and isinstance(a.get('name'),str)) or None
+    if isinstance(artist,dict):artist=artist.get('name')
+    if not isinstance(artist,str):artist=next((properties[k] for k in ('artist','artiest','uitvoerende') if properties.get(k)),None)
+    heading=text(h1.get_text(' ',strip=True));expected=source_label(name,artist)
+    trimmed_heading=re.sub(r'\s+(?:(?:auf|on)\s+)?[1-9]?LP\s*$','',heading,flags=re.I)
+    if heading_key(name)!=heading_key(heading) and (not artist or heading_key(expected)!=heading_key(trimmed_heading)):
+        raise ValueError('own_product_title_unproven')
     description=name+' '+text(product.get('description'))
     conditions=[str(product.get('itemCondition',''))]
     offers=product.get('offers',[]);offers=[offers] if isinstance(offers,dict) else offers
-    offers=[o for o in offers if isinstance(o,dict) and o.get('price') is not None]
+    offers=[expanded_offer(o) for o in offers if isinstance(o,dict)]
+    offers=[o for o in offers if o.get('price') is not None]
     if not offers:raise ValueError('own_article_price_unproven')
     variant=parse_qs(urlsplit(url).query).get('variant',[None])[0]
-    if variant:
-        offers=[o for o in offers if parse_qs(urlsplit(str(o.get('url',''))).query).get('variant',[None])[0]==variant]
+    if variant:offers=[o for o in offers if parse_qs(urlsplit(str(o.get('url',''))).query).get('variant',[None])[0]==variant]
     if len(offers)!=1:raise ValueError('selected_variant_offer_ambiguous')
     offer=offers[0];conditions.append(str(offer.get('itemCondition','')))
     if any(c and not c.endswith('/NewCondition') for c in conditions) or re.search(r'\b(?:used\s+(?:vinyl|record|lp)|second[- ]hand|pre[- ]owned|tweedehands|2e\s*hands|gebraucht|media condition|sleeve condition)\b',description,re.I):raise ValueError('used_or_ambiguous_condition')
-    if not re.search(r'\b(?:[2-9]?LP|VINYL|[712][02]?[- ]?INCH)\b',name+' '+str(row['source_input'].get('format','')),re.I) or re.search(r'\b(?:CD|DVD|CASSETTE|BUNDLE)\b',name,re.I):raise ValueError('vinyl_format_unproven')
-    price=Decimal(str(offer['price']));currency=offer.get('priceCurrency');stock=availability(offer.get('availability'))
-    if not price.is_finite() or price<=0 or not re.fullmatch(r'[A-Z]{3}',str(currency)) or stock=='unknown':raise ValueError('price_currency_stock_unproven')
+    formats=' '.join(str(v) for v in [name,product.get('category',''),product.get('description',''),row['source_input'].get('format','')]+[properties.get(k,'') for k in ('formaat','format','media type','inhoud','size','drager')])
+    if not re.search(r'\b(?:[1-9]?LP|VINYL|(?:7|10|12)[- ]?INCH)\b',formats,re.I) or re.search(r'\b(?:CD|DVD|CASSETTE|BUNDLE)\b',name,re.I):raise ValueError('vinyl_format_unproven')
+    price=Decimal(str(offer['price']));currency=str(offer.get('priceCurrency','')).upper();stock=availability(offer.get('availability'))
+    if not price.is_finite() or price<=0 or not re.fullmatch(r'[A-Z]{3}',currency) or stock=='unknown':raise ValueError('price_currency_stock_unproven')
     codes=[]
     for p in (product,offer):
-        for key in ('gtin','gtin8','gtin12','gtin13','gtin14'):
-            if p.get(key) not in (None,''):
-                code=strict_normalize_gtin(str(p[key]))
+        for field in ('gtin','gtin8','gtin12','gtin13','gtin14'):
+            if p.get(field) not in (None,''):
+                code=strict_normalize_gtin(str(p[field]))
                 if not code:raise ValueError('invalid_structured_barcode')
                 codes.append(code)
-    # Inspect labelled specification rows only inside the own product area.
-    # Recommendation cards, headers and footers cannot supply this product's EAN.
-    area=soup.select_one('[itemtype="https://schema.org/Product"], .product-page, main, article')
-    if area:
-        area=BeautifulSoup(str(area),'html.parser')
-        for other in area.select('.related, .related-products, .products, .product-recommendations, nav, header, footer'):other.decompose()
-        for spec_row in area.select('table tr'):
-            cells=spec_row.find_all(['th','td'],recursive=False)
-            if len(cells)>=2 and re.fullmatch(r'(?:ean|barcode|upc|gtin(?:8|12|13|14)?)',text(cells[0].get_text()).rstrip(':'),re.I):
-                value=text(cells[1].get_text())
-                if value:
-                    code=strict_normalize_gtin(value)
-                    if not code:raise ValueError('invalid_own_specification_barcode')
-                    codes.append(code)
-    # Shopify's own public product JSON is a catalogue source, not a SKU guess.
-    # Multi-variant products must have an explicitly selected variant.
+    for field,value in properties.items():
+        if re.fullmatch(r'(?:ean(?:\s*code)?|barcode|upc|gtin(?:8|12|13|14)?)',field) and value:
+            code=strict_normalize_gtin(value)
+            if not code:raise ValueError('invalid_own_specification_barcode')
+            codes.append(code)
+    for match in re.finditer(r'(?<![A-Za-z])(?:EAN(?:\s*Code)?|Barcode|UPC|GTIN(?:8|12|13|14)?)\s*[:：#]\s*([0-9][0-9 -]{6,18}[0-9])',text(product.get('description')),re.I):
+        code=strict_normalize_gtin(match.group(1))
+        if not code:raise ValueError('invalid_own_description_barcode')
+        codes.append(code)
+    if len(set(codes))>1:raise ValueError('conflicting_source_barcodes')
     if re.fullmatch(r'/products/[a-zA-Z0-9-]+/?',urlsplit(url).path):
         base='https://'+urlsplit(url).netloc+urlsplit(url).path.rstrip('/')
         data=json.loads(transport.get(base+'.js'));variants=data.get('variants',[])
@@ -149,34 +200,42 @@ def verify_source(row,transport):
             codes.append(code)
         listing_at=now().isoformat();price_basis='public_catalogue_json_crosschecked_own_html'
     else:
-        if not area:raise ValueError('own_specification_scope_unproven')
+        if not own_area:raise ValueError('own_specification_scope_unproven')
         source=row['source_input'];listing_at=source.get('listing_observed_at','')
-        if source.get('price_source') not in ('listing','catalogue') or Decimal(str(source.get('price')))!=price or source.get('currency')!=currency:raise ValueError('fresh_listing_price_required')
-        age=(now()-datetime.fromisoformat(listing_at)).total_seconds()
-        if not 0<=age<=48*3600:raise ValueError('listing_price_stale')
-        price_basis='fresh_listing_crosschecked_own_html'
+        fresh=False
+        try:fresh=source.get('price_source') in ('listing','catalogue') and 0<=(now()-datetime.fromisoformat(listing_at)).total_seconds()<=48*3600
+        except (TypeError,ValueError):pass
+        if fresh:
+            if Decimal(str(source.get('price')))!=price or source.get('currency')!=currency:raise ValueError('listing_detail_price_conflict')
+            price_basis='fresh_listing_crosschecked_own_html'
+        else:
+            if visible_article_prices(own_area,domain)!={price}:raise ValueError('fresh_listing_or_visible_own_price_required')
+            listing_at=now().isoformat();price_basis='verified_visible_article_price_fallback'
     if len(set(codes))>1:raise ValueError('conflicting_source_barcodes')
-    artist=product.get('byArtist') or product.get('artist')
-    artist=artist.get('name') if isinstance(artist,dict) else artist
-    if not isinstance(artist,str):artist=None
-    label=name if not artist or norm(name).startswith(norm(artist)+' ') else artist+' '+name
     return {'status':'validated','route':'EAN' if codes else 'ARTIST_TITLE','ean_status':'EAN_AVAILABLE' if codes else 'EAN_NOT_FOUND',
       'gtin14':codes[0] if codes else None,'domain':domain,'source_url':url,'canonical_url':canonical_url,
-      'source_product_id':row.get('source_product_id'),'source_title':name,'artist':artist,'label':label,
+      'source_product_id':row.get('source_product_id'),'source_title':name,'artist':artist,'label':expected,
       'price':str(price),'currency':currency,'availability':stock,'format_status':'vinyl','condition_status':'new',
       'condition_basis':'explicit_new' if any(conditions) else 'existing_no_used_signal_policy',
       'observed_at':now().isoformat(),'listing_observed_at':listing_at,'price_basis':price_basis,
-      'source_sha256':hashlib.sha256(html.encode()).hexdigest(),'requests':transport.requests}
+      'source_sha256':hashlib.sha256(html.encode()).hexdigest(),'requests':transport.requests,
+      'ean_check_scope':'selected public catalogue barcode, own Product JSON-LD, labelled own specifications and description; no SKU inference'}
 
 def claim(conn,limit):
     token=str(uuid.uuid4())
     with conn.transaction(),conn.cursor(row_factory=dict_row) as cur:
-        cur.execute("""with due as(select id from public.album_offer_queue
-          where status in ('pending_source','source_retry','published','awaiting_market') and next_attempt_at<=now()
+        cur.execute("select pg_advisory_xact_lock(hashtextextended('album_offer_queue_capacity_v1',0))")
+        cur.execute("select count(*) as active from album_offer_queue where status not in ('ean_routed','rejected','source_review') or lease_until>now()")
+        capacity=max(0,50-cur.fetchone()['active'])
+        cur.execute("""with revisited as(select id from public.album_offer_queue where status='source_review'
+          and coalesce(source_input->>'validator_revision','0')::integer<%s
+          and next_attempt_at<=now() and (lease_until is null or lease_until<now()) order by updated_at,id limit %s),
+          due as(select id from public.album_offer_queue
+          where (status in ('pending_source','source_retry','published','awaiting_market') or id in(select id from revisited)) and next_attempt_at<=now()
             and (lease_until is null or lease_until<now())
           order by next_attempt_at,updated_at,id for update skip locked limit %s)
           update public.album_offer_queue q set claim_token=%s,lease_until=now()+interval '30 minutes',source_attempts=source_attempts+1
-          from due where due.id=q.id returning q.*,(select domain from shops where id=q.shop_id) as shop_domain""",(limit,token))
+          from due where due.id=q.id returning q.*,(select domain from shops where id=q.shop_id) as shop_domain""",(REVISION,capacity,limit,token))
         return cur.fetchall(),token
 
 def collect(conn,limit=50):
@@ -200,10 +259,16 @@ def collect(conn,limit=50):
                 cur.execute('select claim_token from public.album_offer_queue where id=%s for update',(row['id'],))
                 owned=cur.fetchone()
                 if not owned or str(owned[0])!=token:continue
-                if same_identity and record.get('status')=='validated' and record.get('route')=='ARTIST_TITLE' and row.get('offer_id'):
+                if same_identity and record.get('price_basis')=='verified_visible_article_price_fallback' and row.get('offer_id'):
+                    cur.execute('select price,last_price_checked_at,metadata from album_alternative_offers where id=%s for update',(row['offer_id'],))
+                    prior=cur.fetchone()
+                    if prior and prior[1] and (now()-prior[1]).total_seconds()<48*3600 and prior[2].get('price_basis')!='verified_visible_article_price_fallback':
+                        if Decimal(record['price'])!=prior[0]:status='source_review';reason='listing_detail_price_conflict'
+                        else:record['listing_observed_at']=prior[1].isoformat();record['price_basis']=prior[2].get('price_basis') or 'preserved_existing_listing'
+                if status!='source_review' and same_identity and record.get('status')=='validated' and record.get('route')=='ARTIST_TITLE' and row.get('offer_id'):
                     cur.execute("""update public.album_alternative_offers set price=%s,currency=%s,availability=%s,
-                      last_seen_at=%s,last_price_checked_at=%s where id=%s and shop_id=%s and promotion_status='none'
-                      and last_price_checked_at<=%s""",(record['price'],record['currency'],record['availability'],record['observed_at'],record['listing_observed_at'],row['offer_id'],row['shop_id'],record['listing_observed_at']))
+                      last_seen_at=%s,last_price_checked_at=%s,metadata=metadata||%s where id=%s and shop_id=%s and promotion_status='none'
+                      and last_price_checked_at<=%s""",(record['price'],record['currency'],record['availability'],record['observed_at'],record['listing_observed_at'],Jsonb({'price_basis':record.get('price_basis')}),row['offer_id'],row['shop_id'],record['listing_observed_at']))
                 if record.get('route')=='EAN':
                     raw_shop=row['source_input'].get('raw_shop_id')
                     if not raw_shop:raise ValueError('EAN delivery needs the existing raw shop mapping')
@@ -221,10 +286,12 @@ def collect(conn,limit=50):
                   match_result=case when %s then match_result else '{}'::jsonb end,
                   manual_group=case when %s then manual_group else null end,
                   candidates=case when %s then candidates else '[]'::jsonb end,
-                  next_attempt_at=now()+case when %s='source_retry' then interval '6 hours' when %s='published' then interval '24 hours' else interval '0 hours' end,
+                  next_attempt_at=now()+case when %s='source_retry' then interval '6 hours' when %s='published' then interval '20 hours' else interval '0 hours' end,
+                  source_input=source_input||jsonb_build_object('validator_revision',%s::integer),
                   claim_token=null,lease_until=null,updated_at=now() where id=%s and claim_token=%s""",
-                  (Jsonb(record),Jsonb(record),status,reason,same_identity or not record,same_identity or not record,same_identity or not record,status,status,row['id'],token))
+                  (Jsonb(record),Jsonb(record),status,reason,same_identity or not record,same_identity or not record,same_identity or not record,status,status,REVISION,row['id'],token))
             summary[status]=summary.get(status,0)+1
+            print(json.dumps({'queue_id':str(row['id']),'shop':domain,'status':status,'processed':sum(summary.values())}),flush=True)
         return {'processed':sum(summary.values()),'claimed':len(rows),'statuses':summary}
     finally:
         conn.execute('update public.album_offer_queue set claim_token=null,lease_until=null where claim_token=%s',(token,))

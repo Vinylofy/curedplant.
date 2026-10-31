@@ -49,6 +49,20 @@ class AlbumSource(unittest.TestCase):
  def test_sku_is_not_assumed_to_be_a_barcode(self):
   result=src.verify_source(self.row(),self.transport(sku='0602517341289'))
   self.assertEqual(result['route'],'ARTIST_TITLE')
+ def test_nested_price_specification_and_visible_price_do_not_pick_shipping(self):
+  row=self.row();row['product_url']='https://shop.test/record/artist-album'
+  offers={'priceSpecification':[{'@type':'UnitPriceSpecification','price':'25.00','priceCurrency':'EUR'}],'availability':'https://schema.org/InStock'}
+  body='<main>'+self.html(offers=offers).replace(self.row()['product_url'],row['product_url'])+'<div class="summary"><p class="price"><span class="woocommerce-Price-amount">€25,00</span></p></div><footer>Shipping €4,95</footer></main>'
+  result=src.verify_source(row,Mock(get=Mock(return_value=body),requests=[]))
+  self.assertEqual((result['price'],result['price_basis']),('25.00','verified_visible_article_price_fallback'))
+  with self.assertRaises(ValueError):src.verify_source(row,Mock(get=Mock(return_value=body.replace('€25,00','€26,00')),requests=[]))
+ def test_physical_colour_suffix_in_heading_and_explicit_vinyl_property(self):
+  product_name='Artist Album LP (Clear Vinyl)'
+  t=self.transport();t.get.side_effect=[self.html(name=product_name),json.dumps({'variants':[{'id':123,'price':2500,'available':True,'barcode':''}]})]
+  self.assertEqual(src.verify_source(self.row(),t)['route'],'ARTIST_TITLE')
+ def test_description_and_own_specification_conflicting_codes_require_review(self):
+  body='<main>'+self.html(description='EAN: 0602517341289')+'<table><tr><th>EANCode</th><td>842812109140</td></tr></table></main>'
+  with self.assertRaisesRegex(ValueError,'conflicting_source_barcodes'):src.verify_source(self.row(),Mock(get=Mock(return_value=body),requests=[]))
  def test_source_prices_refresh_and_changed_identity_clears_previous_manual_decision(self):
   row={**self.row(),'id':'queue','source_record':{'label':'Different Artist Different Album'},'match_result':{'status':'matched'},'offer_id':'offer'}
   conn=MagicMock();conn.cursor.return_value.__enter__.return_value.fetchone.return_value=('token',);transport=self.transport()
