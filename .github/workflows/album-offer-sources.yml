@@ -1,0 +1,40 @@
+name: "ALBUM | Sources without EAN | Ubuntu"
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        type: string
+        default: '50'
+        description: Maximum source offers (1..50)
+  schedule:
+    - cron: '47 */4 * * *'
+permissions:
+  contents: read
+concurrency:
+  group: album-offer-sources
+  cancel-in-progress: false
+jobs:
+  sources:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: python -m pip install 'psycopg[binary]>=3.2,<4' 'requests>=2.31,<3' 'beautifulsoup4>=4.12,<5' 'python-dotenv>=1,<2'
+      - name: Validate due source offers and refresh independently proven prices
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          LIMIT: ${{ inputs.limit || '50' }}
+        run: python -m scripts.workers.album_offer_sources --limit "$LIMIT"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: album-offer-sources-${{ github.run_id }}
+          path: output/album-offer-sources/result.json
+          if-no-files-found: warn
+          retention-days: 14
