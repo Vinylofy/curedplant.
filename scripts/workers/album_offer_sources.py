@@ -240,7 +240,7 @@ def claim(conn,limit):
     token=str(uuid.uuid4())
     with conn.transaction(),conn.cursor(row_factory=dict_row) as cur:
         cur.execute("select pg_advisory_xact_lock(hashtextextended('album_offer_queue_capacity_v1',0))")
-        cur.execute("select count(*) as active from album_offer_queue where status not in ('ean_routed','rejected','source_review') or lease_until>now()")
+        cur.execute("select count(*) as active from album_offer_queue where (status in ('pending_source','pending_match','ready') or (status in ('source_retry','match_retry') and next_attempt_at<=now())) or lease_until>now()")
         capacity=max(0,50-cur.fetchone()['active'])
         cur.execute("""with revisited as(select id from public.album_offer_queue where status='source_review'
           and coalesce(source_input->>'validator_revision','0')::integer<%s
