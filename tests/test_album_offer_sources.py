@@ -26,6 +26,13 @@ class AlbumSource(unittest.TestCase):
   self.assertEqual(result['format_status'],'vinyl')
   for update,reason in [({'type':'CD'},'vinyl_format_unproven'),({'title':'Another Album'},'catalogue_html_title_mismatch')]:
    with self.assertRaisesRegex(ValueError,reason):src.verify_source(row,Mock(get=Mock(side_effect=[body,json.dumps({**data,**update})]),requests=[]))
+ def test_localized_collection_product_uses_its_own_catalogue_endpoint(self):
+  row=self.row();row['product_url']='https://shop.test/en/collections/vinyl/products/artist-album'
+  body=self.html().replace(self.row()['product_url'],row['product_url'])
+  data={'title':'Artist Album LP','variants':[{'id':123,'price':2500,'available':True,'barcode':''}]}
+  transport=Mock(get=Mock(side_effect=[body,json.dumps(data)]),requests=[])
+  self.assertEqual(src.verify_source(row,transport)['price_basis'],'public_catalogue_json_crosschecked_own_html')
+  self.assertEqual(transport.get.call_args.args[0],row['product_url']+'.js')
  def test_found_ean_routes_out_and_invalid_code_is_never_absence(self):
   result=src.verify_source(self.row(),self.transport(barcode='0602517341289'))
   self.assertEqual((result['route'],result['gtin14']),('EAN','00602517341289'))

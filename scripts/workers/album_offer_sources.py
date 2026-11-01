@@ -20,7 +20,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from scripts.importers.common import strict_normalize_gtin
 
-REVISION=3
+REVISION=4
 UA='VinylofyAlbumSource/1.0 (https://vinylofy.com; contact: info@vinylofy.com)'
 
 def now():return datetime.now(timezone.utc)
@@ -166,7 +166,7 @@ def verify_source(row,transport):
     if any(c and not c.endswith('/NewCondition') for c in conditions) or re.search(r'\b(?:used\s+(?:vinyl|record|lp)|second[- ]hand|pre[- ]owned|tweedehands|2e\s*hands|gebraucht|media condition|sleeve condition)\b',description,re.I):raise ValueError('used_or_ambiguous_condition')
     catalogue=None
     catalogue_format=''
-    is_shopify=bool(re.fullmatch(r'/products/[a-zA-Z0-9-]+/?',urlsplit(url).path))
+    is_shopify=bool(re.fullmatch(r'/(?:[a-z]{2}(?:-[a-z]{2})?/)?(?:collections/[a-zA-Z0-9-]+/)?products/[a-zA-Z0-9-]+/?',urlsplit(url).path))
     def load_catalogue():
         base='https://'+urlsplit(url).netloc+urlsplit(url).path.rstrip('/')
         data=json.loads(transport.get(base+'.js'))
@@ -248,7 +248,7 @@ def claim(conn,limit):
           due as(select id from public.album_offer_queue
           where (status in ('pending_source','source_retry','published','awaiting_market') or id in(select id from revisited)) and next_attempt_at<=now()
             and (lease_until is null or lease_until<now())
-          order by next_attempt_at,updated_at,id for update skip locked limit %s)
+          order by (status='source_review'),next_attempt_at,updated_at,id for update skip locked limit %s)
           update public.album_offer_queue q set claim_token=%s,lease_until=now()+interval '30 minutes',source_attempts=source_attempts+1
           from due where due.id=q.id returning q.*,(select domain from shops where id=q.shop_id) as shop_domain""",(REVISION,capacity,limit,token))
         return cur.fetchall(),token
