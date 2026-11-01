@@ -19,7 +19,7 @@ GENRES = (
     "nederlands", "poprock", "prog", "reggae", "soulrnb",
     "soundtracks", "wereld",
 )
-RELEASE_PATH = re.compile(r"^/(?:nl|en)/release/(\\d+)/", re.I)
+RELEASE_PATH = re.compile(r"^/(?:nl|en)/release/(\d+)/", re.I)
 USER_AGENT = "VinylofyVelvetDelftResearch/0.1"
 
 
