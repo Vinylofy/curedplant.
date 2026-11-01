@@ -20,7 +20,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from scripts.importers.common import strict_normalize_gtin
 
-REVISION=2
+REVISION=3
 UA='VinylofyAlbumSource/1.0 (https://vinylofy.com; contact: info@vinylofy.com)'
 
 def now():return datetime.now(timezone.utc)
@@ -164,7 +164,22 @@ def verify_source(row,transport):
     if len(offers)!=1:raise ValueError('selected_variant_offer_ambiguous')
     offer=offers[0];conditions.append(str(offer.get('itemCondition','')))
     if any(c and not c.endswith('/NewCondition') for c in conditions) or re.search(r'\b(?:used\s+(?:vinyl|record|lp)|second[- ]hand|pre[- ]owned|tweedehands|2e\s*hands|gebraucht|media condition|sleeve condition)\b',description,re.I):raise ValueError('used_or_ambiguous_condition')
+    catalogue=None
+    catalogue_format=''
+    is_shopify=bool(re.fullmatch(r'/products/[a-zA-Z0-9-]+/?',urlsplit(url).path))
+    def load_catalogue():
+        base='https://'+urlsplit(url).netloc+urlsplit(url).path.rstrip('/')
+        data=json.loads(transport.get(base+'.js'))
+        if norm(text(data.get('title')))!=norm(name):raise ValueError('catalogue_html_title_mismatch')
+        return data
     formats=' '.join(str(v) for v in [name,product.get('category',''),product.get('description',''),row['source_input'].get('format','')]+[properties.get(k,'') for k in ('formaat','format','media type','inhoud','size','drager')])
+    if is_shopify and not re.search(r'\b(?:[1-9]?LP|VINYL|(?:7|10|12)[- ]?INCH)\b',formats,re.I):
+        catalogue=load_catalogue()
+        # The own public catalogue explicitly identifies the carrier even when
+        # Product JSON-LD has no category. Never infer vinyl from the store alone.
+        carrier=text(catalogue.get('type'))
+        if re.fullmatch(r'(?:[1-9](?:X)?\s*)?LP|VINYL',carrier,re.I):catalogue_format='LP'
+    formats+=' '+catalogue_format
     if not re.search(r'\b(?:[1-9]?LP|VINYL|(?:7|10|12)[- ]?INCH)\b',formats,re.I) or re.search(r'\b(?:CD|DVD|CASSETTE|BUNDLE)\b',name,re.I):raise ValueError('vinyl_format_unproven')
     price=Decimal(str(offer['price']));currency=str(offer.get('priceCurrency','')).upper();stock=availability(offer.get('availability'))
     if not price.is_finite() or price<=0 or not re.fullmatch(r'[A-Z]{3}',currency) or stock=='unknown':raise ValueError('price_currency_stock_unproven')
@@ -185,9 +200,9 @@ def verify_source(row,transport):
         if not code:raise ValueError('invalid_own_description_barcode')
         codes.append(code)
     if len(set(codes))>1:raise ValueError('conflicting_source_barcodes')
-    if re.fullmatch(r'/products/[a-zA-Z0-9-]+/?',urlsplit(url).path):
-        base='https://'+urlsplit(url).netloc+urlsplit(url).path.rstrip('/')
-        data=json.loads(transport.get(base+'.js'));variants=data.get('variants',[])
+    if is_shopify:
+        catalogue=catalogue if catalogue is not None else load_catalogue()
+        variants=catalogue.get('variants',[])
         selected=[v for v in variants if str(v.get('id'))==variant] if variant else variants
         if len(selected)!=1:raise ValueError('catalogue_variant_ambiguous')
         selected=selected[0]

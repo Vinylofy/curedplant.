@@ -13,11 +13,19 @@ class AlbumSource(unittest.TestCase):
   return '<h1>Artist Album LP</h1><script type="application/ld+json">'+json.dumps(product)+'</script>'
  def transport(self,**change):
   v={'id':123,'price':2500,'available':True,'barcode':''};v.update(change)
-  return Mock(get=Mock(side_effect=[self.html(),json.dumps({'variants':[v]})]),requests=[])
+  return Mock(get=Mock(side_effect=[self.html(),json.dumps({'title':'Artist Album LP','variants':[v]})]),requests=[])
  def test_own_catalogue_and_html_prove_price_and_barcode_absence(self):
   result=src.verify_source(self.row(),self.transport())
   self.assertEqual((result['route'],result['price'],result['ean_status']),('ARTIST_TITLE','25.00','EAN_NOT_FOUND'))
   self.assertEqual(result['label'],'Artist Album LP')
+ def test_own_catalogue_carrier_proves_vinyl_when_html_category_is_missing(self):
+  row=self.row();row['source_input']={}
+  body=self.html(name='Artist Album').replace('<h1>Artist Album LP</h1>','<h1>Artist Album</h1>')
+  data={'title':'Artist Album','type':'LP','variants':[{'id':123,'price':2500,'available':True,'barcode':''}]}
+  result=src.verify_source(row,Mock(get=Mock(side_effect=[body,json.dumps(data)]),requests=[]))
+  self.assertEqual(result['format_status'],'vinyl')
+  for update,reason in [({'type':'CD'},'vinyl_format_unproven'),({'title':'Another Album'},'catalogue_html_title_mismatch')]:
+   with self.assertRaisesRegex(ValueError,reason):src.verify_source(row,Mock(get=Mock(side_effect=[body,json.dumps({**data,**update})]),requests=[]))
  def test_found_ean_routes_out_and_invalid_code_is_never_absence(self):
   result=src.verify_source(self.row(),self.transport(barcode='0602517341289'))
   self.assertEqual((result['route'],result['gtin14']),('EAN','00602517341289'))
@@ -25,10 +33,10 @@ class AlbumSource(unittest.TestCase):
  def test_conflicting_code_wrong_price_or_unknown_unit_rejected(self):
   with self.assertRaises(ValueError):src.verify_source(self.row(),self.transport(price=2501))
   with self.assertRaises(ValueError):src.verify_source(self.row(),self.transport(price='25.00'))
-  t=self.transport(barcode='0602517341289');t.get.side_effect=[self.html(gtin13='842812109140'),json.dumps({'variants':[{'id':123,'price':2500,'available':True,'barcode':'0602517341289'}]})]
+  t=self.transport(barcode='0602517341289');t.get.side_effect=[self.html(gtin13='842812109140'),json.dumps({'title':'Artist Album LP','variants':[{'id':123,'price':2500,'available':True,'barcode':'0602517341289'}]})]
   with self.assertRaises(ValueError):src.verify_source(self.row(),t)
  def test_multiple_variants_and_unrelated_structured_product_rejected(self):
-  t=Mock(get=Mock(side_effect=[self.html(),json.dumps({'variants':[{'id':1},{'id':2}]})]),requests=[])
+  t=Mock(get=Mock(side_effect=[self.html(),json.dumps({'title':'Artist Album LP','variants':[{'id':1},{'id':2}]})]),requests=[])
   with self.assertRaises(ValueError):src.verify_source(self.row(),t)
   t=Mock(get=Mock(return_value=self.html(url='https://shop.test/products/related')),requests=[])
   with self.assertRaises(ValueError):src.verify_source(self.row(),t)
@@ -58,7 +66,7 @@ class AlbumSource(unittest.TestCase):
   with self.assertRaises(ValueError):src.verify_source(row,Mock(get=Mock(return_value=body.replace('€25,00','€26,00')),requests=[]))
  def test_physical_colour_suffix_in_heading_and_explicit_vinyl_property(self):
   product_name='Artist Album LP (Clear Vinyl)'
-  t=self.transport();t.get.side_effect=[self.html(name=product_name),json.dumps({'variants':[{'id':123,'price':2500,'available':True,'barcode':''}]})]
+  t=self.transport();t.get.side_effect=[self.html(name=product_name),json.dumps({'title':product_name,'variants':[{'id':123,'price':2500,'available':True,'barcode':''}]})]
   self.assertEqual(src.verify_source(self.row(),t)['route'],'ARTIST_TITLE')
  def test_description_and_own_specification_conflicting_codes_require_review(self):
   body='<main>'+self.html(description='EAN: 0602517341289')+'<table><tr><th>EANCode</th><td>842812109140</td></tr></table></main>'
