@@ -122,6 +122,20 @@ class AtubePilot(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'fresh_listing_required'):
             verify_source(row, transport)
 
+    def test_variant_refresh_keeps_variant_url_and_distinct_source_id(self):
+        row = next(r for r in self.rows if r['source_product_id'] == '84727')
+        transport = Mock(requests=[])
+        transport.get.return_value = (FIXTURES / 'detail-anette.html').read_text()
+        queued = dict(product_url=row['source_url'] + '?attribute_keuze=Gesigneerd', source_product_id='98254',
+                      shop_domain='atube-highfidelity.nl', source_input=dict(title_raw=row['title_raw'], price='87.00', currency='EUR',
+                      price_source='listing', listing_observed_at=stamp(), parent_product_id='84727'))
+        source = verify_source(queued, transport)
+        self.assertEqual(source['source_product_id'], '98254')
+        self.assertIn('attribute_keuze=Gesigneerd', source['source_url'])
+        queued['product_url'] = row['source_url'] + '?attribute_keuze=Ongesigneerd'
+        with self.assertRaisesRegex(ValueError, 'requested_variant_conflict'):
+            verify_source(queued, transport)
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 import re
 import time
-from urllib.parse import urlsplit, urlencode
+from urllib.parse import urlsplit, urlencode, parse_qs
 
 from bs4 import BeautifulSoup
 from scripts.importers.common import strict_normalize_gtin
@@ -53,7 +53,11 @@ def labels(title):
 
 def product_url(url):
     approved_url(url, DOMAIN)
-    if not re.fullmatch(r'/product/[^/]+/?', urlsplit(url).path) or urlsplit(url).query:
+    parts = urlsplit(url)
+    options = parse_qs(parts.query, keep_blank_values=True)
+    if not re.fullmatch(r'/product/[^/]+/?', parts.path) or any(
+            not re.fullmatch(r'attribute_[a-z0-9_-]+', name) or len(values) != 1 or not values[0] or len(values[0]) > 100
+            for name, values in options.items()):
         raise ValueError('not_an_own_product_url')
     return url
 
@@ -160,8 +164,13 @@ def catalogue(transport, max_pages, observed_at, records=None):
             break
         if offset >= total:
             raise ValueError('pagination_more_beyond_total')
+    visible = BeautifulSoup(body, 'html.parser').get_text(' ', strip=True)
+    shipping = re.search(r'In heel Nederland en België gratis bezorging bij artikelen boven de\s+150,- euro\.', visible)
     return rows, dict(reported_total=total, loaded=len(rows), pages=pages,
-                      complete=offset >= total, stop_reason=reason)
+                      complete=offset >= total, stop_reason=reason,
+                      shipping_evidence={'source_url': CATALOGUE, 'observed_at': observed_at,
+                          'source_sha256': hashlib.sha256(body.encode()).hexdigest(),
+                          'quote': shipping.group(0) if shipping else None})
 
 
 def parse_detail(body, row, observed_at):
@@ -194,6 +203,9 @@ def parse_detail(body, row, observed_at):
         if len(choices) != 1:
             raise ValueError('selected_variant_unproven')
         variation = choices[0]
+        requested = parse_qs(urlsplit(row['source_url']).query)
+        if requested and requested != {k: [v] for k, v in variation['attributes'].items()}:
+            raise ValueError('requested_variant_conflict')
         detail_price = money(variation.get('display_price'))
     if not row['price'] or detail_price != row['price']:
         raise ValueError('detail_listing_price_conflict')
@@ -254,13 +266,19 @@ def verify_album_source(body, queue_row):
         raise ValueError('artist_album_boundary_unproven')
     title = source['title_raw']
     used = bool(re.search(r'\b(?:tweedehands|2e\s*hands|second[- ]hand|pre[- ]owned|occasion|ex[- ]demo)\b', title, re.I))
-    row = dict(source_url=product_url(queue_row['product_url']), source_product_id=queue_row['source_product_id'],
+    parent_id = source.get('parent_product_id') or queue_row['source_product_id']
+    row = dict(source_url=product_url(queue_row['product_url']), source_product_id=parent_id,
                title_raw=title, artist_raw=artist, album_raw=album, price=money(source.get('price')),
                currency='EUR', listing_observed_at=observed, condition_status='used' if used else 'new',
                condition_basis='no_used_signal_policy', format_status='vinyl', review_reasons=['secondhand'] if used else [])
     result = parse_detail(body, row, stamp())
     if result['status'] != 'validated':
         raise ValueError('source_requires_review')
+    if result.get('selected_variant'):
+        variant_id = str(result['selected_variant']['variation_id'])
+        if str(queue_row['source_product_id']) not in (str(parent_id), variant_id):
+            raise ValueError('source_variant_identity_conflict')
+        result.update(parent_product_id=str(parent_id), source_product_id=variant_id)
     return {**result, 'domain': DOMAIN, 'product_url': result.get('offer_url', row['source_url']),
             'source_title': title, 'artist': result['artist_raw'], 'label': result['artist_raw'] + ' ' + album,
             'observed_at': result['detail_observed_at'], 'price_basis': 'fresh_listing_crosschecked_own_html'}
