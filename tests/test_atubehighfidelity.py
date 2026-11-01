@@ -3,6 +3,8 @@ import unittest
 from unittest.mock import Mock
 
 from scripts.scrapers.atubehighfidelity import catalogue, load_more_config, parse_detail, parse_listing, run
+from scripts.scrapers.atubehighfidelity import stamp
+from scripts.workers.album_offer_sources import verify_source
 
 FIXTURES = Path(__file__).parent / 'fixtures/atubehighfidelity'
 LISTING = (FIXTURES / 'listing.html').read_text()
@@ -106,6 +108,19 @@ class AtubePilot(unittest.TestCase):
         self.assertEqual(result['database_writes'], 0)
         self.assertEqual(t.get.call_count, 2)
         self.assertTrue(any(r['detail_status'] == 'technical_error' for r in result['records']))
+
+    def test_album_queue_uses_own_adapter_without_requiring_product_jsonld(self):
+        transport = Mock(requests=[])
+        transport.get.return_value = DETAIL
+        row = dict(product_url=self.doe['source_url'], source_product_id='64226', shop_domain='atube-highfidelity.nl',
+                   source_input=dict(title_raw=self.doe['title_raw'], price='34.50', currency='EUR', price_source='listing', listing_observed_at=stamp()))
+        source = verify_source(row, transport)
+        self.assertEqual((source['route'], source['price']), ('EAN', '34.50'))
+        self.assertEqual(source['artist'], 'Doe Maar')
+        # An explicitly ancient observation must not be made fresh by a detail read.
+        row['source_input']['listing_observed_at'] = '2000-01-01T00:00:00+00:00'
+        with self.assertRaisesRegex(ValueError, 'fresh_listing_required'):
+            verify_source(row, transport)
 
 
 if __name__ == '__main__':

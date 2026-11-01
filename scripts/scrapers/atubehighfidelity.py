@@ -172,6 +172,8 @@ def parse_detail(body, row, observed_at):
     scope = soup.select_one('div.product[id="product-' + str(row['source_product_id']) + '"]')
     if not scope:
         raise ValueError('own_product_id_scope_missing')
+    if 'product_cat-vinyl' not in scope.get('class', []) or re.search(r'\b(?:CD|DVD|BLU[- ]?RAY|SACD|CASSETTE)\b', row['title_raw'], re.I):
+        raise ValueError('own_vinyl_format_unproven')
     for other in scope.select('.related, .products, .upsells, .cross-sells'):
         other.decompose()
     heading = scope.select_one('h1.product_title')
@@ -233,6 +235,35 @@ def parse_detail(body, row, observed_at):
     result['review_reasons'] = row['review_reasons'] + (['secondhand'] if used else []) + (['stock_unproven'] if stock == 'unknown' else [])
     result['status'] = 'review' if result['review_reasons'] else 'validated'
     return result
+
+
+def verify_album_source(body, queue_row):
+    """Adapter for the existing private album queue; does not enqueue or write."""
+    source = queue_row['source_input']
+    if source.get('currency') != 'EUR':
+        raise ValueError('source_currency_conflict')
+    observed = source.get('listing_observed_at')
+    try:
+        age = (datetime.now(timezone.utc) - datetime.fromisoformat(observed)).total_seconds()
+    except (ValueError, TypeError):
+        raise ValueError('fresh_listing_required') from None
+    if not 0 <= age <= 48 * 3600 or source.get('price_source') not in ('listing', 'catalogue'):
+        raise ValueError('fresh_listing_required')
+    artist, album = labels(source['title_raw'])
+    if not artist or not album:
+        raise ValueError('artist_album_boundary_unproven')
+    title = source['title_raw']
+    used = bool(re.search(r'\b(?:tweedehands|2e\s*hands|second[- ]hand|pre[- ]owned|occasion|ex[- ]demo)\b', title, re.I))
+    row = dict(source_url=product_url(queue_row['product_url']), source_product_id=queue_row['source_product_id'],
+               title_raw=title, artist_raw=artist, album_raw=album, price=money(source.get('price')),
+               currency='EUR', listing_observed_at=observed, condition_status='used' if used else 'new',
+               condition_basis='no_used_signal_policy', format_status='vinyl', review_reasons=['secondhand'] if used else [])
+    result = parse_detail(body, row, stamp())
+    if result['status'] != 'validated':
+        raise ValueError('source_requires_review')
+    return {**result, 'domain': DOMAIN, 'product_url': result.get('offer_url', row['source_url']),
+            'source_title': title, 'artist': result['artist_raw'], 'label': result['artist_raw'] + ' ' + album,
+            'observed_at': result['detail_observed_at'], 'price_basis': 'fresh_listing_crosschecked_own_html'}
 
 
 def run(transport, mode, pages, detail_limit):

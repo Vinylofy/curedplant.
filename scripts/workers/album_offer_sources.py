@@ -122,6 +122,9 @@ def visible_article_prices(area,domain):
 def verify_source(row,transport):
     url=row['product_url'];domain=row['shop_domain'];approved_url(url,domain)
     html=transport.get(url);soup,nodes=json_products(html)
+    if domain.removeprefix('www.')=='atube-highfidelity.nl':
+        from scripts.scrapers.atubehighfidelity import verify_album_source
+        return {**verify_album_source(html,row),'requests':transport.requests}
     if domain.removeprefix('www.')=='northendhaarlem.nl':
         from scripts.workers.northend_album_pilot import parse_source,source_identity,canonical_target
         from scripts.scrapers.usf.jobs.detail_northendhaarlem import parse_detail_page

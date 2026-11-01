@@ -29,6 +29,8 @@ The shop uses a custom WooCommerce overview: first-page HTML, then the same publ
 
 ## Moving beyond the pilot
 
+The existing `album_offer_sources.verify_source` has a dedicated A Tube adapter because this shop has custom HTML and no own Product JSON-LD in the inspected pages. The adapter requires a fresh listing, exact own title/product identity, matching article price and labelled barcode checks. Its queue path is covered by regression tests.
+
 Register and verify the shop and shipping markets, stage captured source rows through the existing album-offer queue, then perform fresh source verification and trusted unique album matching before publication. Route a later discovered EAN to the exact-product path and deduplicate by shop/product/variant URL. Product metadata, EAN identity and price history must never be rewritten just to obtain an album match. The private album queue currently has its own active pilot budget; these public workflows do not bypass it. After reviewing actual results, schedule price and detail runs independently.
 
 The single user-facing progress document remains `Vinylofy/docs/database/album-alternatives-and-price-history.md`. This document defines the reusable source contract, not a separate batch status sheet.
