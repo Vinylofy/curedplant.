@@ -1,8 +1,8 @@
 # Velvet Delft — brononderzoek en readiness
 
-Status: **GO voor handmatige bron-/pipelinecontrole; NO-GO voor onbeheerde productiepublicatie of cron.**
+Status: **EAN-automatisering actief; databasepublicatie nog niet vrijgegeven.**
 
-Werkbranch: `feature/velvetdelft-probe`, bestaande [draft PR #2](https://github.com/Vinylofy/curedplant./pull/2). Frontend en bestaande shops zijn niet aangepast. Het slug `velvetdelft` is toegevoegd aan de importerregistry en als **disabled** USF-shop geregistreerd; de bestaande productiedatabase-registratie is niet onderzocht of gewijzigd.
+Geïntegreerd op `main`, via [PR #2](https://github.com/Vinylofy/curedplant./pull/2). Frontend en bestaande shops zijn niet aangepast. Het slug `velvetdelft` is toegevoegd aan de importerregistry en als **disabled** USF-shop geregistreerd; de bestaande productiedatabase-registratie is niet onderzocht of gewijzigd.
 
 ## Geautoriseerde EAN-automatisering — 2 november 2026
 
@@ -13,6 +13,8 @@ Eén EAN-workflow heeft een dagelijkse trigger om **05:17 UTC** (06:17 Nederland
 Er wordt slechts één artikel tegelijk opgehaald, minimaal drie seconden tussen aanvragen. Bij 1.000 checks duurt alleen de wachttijd ongeveer 50 minuten; de bronrun stopt zacht na 70 minuten en de job heeft 90 minuten om checkpoints/artifacts af te handelen. Bij trage responses kan een dag minder dan 1.000 checks halen; de volgende dag pakt het checkpoint verder. De dagteller voorkomt meer dan 1.000 automatische checks door herstarten; een onderbroken onderhoudsronde hervat het resterende weekbudget van 250.
 
 De broncheckpoint wordt duurzaam bewaard in `state/velvetdelft/checkpoint.json.gz` via een aparte stap met alleen repository-schrijfrechten. De scraper zelf ontvangt geen GitHub-token of databasegeheimen. Voor het eerste websiteverzoek wordt de duurzame opslag gecontroleerd. De cache blijft een herstelmiddel; de nieuwste bewaarde bronversie wint bij herstel. Dit voorkomt een reset wanneer een wekelijkse Actions-cache verloopt. Artifacts blijven 90 dagen beschikbaar. Een bron-/opslagfout wordt rood gemeld; er is geen agressieve herstartketen.
+
+**Daadwerkelijk gestart:** [eerste automatische ronde 41429886010](https://github.com/Vinylofy/curedplant./actions/runs/41429886010). De runner heeft planning, tests en het duurzaam schrijven van de broncheckpoint succesvol afgerond en is bezig met de detailcontroles. Deze run is nog niet als afgerond of inhoudelijk groen aangemerkt. Negen extra plannertests zijn geslaagd; de bestaande acht PostgreSQL-tests blijven de eerdere databasevalidatie.
 
 De voorwaarden voor productiepublicatie blijven onveranderd: alle gates, actuele listingprijzen, productieregistratie en een afzonderlijke write-goedkeuring. Een geslaagde automatische EAN-run bewijst geen productie-import.
 
@@ -90,32 +92,32 @@ De importer heeft een vaste CSV-header, required/optional columns, CanonicalReco
 
 De echte 100-recordset is in een wegwerp-PostgreSQL zonder netwerk door de keten gegaan: 100 raw snapshots, 92 producten/prijzen, acht quarantaineregels. Herhalen maakt geen extra bron/product/prijsregels. De tests beschermen recentere listingwaarnemingen en canonieke metadata, hervatten na een onderbroken promotion en hergebruiken bestaande release-ID’s wanneer een bron-URL wijzigt. Snapshot-fingerprints voorkomen dubbel verwerken. Pending EANs blijven verrijkingswerk, geen definitieve afkeuring.
 
-Publieke workflows hebben geen databasesecrets, geen write-input en geen cron. De importer-CLI eist `--dry-run`; de muterende USF-testadapter weigert externe databasehosts en vereist expliciet dezelfde geïsoleerde DATABASE_URL. De productiewrite-ingang is bewust nog niet vrijgegeven. Voor livegang moeten registratie/schema en de gewenste begrensde productiepromotie expliciet worden gecontroleerd en goedgekeurd.
+Publieke workflows hebben geen databasesecrets of database-write-input. Alleen de EAN-workflow heeft na de expliciete toestemming hierboven een cron; Discovery en Price blijven handmatig. De importer-CLI eist `--dry-run`; de muterende USF-testadapter weigert externe databasehosts en vereist expliciet dezelfde geïsoleerde DATABASE_URL. De productiewrite-ingang is bewust nog niet vrijgegeven. Voor livegang moeten registratie/schema en de gewenste begrensde productiepromotie expliciet worden gecontroleerd en goedgekeurd.
 
 ## Kosten, planning en gebruik
 
 De hervatbare catalogusvangst registreert 163 requests inclusief hervattingen/ontwikkelcontroles en tien extra details. De afzonderlijke steekproef gebruikte 101 requests (robots + 100 details), naast de beperkte bron-/pagineringresearch. Verzoeken lopen enkelvoudig met minimaal drie seconden interval; alleen 502/503/504 krijgen één vertraagde herhaling. 401/403/429, challenge, onverwachte structuur, herhaalde pagina of tegenstrijdige telling stoppen gecontroleerd met een checkpoint. Session-CSRF/cookies worden niet opgeslagen in artifacts.
 
-De volledige cataloguscheckpoint is als gecomprimeerd bronbewijs opgeslagen, geen actieve publicatielijst. De 100-detailbronset en steekproefquotes zijn ook opgeslagen. Een nieuwe listingcyclus behoudt bevestigde EANs; details worden alleen opgehaald bij ontbrekende/due gegevens of gewijzigde parserrevisie. Bevestigde details vervallen na 90 dagen voor hercontrole, ontbrekende/afgekeurde detailresultaten krijgen zeven dagen wachttijd. Nieuwe/onopgeloste releases krijgen voorrang.
+De volledige cataloguscheckpoint is als gecomprimeerd bronbewijs opgeslagen, geen actieve publicatielijst. De 100-detailbronset en steekproefquotes zijn ook opgeslagen. Een nieuwe listingcyclus behoudt bevestigde EANs; de initiële ronde controleert onopgeloste records en gewijzigde parserrevisies. De wekelijkse ronde controleert de 250 oudste detailwaarnemingen, ook als hun reguliere vervaldatum nog niet is bereikt. Bevestigde details vervallen na 90 dagen voor hercontrole, ontbrekende/afgekeurde detailresultaten krijgen zeven dagen wachttijd. Nieuwe/onopgeloste releases krijgen voorrang.
 
 Handmatige workflows (Ubuntu):
 
 - `Curedplant | Discovery | Velvet Delft | Manual review`: `max_pages`, `refresh`. Hervat categorie/pagina; voor een nieuwe periodieke cyclus `refresh=true`.
 - `Curedplant | Price | Velvet Delft | Manual review`: afzonderlijke listingcyclus; cached EANs blijven behouden.
-- `Curedplant | EAN Detail | Velvet Delft | Manual review`: maximaal 250 due details; reeds complete details worden overgeslagen.
-- Gedeelde worker: concurrency `velvetdelft-source`, timeout 30 minuten, cachecheckpoints en artifacts met 14 dagen retentie.
+- `Curedplant | EAN Detail | Velvet Delft | Manual review`: dagelijks maximaal 1.000 initiële checks en daarna wekelijks 250 roulerende hercontroles, met aparte handmatige limiet.
+- Gedeelde worker: concurrency `velvetdelft-source`, jobtimeout 90 minuten, zachte bronlimiet 70 minuten, duurzame broncheckpoint, herstelcache en artifacts met 90 dagen retentie.
 
 Bij een lege Actions-cache wordt het beoordeelde broncheckpoint uit deze PR geladen en tegen de opgeslagen SHA-256 gecontroleerd; er is dus geen tweede initiële discovery nodig. Voor nieuwe listings is `refresh=true` beschikbaar; bestaande versheidscontroles blijven gelden.
 
-Alle workflows voeren de offline tests, importer-dry-run en USF-preview uit en tonen tellingen in de Actions-summary. Een poging om de nieuwe Discovery-workflow direct op de featurebranch te starten gaf **HTTP 404**: deze workflow is nog niet op de standaardbranch geregistreerd. Er is dus **geen geslaagde Actions-run** om te linken. Lokaal is na de succesvolle PostgreSQL-tests een extra begrensde read-only detailproef uitgevoerd; tien details uit twee vijf-recordproeven waren geldig, nul databasewrites. PR is niet gemerged.
+Alle workflows voeren de offline tests, importer-dry-run en USF-preview uit en tonen tellingen in de Actions-summary. Een poging om de nieuwe Discovery-workflow direct op de featurebranch te starten gaf **HTTP 404**: deze workflow is nog niet op de standaardbranch geregistreerd. Er is dus **geen geslaagde Actions-run** om te linken. Lokaal is na de succesvolle PostgreSQL-tests een extra begrensde read-only detailproef uitgevoerd; tien details uit twee vijf-recordproeven waren geldig, nul databasewrites. Dat was de situatie vóór de aansluitende toestemming: PR #2 is inmiddels gemerged en de eerste automatische EAN-run is daadwerkelijk gestart.
 
-Voorgesteld **na afzonderlijke goedkeuring**: één initiële discovery, dagelijks listing-prijzen, tweemaal per week bounded detailenrichment en periodiek een verse discovery. Een initiële detailbevestiging voor ~9.285 releases kost bij drie seconden per request minimaal ~7,7 uur, te verdelen over circa 38 batches van 250; dagelijkse prijzen mogen daar niet op wachten zodra bestaande EANs bewezen zijn. Cron is nu nergens aangezet.
+Voorgesteld **na afzonderlijke goedkeuring**: één initiële discovery, dagelijks listing-prijzen, tweemaal per week bounded detailenrichment en periodiek een verse discovery. Een initiële detailbevestiging voor ~9.285 releases kost bij drie seconden per request minimaal ~7,7 uur, te verdelen over circa 38 batches van 250; dagelijkse prijzen mogen daar niet op wachten zodra bestaande EANs bewezen zijn. De EAN-planning is inmiddels geautoriseerd en geactiveerd zoals boven beschreven; prijzen en discovery blijven handmatig.
 
 ## Validatie en overgebleven gates
 
 Uitgevoerd: **23 offline tests en acht echte PostgreSQL-tests**; actionlint en `git diff --check`. De SQL-tests gebruikten uitsluitend een wegwerpcontainer met `--network none`, geen Supabase. De 100 opgeslagen detailpagina’s zijn ook opnieuw tegen de strengere JSON-LD-conflictcontrole gevalideerd zonder nieuwe netwerkrequests.
 
-GO: handmatige broncontrole, importerdry-run en geïsoleerde USF-tests. **NO-GO voor onbeheerde livepublicatie**: de vier foutieve collectietellers verhinderen een claim van volledige winkeldekking; alle overige releases moeten nog door detail-gate; productie-registratie, gecontroleerde write-route en een echte Actions-proef moeten nog worden gecontroleerd na review/merge. Geen schema- of productieauthwijzigingen gedaan.
+GO: handmatige broncontrole, importerdry-run en geïsoleerde USF-tests. **NO-GO voor databasepublicatie**: de vier foutieve collectietellers verhinderen een claim van volledige winkeldekking; alle overige releases moeten nog door detail-gate; productie-registratie, gecontroleerde write-route en een echte Actions-proef moeten nog worden gecontroleerd na review/merge. Geen schema- of productieauthwijzigingen gedaan.
 
 Gewijzigde onderdelen: `scripts/scrapers/velvetdelft.py`, de bestaande probe, `scripts/importers/import_velvetdelft.py`, importerregistry, disabled USF-shopregistry, `scripts/scrapers/usf/jobs/velvetdelft_pipeline.py`, drie handmatige workflows plus herbruikbare worker, Velvet-tests/fixtures, dit bestaande readinessdocument en machineleesbaar bronbewijs. Andere shops en frontend zijn ongewijzigd.
 
