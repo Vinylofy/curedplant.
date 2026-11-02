@@ -1,0 +1,16 @@
+name: "Curedplant | EAN Detail | Velvet Delft | Manual review"
+on:
+  workflow_dispatch:
+    inputs:
+      detail_limit:
+        description: 'Maximum due detail pages, verified EANs reused (1..250)'
+        type: string
+        default: '100'
+permissions:
+  contents: read
+jobs:
+  source:
+    uses: ./.github/workflows/_velvetdelft-worker.yml
+    with:
+      mode: details
+      detail_limit: ${{ inputs.detail_limit }}

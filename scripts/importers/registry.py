@@ -24,9 +24,12 @@ from scripts.importers.import_vinyleers import SHOP_DEFINITION as VINYLEERS_IMPO
 
 from scripts.importers.import_atubehighfidelity import SHOP_DEFINITION as ATUBE_IMPORTER
 
+from scripts.importers.import_velvetdelft import SHOP_DEFINITION as VELVETDELFT_IMPORTER
+
 SHOP_IMPORTERS: dict[str, ShopImporterDefinition] = {
     definition.key: definition
     for definition in (
+        VELVETDELFT_IMPORTER,
         ATTHEMOVIES_IMPORTER,
         ATUBE_IMPORTER,
         BLACKVINYL_IMPORTER,

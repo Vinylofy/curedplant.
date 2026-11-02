@@ -14,11 +14,8 @@ from urllib.request import Request, urlopen
 from urllib.robotparser import RobotFileParser
 
 BASE = "https://www.velvetdelft.nl"
-GENRES = (
-    "countryblues", "dance", "heavy", "hip-hop", "jazz", "k-pop",
-    "nederlands", "poprock", "prog", "reggae", "soulrnb",
-    "soundtracks", "wereld",
-)
+from scripts.scrapers.velvetdelft import GENRES
+
 RELEASE_PATH = re.compile(r"^/(?:nl|en)/release/(\d+)/", re.I)
 USER_AGENT = "VinylofyVelvetDelftResearch/0.1"
 

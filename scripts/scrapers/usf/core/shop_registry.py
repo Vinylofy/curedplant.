@@ -14,6 +14,7 @@ class ShopDefinition:
 
 
 STABLE_SHOPS: dict[str, ShopDefinition] = {
+    "velvetdelft": ShopDefinition(key="velvetdelft", scraper_module="scripts.scrapers.velvetdelft", importer_module="scripts.importers.import_velvetdelft", output_dir="output/velvetdelft", enabled=False, notes="Manual-only EAN-gated onboarding; no cron or production approval."),
     "blackvinyl": ShopDefinition(
         key="blackvinyl",
         scraper_module="scripts.scrapers.blackvinyl",

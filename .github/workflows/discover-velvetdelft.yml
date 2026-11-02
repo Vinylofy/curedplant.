@@ -1,0 +1,16 @@
+name: "Curedplant | Discovery | Velvet Delft | Manual review"
+on:
+  workflow_dispatch:
+    inputs:
+      max_pages:
+        description: 'Maximum listing pages; resumes at next saved category/page (1..1000)'
+        type: string
+        default: '25'
+permissions:
+  contents: read
+jobs:
+  source:
+    uses: ./.github/workflows/_velvetdelft-worker.yml
+    with:
+      mode: discovery
+      max_pages: ${{ inputs.max_pages }}

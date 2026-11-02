@@ -1,0 +1,37 @@
+# ------------------------------------------------------------------
+# GLOBAL â everything that starts with /search/ or the private areas
+# ------------------------------------------------------------------
+User-agent: *
+Disallow: /search/
+Disallow: /admin/
+Disallow: /account/
+Disallow: /products/search/
+Disallow: /*/products/search/
+Disallow: /products/findsuggestions/
+Disallow: /*/products/findsuggestions/
+Disallow: /login
+Disallow: /logout
+Disallow: /orders/
+Disallow: /img/
+Disallow: /carts/
+Disallow: /detail/
+Disallow: /products/calc-best-price/
+Disallow: /api/
+
+# ------------------------------------------------------------------
+# block the crawler completely just to be extra explicit
+#          (optional but removes any ambiguity)
+# ------------------------------------------------------------------
+User-agent: SemrushBot
+Disallow: /
+
+User-agent: ClaudeBot
+Disallow: /
+
+User-agent: PetalBot
+Disallow: /
+
+# ------------------------------------------------------------------
+# SITEMAP
+# ------------------------------------------------------------------
+Sitemap: https://lpos.nl/sitemap_lpos.xml

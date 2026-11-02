@@ -1,0 +1,16 @@
+name: "Curedplant | Price | Velvet Delft | Manual review"
+on:
+  workflow_dispatch:
+    inputs:
+      max_pages:
+        description: 'Listing-page budget; catalogue prices only, no detail requests (1..1000)'
+        type: string
+        default: '25'
+permissions:
+  contents: read
+jobs:
+  source:
+    uses: ./.github/workflows/_velvetdelft-worker.yml
+    with:
+      mode: prices
+      max_pages: ${{ inputs.max_pages }}

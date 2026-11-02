@@ -1,0 +1,78 @@
+name: "Curedplant | Internal | Velvet Delft source worker"
+on:
+  workflow_call:
+    inputs:
+      mode:
+        type: string
+        required: true
+      max_pages:
+        type: string
+        default: '25'
+      detail_limit:
+        type: string
+        default: '100'
+permissions:
+  contents: read
+concurrency:
+  group: velvetdelft-source
+  cancel-in-progress: false
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: python -m pip install 'requests==2.32.5' 'beautifulsoup4==4.13.4' 'psycopg[binary]==3.2.12' 'python-dotenv==1.1.1'
+      - name: Offline parser, gatekeeper and failure tests
+        run: python -m unittest discover -s tests -p 'test_velvetdelft*.py'
+      - uses: actions/cache/restore@v4
+        with:
+          path: output/velvetdelft/state.json
+          key: velvetdelft-v1-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: velvetdelft-v1-
+      - name: Read-only listing or detail collection
+        env:
+          MODE: ${{ inputs.mode }}
+          MAX_PAGES: ${{ inputs.max_pages }}
+          DETAIL_LIMIT: ${{ inputs.detail_limit }}
+          PYTHONUNBUFFERED: '1'
+        run: |
+          if [ "$MODE" = details ] && [ ! -f output/velvetdelft/state.json ]; then
+            echo 'Run Velvet Delft Discovery first to create a checkpoint.' >&2
+            exit 1
+          fi
+          python -m scripts.scrapers.velvetdelft --mode "$MODE" --max-pages "$MAX_PAGES" --detail-limit "$DETAIL_LIMIT"
+      - name: Importer header validation and dry-run
+        run: python -m scripts.importers.import_velvetdelft --dry-run
+      - name: USF staging and promotion preview without database connection
+        run: python -m scripts.scrapers.usf.jobs.velvetdelft_pipeline --capture output/velvetdelft/state.json
+      - uses: actions/cache/save@v4
+        if: always() && hashFiles('output/velvetdelft/state.json') != ''
+        with:
+          path: output/velvetdelft/state.json
+          key: velvetdelft-v1-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Report measured coverage and quality
+        if: always() && hashFiles('output/velvetdelft/summary.json') != ''
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          report=json.loads(Path('output/velvetdelft/summary.json').read_text())
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:
+              f.write('## Velvet Delft — source validation only\n\n')
+              for key in ('unique_vinyl_releases','verified_eans','valid_listing_prices','availability','requests','catalogue_complete','error'):
+                  f.write(f'- {key}: `{report[key]}`\n')
+              f.write('\nDatabase writes: **false**. Cron: **disabled**. No delisting.\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: velvetdelft-${{ inputs.mode }}-${{ github.run_id }}
+          path: output/velvetdelft/
+          retention-days: 14
+          if-no-files-found: warn
