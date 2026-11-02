@@ -18,6 +18,7 @@ def audit():
         columns=conn.execute("select table_name,column_name,data_type,is_nullable,column_default from information_schema.columns where table_schema='public' and table_name=any(%s) order by table_name,ordinal_position",(list(TABLES),)).fetchall()
         checks=conn.execute("select c.relname,con.conname,pg_get_constraintdef(con.oid) from pg_constraint con join pg_class c on c.oid=con.conrelid join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relname=any(%s) and con.contype in ('c','f')",(list(TABLES),)).fetchall()
         shops=conn.execute("select id,name,domain,country from shops where lower(domain) in ('velvetdelft.nl','www.velvetdelft.nl') or lower(name) in ('velvet delft','velvet music delft')").fetchall()
+        excluded=conn.execute("select x.id,x.gtin_normalized,x.artist,x.title,x.format_label,p.availability,p.is_active,p.product_url from prices p join products x on x.id=p.product_id join shops s on s.id=p.shop_id where s.domain='velvetdelft.nl' and (not p.is_active or p.availability not in ('in_stock','unknown') or coalesce(x.format_label,'') in ('CD','Cassette','DVD','Blu-ray')) limit 20").fetchall()
         samples=conn.execute("select x.id,x.gtin_normalized,x.artist,x.title,p.price,p.availability,p.last_seen_at,p.product_url from prices p join products x on x.id=p.product_id join shops s on s.id=p.shop_id where lower(s.domain) in ('velvetdelft.nl','www.velvetdelft.nl') order by (p.availability='in_stock') desc,p.last_seen_at desc limit 5").fetchall()
         snapshot=None
         if conn.execute("select to_regclass('public.shop_catalog_daily_dashboard_v2')").fetchone()[0]:
@@ -25,7 +26,7 @@ def audit():
             snapshot=snapshot[0] if snapshot else None
         price_count=conn.execute("select count(*) from prices p join shops s on s.id=p.shop_id where lower(s.domain) in ('velvetdelft.nl','www.velvetdelft.nl')").fetchone()[0]
         counts={t:conn.execute('select count(*) from '+t+' where shop_id=%s',('velvetdelft',)).fetchone()[0] for t in TABLES[:5]}
-    return {'database_writes':False,'write_capabilities':privileges,'columns':columns,'constraints':checks,'registered_shops':[list(map(str,r)) for r in shops],'usf_counts':counts,'price_count':price_count,'monitor_snapshot':snapshot,'offer_samples':[[str(v) for v in row] for row in samples]}
+    return {'database_writes':False,'write_capabilities':privileges,'columns':columns,'constraints':checks,'registered_shops':[list(map(str,r)) for r in shops],'usf_counts':counts,'price_count':price_count,'monitor_snapshot':snapshot,'excluded_offers':[[str(v) for v in row] for row in excluded],'offer_samples':[[str(v) for v in row] for row in samples]}
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--require-write',action='store_true');parser.add_argument('--refresh-monitor',action='store_true');args=parser.parse_args()
