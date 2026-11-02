@@ -132,6 +132,11 @@ jobs:
                   f.write(f'- {key}: `{report[key]}`\n')
               f.write('\nDatabase writes follow the explicit workflow write setting; see database evidence below. EAN automation: daily initial round (max 1000), then weekly (max 250). No delisting.\n')
           PY
+      - name: Refresh existing scraper monitoring after successful price writes
+        if: success() && inputs.write && (hashFiles('output/velvetdelft/database-before.json') != '' || hashFiles('output/velvetdelft/database-result.json') != '')
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python -m scripts.workers.velvetdelft_database_audit --refresh-monitor
       - name: Publish actual database write counts
         if: always() && inputs.write
         run: |
