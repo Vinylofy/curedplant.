@@ -1,0 +1,116 @@
+{
+  "run_id": 41481936699,
+  "source_and_database_succeeded": true,
+  "failed_step": "Publish actual database write counts",
+  "error": "KeyError: raw_inserted",
+  "cause": "Preview overwrote database-result.json",
+  "recovered_write_result": {
+    "shop_id": "velvetdelft",
+    "database_writes": true,
+    "mode": "listing_prices",
+    "run_id": null,
+    "raw_inserted": 0,
+    "quarantines_inserted": 0,
+    "prices_written": 964,
+    "prices_verified": 964,
+    "new_offers": 0,
+    "persisted_counts": {
+      "shop_product_links": 1010,
+      "raw_shop_scrapes": 1010,
+      "staged_offers": 1010,
+      "quarantine_offers": 43,
+      "prices": 975
+    },
+    "bulk_price_stats": {
+      "shop_domain": "velvetdelft.nl",
+      "matched": 964,
+      "updated": 964,
+      "changed": 2,
+      "skipped_newer": 0,
+      "unmatched": 0,
+      "verified": 964,
+      "samples": [
+        {
+          "url": "https://www.velvetdelft.nl/nl/release/114250/De-La-Soul/De-La-Soul-is-Dead/De-La-Soul/2-LP/810098502948",
+          "before": "34.99",
+          "after": "34.99",
+          "currency": "EUR"
+        },
+        {
+          "url": "https://www.velvetdelft.nl/nl/release/113842/K3/Vleugels/K3/1-LP/5051083185912",
+          "before": "29.99",
+          "after": "29.99",
+          "currency": "EUR"
+        },
+        {
+          "url": "https://www.velvetdelft.nl/nl/release/105124/Cypress-Hill/Iii-Temples-of-Boom/Cypress-Hill/2-LP/889854344115",
+          "before": "29.99",
+          "after": "29.99",
+          "currency": "EUR"
+        },
+        {
+          "url": "https://www.velvetdelft.nl/nl/release/111489/Justice/A-Cross-the-Universe/Justice/2-LP/5056556109693",
+          "before": "34.99",
+          "after": "34.99",
+          "currency": "EUR"
+        },
+        {
+          "url": "https://www.velvetdelft.nl/nl/release/101802/ELBOW/FLYING-DREAM-1/ELBOW/1-LP/602435784748",
+          "before": "15.99",
+          "after": "15.99",
+          "currency": "EUR"
+        },
+        {
+          "url": "https://www.velvetdelft.nl/nl/release/108822/Alt-J/An-Awesome-Wave/Alt-J/1-LP/4050538789911",
+          "before": "29.99",
+          "after": "29.99",
+          "currency": "EUR"
+        },
+        {
+          "url": "https://www.velvetdelft.nl/nl/release/103126/Kuhr-Lenny/Lenny-Kuhr/Kuhr-Lenny/1-LP/8714374966740",
+          "before": "21.99",
+          "after": "21.99",
+          "currency": "EUR"
+        },
+        {
+          "url": "https://www.velvetdelft.nl/nl/release/105222/DENNY-SANDY/GOLD-DUST-LIVE-RSD/DENNY-SANDY/1-LP/602445031122",
+          "before": "17.99",
+          "after": "17.99",
+          "currency": "EUR"
+        },
+        {
+          "url": "https://www.velvetdelft.nl/nl/release/104495/Oyewole-Abiodun/Gratitude/Oyewole-Abiodun/2-LP/809236160461",
+          "before": "35.99",
+          "after": "35.99",
+          "currency": "EUR"
+        },
+        {
+          "url": "https://www.velvetdelft.nl/nl/release/110149/Deep-Purple/Deep-Purple/Deep-Purple/1-LP/825646033959",
+          "before": "29.99",
+          "after": "29.99",
+          "currency": "EUR"
+        },
+        {
+          "url": "https://www.velvetdelft.nl/nl/release/113010/Simon-Garfunkel/Concert-In-Central-Park-Live/Simon-Garfunkel/2-LP/889854344313",
+          "before": "34.99",
+          "after": "34.99",
+          "currency": "EUR"
+        },
+        {
+          "url": "https://www.velvetdelft.nl/nl/release/100585/TRACEY-AJ/FLU-GAME/TRACEY-AJ/2-LP/5060644131978",
+          "before": "31.99",
+          "after": "31.99",
+          "currency": "EUR"
+        }
+      ],
+      "quarantined_urls": []
+    }
+  },
+  "fix": "Distinct preview and database-write report paths",
+  "validation": {
+    "offline_tests_passed": 35,
+    "actual_summary_replay": "passed",
+    "actionlint": "passed"
+  },
+  "new_crawl_started": false
+}

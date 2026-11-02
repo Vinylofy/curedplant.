@@ -129,6 +129,22 @@ class SourceTests(unittest.TestCase):
             with patch('scripts.scrapers.velvetdelft.initial_routes',return_value={'prog':shop.BASE+'/nl/pagina/prog'}):
                 result=shop.collect('prices',path,max_pages=2,transport=client)
             self.assertEqual(result['records'][row['source_product_id']]['ean_status'],'missing')
+    def test_preview_cli_preserves_actual_database_write_evidence(self):
+        from contextlib import chdir,redirect_stdout
+        from io import StringIO
+        from scripts.scrapers.usf.jobs.velvetdelft_pipeline import main
+        with tempfile.TemporaryDirectory() as tmp,chdir(tmp):
+            actual=Path('output/velvetdelft/database-result.json');actual.parent.mkdir(parents=True)
+            evidence={'database_writes':True,'raw_inserted':0,'prices_written':964,'quarantines_inserted':0,'persisted_counts':{'prices':975}}
+            actual.write_text(json.dumps(evidence))
+            capture=Path('capture.json');capture.write_text(json.dumps({'shop_id':'velvetdelft','records':[good()]}))
+            with patch('sys.argv',['pipeline','--capture',str(capture)]),patch('psycopg.connect',side_effect=AssertionError('Preview must not contact DB')),redirect_stdout(StringIO()):
+                main()
+            self.assertEqual(json.loads(actual.read_text()),evidence)
+            preview=json.loads(Path('output/velvetdelft/pipeline-preview.json').read_text())
+            self.assertFalse(preview['database_writes'])
+            # These are the exact fields consumed by the failed Actions summary.
+            self.assertEqual(tuple(json.loads(actual.read_text())[key] for key in ('raw_inserted','prices_written','quarantines_inserted')),(0,964,0))
     def test_test_database_guard(self):
         with self.assertRaises(ValueError):isolated_only('postgresql://user@prod.example/postgres')
         isolated_only('postgresql://user@127.0.0.1/postgres')

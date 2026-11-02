@@ -113,7 +113,7 @@ jobs:
         run: python -m scripts.importers.import_velvetdelft --dry-run
       - name: USF staging and promotion preview without database connection
         if: success() && steps.plan.outputs.enabled == 'true'
-        run: python -m scripts.scrapers.usf.jobs.velvetdelft_pipeline --capture output/velvetdelft/state.json
+        run: python -m scripts.scrapers.usf.jobs.velvetdelft_pipeline --capture output/velvetdelft/state.json --out output/velvetdelft/pipeline-preview.json
       - uses: actions/cache/save@v4
         if: always() && (steps.plan.outputs.enabled == 'true' || (inputs.write && steps.plan.outputs.database_pending == 'true')) && hashFiles('output/velvetdelft/state.json') != ''
         with:

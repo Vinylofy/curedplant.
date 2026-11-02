@@ -84,3 +84,10 @@ Listing is uitsluitend leidend voor prijs, saleprijs, EUR, beschikbaarheid, URL 
 Gewijzigde onderdelen: Velvet scraper en probe; importer/registries; USF-adapter; EAN-planner/checkpoint; productie-audit en publicatiecontroles; handmatige Discovery, geplande Price en EAN, gedeelde worker en Database-beheerworkflow; tests/fixtures; dit bestaande statusdocument en bron-/databasebewijs. De gedeelde bulk-prijsschrijver heeft alleen een optionele Velvet-instelling; de standaard voor andere shops bleef gelijk. Geen frontendwijziging.
 
 Bewijs: [actuele database-uitkomst en planning](validation/velvetdelft-database-20261102.json), [oorspronkelijke broncontrole](validation/velvetdelft-20261102.json), [100 bronrecords](../tests/fixtures/velvetdelft/sample100.json).
+
+
+## Extra prijsrun: rapportagecrash hersteld — 2 november 2026
+
+[Run 41481936699](https://github.com/Vinylofy/curedplant./actions/runs/41481936699) ververste en verifieerde **964 prijzen** succesvol. Bron, databasewrites, checkpoint en monitoring waren groen. De afsluitende rapportage faalde met `KeyError: raw_inserted`: de daaropvolgende read-only USF-preview had `database-result.json` overschreven.
+
+De CLI heeft nu aparte standaardbestanden voor write-bewijs (`database-result.json`) en preview (`pipeline-preview.json`); de workflow geeft het previewpad bovendien expliciet mee. Een CLI-regressietest bewijst dat preview het echte schrijfbewijs intact laat. De exacte Actions-summary is lokaal opnieuw uitgevoerd op het uit de runlog herstelde echte 964-resultaat. 35 offline tests, actionlint en diff-check zijn geslaagd; geen databasecode gewijzigd en geen nieuwe volledige scrape gestart voor deze correctie.

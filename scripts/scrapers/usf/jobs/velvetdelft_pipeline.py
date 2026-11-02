@@ -211,7 +211,7 @@ def sync_existing_prices(rows,dsn,minimum_listing_at=None):
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--capture',required=True)
-    p.add_argument('--out',default='output/velvetdelft/database-result.json')
+    p.add_argument('--out',help='Report path; separate defaults for write evidence and preview')
     p.add_argument('--write',action='store_true')
     p.add_argument('--stage-only',action='store_true')
     p.add_argument('--prices-only',action='store_true')
@@ -237,6 +237,7 @@ def main():
         capture['updated_at']=datetime.now(timezone.utc).isoformat()
         save(a.capture,capture)
     else:report=preview(checked)
-    save(a.out,report)
+    report_path=a.out or ('output/velvetdelft/database-result.json' if a.write else 'output/velvetdelft/pipeline-preview.json')
+    save(report_path,report)
     print(json.dumps({k:v for k,v in report.items() if k!='records'},default=str))
 if __name__=='__main__':main()
