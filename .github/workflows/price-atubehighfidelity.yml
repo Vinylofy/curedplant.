@@ -1,0 +1,39 @@
+name: "Curedplant | Price | A Tube High Fidelity | Catalogue"
+on:
+  workflow_dispatch:
+    inputs:
+      pages:
+        description: '0 = complete catalogue, 1..10 = bounded source check'
+        type: string
+        default: '0'
+permissions:
+  contents: read
+concurrency:
+  group: atubehighfidelity-source
+  cancel-in-progress: false
+jobs:
+  pilot:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: python -m pip install 'requests==2.32.5' 'beautifulsoup4==4.13.4' 'psycopg[binary]==3.2.12' 'python-dotenv==1.1.1'
+      - name: Verify shop parser and price safety
+        run: python -m unittest discover -s tests -p 'test_atube*.py'
+      - name: Capture complete catalogue prices without database access
+        env:
+          PAGES: ${{ inputs.pages }}
+        run: python -m scripts.scrapers.atubehighfidelity --mode prices --pages "$PAGES"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: atubehighfidelity-prices-${{ github.run_id }}
+          path: output/atubehighfidelity/
+          retention-days: 14
+          if-no-files-found: warn

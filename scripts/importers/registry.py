@@ -22,10 +22,13 @@ from scripts.importers.import_topnotch import SHOP_DEFINITION as TOPNOTCH_IMPORT
 from scripts.importers.import_bestkeptrecords import SHOP_DEFINITION as BESTKEPTRECORDS_IMPORTER
 from scripts.importers.import_vinyleers import SHOP_DEFINITION as VINYLEERS_IMPORTER
 
+from scripts.importers.import_atubehighfidelity import SHOP_DEFINITION as ATUBE_IMPORTER
+
 SHOP_IMPORTERS: dict[str, ShopImporterDefinition] = {
     definition.key: definition
     for definition in (
         ATTHEMOVIES_IMPORTER,
+        ATUBE_IMPORTER,
         BLACKVINYL_IMPORTER,
         BOBSVINYL_IMPORTER,
         DGMOUTLET_IMPORTER,

@@ -26,6 +26,29 @@ class AlbumSource(unittest.TestCase):
   self.assertEqual(result['format_status'],'vinyl')
   for update,reason in [({'type':'CD'},'vinyl_format_unproven'),({'title':'Another Album'},'catalogue_html_title_mismatch')]:
    with self.assertRaisesRegex(ValueError,reason):src.verify_source(row,Mock(get=Mock(side_effect=[body,json.dumps({**data,**update})]),requests=[]))
+ def test_localized_collection_product_uses_its_own_catalogue_endpoint(self):
+  row=self.row();row['product_url']='https://shop.test/en/collections/vinyl/products/artist-album'
+  body=self.html().replace(self.row()['product_url'],row['product_url'])
+  data={'title':'Artist Album LP','variants':[{'id':123,'price':2500,'available':True,'barcode':''}]}
+  transport=Mock(get=Mock(side_effect=[body,json.dumps(data)]),requests=[])
+  self.assertEqual(src.verify_source(row,transport)['price_basis'],'public_catalogue_json_crosschecked_own_html')
+  self.assertEqual(transport.get.call_args.args[0],row['product_url']+'.js')
+ def test_north_end_own_scope_ignores_shipping_and_reuses_existing_parser(self):
+  row={'product_url':'https://www.northendhaarlem.nl/a-123/album/','shop_domain':'northendhaarlem.nl','source_product_id':'123','source_input':{'title_raw':'Artist Album LP','price':'25.00'}}
+  body='<link rel="canonical" href="https://www.northendhaarlem.nl/a-123/album/"><div class="article product-page"><h1>Artist Album LP</h1><div class="price-container"><span class="pricetag">€ 25,00</span></div><p>Op voorraad</p><table class="article-specs"></table><p>Verzending €4,95</p></div>'
+  result=src.verify_source(row,Mock(get=Mock(return_value=body),requests=[]))
+  self.assertEqual((result['route'],result['price'],result['price_basis']),('ARTIST_TITLE','25.00','verified_visible_article_price_fallback'))
+  import tempfile,hashlib
+  from pathlib import Path
+  capture={'raw':{'id':'raw','source_url':row['product_url'],'source_product_id':'123','title_raw':'Artist Album LP','target_shop_id':'shop','domain':'northendhaarlem.nl'},'source_input':row['source_input'],'product_url':row['product_url'],'observed_at':datetime.now(timezone.utc).isoformat(),
+           'responses':[{'url':row['product_url'],'body':body,'sha256':hashlib.sha256(body.encode()).hexdigest()}]}
+  with tempfile.TemporaryDirectory() as tmp:
+   path=Path(tmp)/'capture.json';path.write_text(json.dumps(capture));verified=src.verify_capture(path)
+   self.assertEqual(verified['records'][0]['record']['observed_at'],capture['observed_at'])
+   capture['responses'][0]['body']+='modified';path.write_text(json.dumps(capture))
+   with self.assertRaisesRegex(ValueError,'capture_hash_mismatch'):src.verify_capture(path)
+   capture['observed_at']='2020-01-01T00:00:00+00:00';path.write_text(json.dumps(capture))
+   with self.assertRaisesRegex(ValueError,'stale_capture'):src.verify_capture(path)
  def test_found_ean_routes_out_and_invalid_code_is_never_absence(self):
   result=src.verify_source(self.row(),self.transport(barcode='0602517341289'))
   self.assertEqual((result['route'],result['gtin14']),('EAN','00602517341289'))

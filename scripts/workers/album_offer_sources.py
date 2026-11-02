@@ -20,7 +20,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from scripts.importers.common import strict_normalize_gtin
 
-REVISION=3
+REVISION=5
 UA='VinylofyAlbumSource/1.0 (https://vinylofy.com; contact: info@vinylofy.com)'
 
 def now():return datetime.now(timezone.utc)
@@ -122,6 +122,30 @@ def visible_article_prices(area,domain):
 def verify_source(row,transport):
     url=row['product_url'];domain=row['shop_domain'];approved_url(url,domain)
     html=transport.get(url);soup,nodes=json_products(html)
+    if domain.removeprefix('www.')=='atube-highfidelity.nl':
+        from scripts.scrapers.atubehighfidelity import verify_album_source
+        return {**verify_album_source(html,row),'requests':transport.requests}
+    if domain.removeprefix('www.')=='northendhaarlem.nl':
+        from scripts.workers.northend_album_pilot import parse_source,source_identity,canonical_target
+        from scripts.scrapers.usf.jobs.detail_northendhaarlem import parse_detail_page
+        source=row['source_input'];stamp=now().isoformat()
+        current=parse_detail_page(html,listing_payload={'title_raw':source.get('title_raw'),'price':source.get('price')})
+        price=current.get('detail_price_seen')
+        if price is None:raise ValueError('own_article_price_unproven')
+        item={'source_url':url,'source_product_id':source_identity(url),'title_raw':source.get('title_raw') or current.get('title_raw'),
+              'listing_price':str(price),'currency':'EUR','listing_observed_at':stamp}
+        target=canonical_target(html,item)
+        result=parse_source(html,item,stamp,canonical_body=transport.get(target) if target else None)
+        price_basis='verified_visible_article_price_fallback';price_at=stamp
+        if source.get('price_source') in ('listing','catalogue') and source.get('listing_observed_at'):
+            try:fresh=0<=(now()-datetime.fromisoformat(source['listing_observed_at'])).total_seconds()<=48*3600
+            except (ValueError,TypeError):fresh=False
+            if fresh:
+                if Decimal(str(source.get('price')))!=Decimal(result['price']):raise ValueError('listing_detail_price_conflict')
+                price_basis='fresh_listing_crosschecked_own_html';price_at=source['listing_observed_at']
+        return {**result,'domain':domain,'artist':result.get('source_artist'),'label':source_label(result['source_title'],result.get('source_artist')),
+          'listing_observed_at':price_at,'price_basis':price_basis,'requests':transport.requests,
+          'ean_check_scope':'own North End product specification labels, verified same-title canonical aliases; no SKU inference'}
     canonical=soup.select_one('link[rel="canonical"]');canonical_url=urljoin(url,canonical.get('href','')) if canonical else url
     approved_url(canonical_url,domain)
     def own_url(p):
@@ -166,7 +190,7 @@ def verify_source(row,transport):
     if any(c and not c.endswith('/NewCondition') for c in conditions) or re.search(r'\b(?:used\s+(?:vinyl|record|lp)|second[- ]hand|pre[- ]owned|tweedehands|2e\s*hands|gebraucht|media condition|sleeve condition)\b',description,re.I):raise ValueError('used_or_ambiguous_condition')
     catalogue=None
     catalogue_format=''
-    is_shopify=bool(re.fullmatch(r'/products/[a-zA-Z0-9-]+/?',urlsplit(url).path))
+    is_shopify=bool(re.fullmatch(r'/(?:[a-z]{2}(?:-[a-z]{2})?/)?(?:collections/[a-zA-Z0-9-]+/)?products/[a-zA-Z0-9-]+/?',urlsplit(url).path))
     def load_catalogue():
         base='https://'+urlsplit(url).netloc+urlsplit(url).path.rstrip('/')
         data=json.loads(transport.get(base+'.js'))
@@ -248,7 +272,7 @@ def claim(conn,limit):
           due as(select id from public.album_offer_queue
           where (status in ('pending_source','source_retry','published','awaiting_market') or id in(select id from revisited)) and next_attempt_at<=now()
             and (lease_until is null or lease_until<now())
-          order by next_attempt_at,updated_at,id for update skip locked limit %s)
+          order by (status='source_review'),next_attempt_at,updated_at,id for update skip locked limit %s)
           update public.album_offer_queue q set claim_token=%s,lease_until=now()+interval '30 minutes',source_attempts=source_attempts+1
           from due where due.id=q.id returning q.*,(select domain from shops where id=q.shop_id) as shop_domain""",(REVISION,capacity,limit,token))
         return cur.fetchall(),token
@@ -314,9 +338,39 @@ def collect(conn,limit=50):
         conn.execute('update public.album_offer_queue set claim_token=null,lease_until=null where claim_token=%s',(token,))
         for transport in transports.values():transport.close()
 
+def verify_capture(path):
+    """Replay a repository-controlled Linux capture without renewing its timestamp.
+
+    This is an explicit manual recovery path. It does not claim the scheduled
+    GitHub runner can access a shop that blocks that runner.
+    """
+    captured=json.loads(path.read_text());raw=captured['raw'];stamp=datetime.fromisoformat(captured['observed_at'])
+    if not -300<=(now()-stamp).total_seconds()<=24*3600:raise ValueError('stale_capture')
+    class Replay:
+        requests=[]
+        def get(self,url):
+            approved_url(url,raw['domain'])
+            response=next((r for r in captured['responses'] if r['url']==url),None)
+            if response is None:raise ValueError('capture_response_missing')
+            body=response['body'];digest=hashlib.sha256(body.encode()).hexdigest()
+            if digest!=response['sha256']:raise ValueError('capture_hash_mismatch')
+            self.requests.append({'url':url,'sha256':digest});return body
+    source_input=captured['source_input']
+    row={'product_url':captured['product_url'],'shop_domain':raw['domain'],'source_product_id':raw['source_product_id'],'source_input':source_input}
+    result=verify_source(row,Replay())
+    # The parser observes a replay now; its public freshness is the actual capture.
+    result['observed_at']=stamp.isoformat()
+    if datetime.fromisoformat(result['listing_observed_at'])>stamp:result['listing_observed_at']=stamp.isoformat()
+    result['capture_provenance']={'origin':'managed_linux_manual_recovery','sha256':hashlib.sha256(path.read_bytes()).hexdigest(),'validator_revision':REVISION,'observed_at':stamp.isoformat()}
+    return {'records':[{'raw':{k:raw[k] for k in ('id','source_url','source_product_id','title_raw','target_shop_id','domain')},'source_input':source_input,'record':result}], 'capture_provenance':result['capture_provenance']}
+
 def main():
     import os,argparse
-    p=argparse.ArgumentParser();p.add_argument('--limit',type=int,default=50);args=p.parse_args()
+    p=argparse.ArgumentParser();p.add_argument('--limit',type=int,default=50);p.add_argument('--verify-capture');p.add_argument('--capture-output');args=p.parse_args()
+    if args.verify_capture:
+        result=verify_capture(Path(args.verify_capture));path=Path(args.capture_output or 'output/album-offer-sources/validated-capture.json')
+        path.parent.mkdir(parents=True,exist_ok=True);path.write_text(json.dumps(result,default=str,ensure_ascii=False,indent=2)+'\n')
+        print(json.dumps({'status':'verified_capture','records':len(result['records'])}));return
     if not 1<=args.limit<=50:raise ValueError('Source pilot limit is 1..50')
     with psycopg.connect(os.environ['DATABASE_URL'],autocommit=True,connect_timeout=20,prepare_threshold=None) as conn:
         if conn.execute("select to_regclass('public.album_offer_queue')").fetchone()[0]:
