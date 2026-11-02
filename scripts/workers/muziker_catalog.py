@@ -102,6 +102,9 @@ def write_rows(conn, rows: list[dict], run_id: str) -> int:
     if not shop:
         raise RuntimeError("muziker_shop_registration_failed")
     shop_id = shop[0]
+    conn.execute("""insert into public.scrape_runs
+      (id,shop_id,job_type,status,config) values(%s,%s,'catalog','running',%s)""",
+      (run_id, shop_id, Jsonb({"source": DOMAIN, "route": CATALOG, "artist_title": True, "database_writes": True})))
     written = 0
     for row in rows:
         raw_id = uuid.uuid5(uuid.NAMESPACE_URL, f"muziker:{row['source_url']}:{row['observed_at'][:10]}")
@@ -135,6 +138,9 @@ def write_rows(conn, rows: list[dict], run_id: str) -> int:
                   "currency": "EUR", "format": "LP", "price_source": "listing",
                   "listing_observed_at": row["observed_at"], "label": f"{row['artist']} {row['title']}",
               })))
+    conn.execute("""update public.scrape_runs set status='completed',finished_at=now(),
+      items_found=%s,items_processed=%s,items_success=%s,items_failed=0 where id=%s""",
+      (len(rows), len(rows), written, run_id))
     return written
 
 
