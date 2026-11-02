@@ -83,7 +83,16 @@ def _ingest(rows,dsn,run,*,production=False,promote=True):
     if len(rows)>15000:raise ValueError('Unexpected source size; refusing unbounded writes')
     # Helpers intentionally share the existing DATABASE_URL contract in tests.
     if os.environ.get('DATABASE_URL')!=dsn:raise ValueError('Test DB must match the explicit DATABASE_URL')
-    result=preview(rows);good=[];raw_inserted=0;raw_reused=0;products_created=0;prices_inserted=0;prices_changed=0;prices_written=0;history_written=0;quarantined=0;newer_preserved=0
+    result=preview(rows);good=[];canonical_blocked={}
+    if production:
+        from scripts.workers.velvetdelft_release_controls import conflicts,hold
+        canonical_blocked=conflicts(rows,dsn);hold(rows,canonical_blocked,dsn)
+        for item in result['records']:
+            row=next(r for r in rows if r['source_product_id']==item['release_id'])
+            if row.get('gtin14') in canonical_blocked:item.update(promotion='quarantine',reason='canonical_format_conflict')
+        result['promotion_valid']=sum(r['promotion']=='valid' for r in result['records'])
+        result['quarantine']=sum(r['promotion']=='quarantine' for r in result['records'])
+    raw_inserted=0;raw_reused=0;products_created=0;prices_inserted=0;prices_changed=0;prices_written=0;history_written=0;quarantined=0;newer_preserved=0
     guarded={r['release_id']:r['reason'] for r in result['records'] if r['reason']}
     waiting={r['release_id'] for r in result['records'] if r['promotion']=='awaiting_details'}
     with psycopg.connect(dsn,prepare_threshold=None) as conn:
@@ -173,6 +182,9 @@ def sync_existing_prices(rows,dsn,minimum_listing_at=None):
     if minimum_listing_at:
         threshold=datetime.fromisoformat(minimum_listing_at)
         rows=[r for r in rows if datetime.fromisoformat(r['listing_observed_at'])>=threshold]
+    from scripts.workers.velvetdelft_release_controls import conflicts,hold
+    blocked=conflicts(rows,dsn);hold(rows,blocked,dsn)
+    rows=[r for r in rows if r.get('gtin14') not in blocked]
     validation=preview(rows)
     allowed={r['release_id'] for r in validation['records'] if r['promotion']=='valid'}
     valid=[r for r in rows if r['source_product_id'] in allowed]

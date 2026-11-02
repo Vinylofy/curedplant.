@@ -29,10 +29,16 @@ def audit():
     return {'database_writes':False,'write_capabilities':privileges,'columns':columns,'constraints':checks,'registered_shops':[list(map(str,r)) for r in shops],'usf_counts':counts,'price_count':price_count,'monitor_snapshot':snapshot,'excluded_offers':[[str(v) for v in row] for row in excluded],'offer_samples':[[str(v) for v in row] for row in samples]}
 
 if __name__=='__main__':
-    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--require-write',action='store_true');parser.add_argument('--refresh-monitor',action='store_true');args=parser.parse_args()
+    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--require-write',action='store_true');parser.add_argument('--refresh-monitor',action='store_true');parser.add_argument('--release-controls',action='store_true');args=parser.parse_args()
+    release_controls=None
+    if args.release_controls:
+        from scripts.workers.velvetdelft_schedule import restore
+        from scripts.workers.velvetdelft_release_controls import apply
+        state=restore('output/velvetdelft/state.json')
+        release_controls=apply([r for r in state['records'].values() if r.get('detail_observed_at')],os.environ['DATABASE_URL'])
     if args.refresh_monitor:
         with psycopg.connect(os.environ['DATABASE_URL'],prepare_threshold=None) as conn:
             conn.execute("select * from public.refresh_shop_catalog_daily((now() at time zone 'Europe/Amsterdam')::date,48)")
-    result=audit();save('output/velvetdelft/database-audit.json',result)
+    result=audit();result['release_controls']=release_controls;save('output/velvetdelft/database-audit.json',result)
     if args.require_write and not all(row[2] for row in result['write_capabilities']):raise ValueError('Required USF database write privileges are missing; source collection stays off')
     print(json.dumps(result,default=str))

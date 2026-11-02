@@ -5,7 +5,7 @@ on:
       mode:
         description: 'audit = database read-only; write = process existing checked EANs'
         type: choice
-        options: [audit, write, monitor]
+        options: [audit, write, monitor, controls]
         default: audit
 permissions:
   contents: write
@@ -32,6 +32,7 @@ jobs:
         run: |
           args=()
           if [ "$JOB_MODE" = monitor ]; then args+=(--refresh-monitor); fi
+          if [ "$JOB_MODE" = controls ]; then args+=(--release-controls --refresh-monitor); fi
           python -m scripts.workers.velvetdelft_database_audit "${args[@]}"
       - name: Restore the previously collected source data
         if: inputs.mode == 'write'

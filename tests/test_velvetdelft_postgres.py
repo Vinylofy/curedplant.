@@ -14,6 +14,7 @@ BUSINESS_SCHEMA='''
 create table shops(id uuid primary key default gen_random_uuid(),name text,domain text unique,country text,shop_type text,is_active boolean default true,updated_at timestamptz default now());
 create table products(id uuid primary key default gen_random_uuid(),ean text unique,gtin_normalized text unique,artist text,title text,format_label text,cover_url text,canonical_key text,artist_normalized text,title_normalized text,search_text text,metadata_source text,metadata_status text,metadata_confidence numeric,metadata_needs_review boolean,created_at timestamptz default now(),updated_at timestamptz default now());
 create table prices(product_id uuid references products(id),shop_id uuid references shops(id),price numeric,currency text,product_url text,availability text,first_seen_at timestamptz,last_seen_at timestamptz,is_active boolean,ean_raw text,gtin_normalized text,created_at timestamptz,updated_at timestamptz,primary key(product_id,shop_id));
+create table shop_shipping_destinations(shop_id uuid references shops(id),country_code text,status text,source_url text,verified_at timestamptz,note text,primary key(shop_id,country_code));
 create table price_history(product_id uuid,shop_id uuid,price numeric,currency text,availability text,captured_at timestamptz,created_at timestamptz);
 '''
 
@@ -28,7 +29,7 @@ class PipelinePostgresTests(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         with psycopg.connect(DSN) as conn:
-            conn.execute('drop table price_history,prices,products,shops,quarantine_offers,staged_offers,raw_shop_scrapes,shop_product_links,scrape_runs cascade')
+            conn.execute('drop table shop_shipping_destinations,price_history,prices,products,shops,quarantine_offers,staged_offers,raw_shop_scrapes,shop_product_links,scrape_runs cascade')
     def setUp(self):
         self.env=patch.dict(os.environ,{'DATABASE_URL':DSN});self.env.start();self.addCleanup(self.env.stop)
         with psycopg.connect(DSN) as conn:
@@ -164,6 +165,28 @@ class PipelinePostgresTests(unittest.TestCase):
         retry=ingest(rows,DSN)
         self.assertEqual((retry['prices_written'],retry['persisted_counts']['prices']),(42,92))
         self.assertEqual(retry['raw_inserted'],0)
+    def test_canonical_cd_conflict_holds_this_shop_without_altering_other_shop(self):
+        row=good();ingest([row],DSN)
+        with psycopg.connect(DSN) as conn:
+            conn.execute("update products set format_label='CD',metadata_source='musicbrainz',metadata_status='verified'")
+            other=conn.execute("insert into shops(name,domain,country) values('Other','other.test','NL') returning id").fetchone()[0]
+            product=conn.execute('select id from products').fetchone()[0]
+            conn.execute("insert into prices(product_id,shop_id,price,currency,product_url,availability,is_active) values(%s,%s,10,'EUR','https://other.test/album','in_stock',true)",(product,other))
+        result=ingest([row],DSN,production=True)
+        self.assertEqual((result['quarantine'],result['prices_written']),(1,0))
+        with psycopg.connect(DSN) as conn:
+            self.assertEqual(conn.execute("select p.is_active from prices p join shops s on s.id=p.shop_id where s.domain='velvetdelft.nl'").fetchone()[0],False)
+            self.assertEqual(conn.execute('select is_active from prices where shop_id=%s',(other,)).fetchone()[0],True)
+            self.assertEqual(conn.execute('select format_label from products').fetchone()[0],'CD')
+    def test_nl_registration_does_not_infer_fees_or_override_an_explicit_exclusion(self):
+        from scripts.workers.velvetdelft_release_controls import register_nl
+        ingest([good()],DSN);result=register_nl(DSN)
+        self.assertEqual(result['fees'],'unknown')
+        with psycopg.connect(DSN) as conn:
+            self.assertEqual(conn.execute('select country_code,status from shop_shipping_destinations').fetchall(),[('NL','confirmed')])
+            conn.execute("update shop_shipping_destinations set status='not_supported'")
+        with self.assertRaisesRegex(ValueError,'exclusion'):register_nl(DSN)
+        with psycopg.connect(DSN) as conn:self.assertEqual(conn.execute('select status from shop_shipping_destinations').fetchone()[0],'not_supported')
     def test_usf_preview_does_not_mutate_any_table(self):
         r=good();ingest([r],DSN)
         with psycopg.connect(DSN) as conn:
