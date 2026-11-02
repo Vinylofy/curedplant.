@@ -1,4 +1,4 @@
-name: "Curedplant | EAN Detail | Velvet Delft | Daily 1000 then weekly 250"
+name: "Curedplant | EAN Detail | Velvet Delft | Daily 1000 then weekly 250 | USF write"
 on:
   schedule:
     - cron: '17 5 * * *'

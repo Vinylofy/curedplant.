@@ -113,6 +113,22 @@ class SourceTests(unittest.TestCase):
         result=preview([r,other])
         self.assertEqual(result['promotion_valid'],0)
         self.assertTrue(all(x['reason']=='conflicting_gtin_offers' for x in result['records']))
+    def test_detail_recovery_clears_previous_quarantine_reason(self):
+        row=good();row.update(reason='Old barcode conflict',ean_status='quarantine')
+        result=shop.enrich(row,fixture('detail'))
+        self.assertEqual((result['reason'],result['ean_status']),('','verified'))
+    def test_price_refresh_preserves_already_completed_missing_ean_checks(self):
+        row=shop.parse_listing(fixture('filtered-prog-1'),shop.BASE+'/nl/pagina/prog')['records'][0]
+        row.update(ean_status='missing',detail_observed_at=datetime.now(timezone.utc).isoformat(),detail_parser_revision=shop.DETAIL_REVISION,detail_next_at=(datetime.now(timezone.utc)+timedelta(days=7)).isoformat())
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/'state.json'
+            shop.save(path,{'version':1,'shop_id':'velvetdelft','records':{row['source_product_id']:row},'categories':{},'requests':[]})
+            client=Mock(requests=[])
+            client.get.side_effect=lambda url:fixture('home') if url==shop.BASE+'/nl' else fixture('controls-prog')
+            client.post_listing.return_value=fixture('filtered-prog-1')
+            with patch('scripts.scrapers.velvetdelft.initial_routes',return_value={'prog':shop.BASE+'/nl/pagina/prog'}):
+                result=shop.collect('prices',path,max_pages=2,transport=client)
+            self.assertEqual(result['records'][row['source_product_id']]['ean_status'],'missing')
     def test_test_database_guard(self):
         with self.assertRaises(ValueError):isolated_only('postgresql://user@prod.example/postgres')
         isolated_only('postgresql://user@127.0.0.1/postgres')

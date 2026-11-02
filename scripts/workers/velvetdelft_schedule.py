@@ -80,7 +80,7 @@ def restore(path):
         candidates.append(json.loads(gzip.decompress(data)))
     for state in candidates:
         if state.get('shop_id')!='velvetdelft' or state.get('version')!=1:raise ValueError('Wrong source checkpoint')
-    state=max(candidates,key=lambda s:s.get('updated_at',''))
+    state=max(candidates,key=lambda s:(s.get('updated_at',''),s.get('database',{}).get('last_write_at','')))
     save(target,state)
     return state
 

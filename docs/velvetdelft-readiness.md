@@ -1,8 +1,22 @@
 # Velvet Delft — brononderzoek en readiness
 
-Status: **EAN-automatisering actief; databasepublicatie nog niet vrijgegeven.**
+Status: **Databasewrites geautoriseerd; eerste productiewrite wordt gecontroleerd vóór hervatting van de planning.**
 
 Geïntegreerd op `main`, via [PR #2](https://github.com/Vinylofy/curedplant./pull/2). Frontend en bestaande shops zijn niet aangepast. Het slug `velvetdelft` is toegevoegd aan de importerregistry en als **disabled** USF-shop geregistreerd; de bestaande productiedatabase-registratie is niet onderzocht of gewijzigd.
+
+## Databasewrites geautoriseerd en hervatting — 2 november 2026
+
+De gebruiker heeft nu expliciet toestemming gegeven voor **databasewrites**. De productieschema-audit is daadwerkelijk groen: [41463471347](https://github.com/Vinylofy/curedplant./actions/runs/41463471347). Voor de eerste write waren geen Velvet-shop, USF-links, raw snapshots of stagingregels aanwezig. Het schema en de constraints passen bij de tien opnieuw geslaagde geïsoleerde PostgreSQL-tests, waaronder de expliciete production-opt-in en stage-only-modus. Daarnaast slagen 34 offline controles en actionlint.
+
+De productie-ingang is de bestaande Velvet USF-adapter met `--write`; deze ontvangt alleen in die afzonderlijke step het reeds geconfigureerde `DATABASE_URL`-secret. De scraper ontvangt dat secret niet. De directe CSV-importer blijft read-only om de USF-bron-/stagingregels te behouden. Brondata met een afgeronde detailcontrole wordt naar links/raw/staging/quarantaine geschreven. Alleen nieuwe vinylplaten met een checksum-geldige, bevestigde barcode, EUR-prijs en een maximaal 48 uur oude eigen listingwaarneming mogen door naar `products`/`prices`. MusicBrainz/canonieke metadata en recentere prijzen blijven beschermd. Bij een bronfout schrijft de pipeline staging, zonder promotion. Er wordt niet gedelist.
+
+De al verzamelde 1.010 bevestigde EANs worden hergebruikt. De voorafgaande controle vond 975 publiceerbare records en 35 zonder bruikbare listingprijs. [Eerste echte database-write 41464446761](https://github.com/Vinylofy/curedplant./actions/runs/41464446761) is gestart; definitieve opgeslagen aantallen worden pas na de postcontrole opgenomen.
+
+De EAN-flow krijgt `write=true` als standaard voor schedules en handmatige automatische runs. Het dagbudget blijft staan: vandaag zijn al 1.000 detailchecks gedaan; opnieuw starten verwerkt eerst de nog niet weggeschreven gegevens en forceert geen extra 1.000 websiteverzoeken. Databaseachterstand wordt ook verwerkt als de EAN-daglimiet al verbruikt is. De voortgangscheckpoint houdt apart bij welke detailwaarnemingen naar de database zijn verwerkt.
+
+De prijsflow blijft onafhankelijk en staat dagelijks op **04:03 UTC** (05:03 Nederlandse wintertijd, 06:03 zomertijd), met databasewrites. Hij ververst de listingcatalogus en hergebruikt bevestigde EANs. De EAN-flow blijft op 05:17 UTC: dagelijks maximaal 1.000 eerste controles, daarna maximaal 250 per week. Wekelijkse EAN-controle verlaagt dus niet de frequentie van de prijsverversing. Een listingrefresh behoudt ook eerder afgehandelde ontbrekende/afgekeurde EANs, zodat de eerste ronde niet onbedoeld opnieuw begint.
+
+De vier onbetrouwbare collectietellingen blijven als bronreview gemarkeerd; ze vormen geen reden om aantoonbaar geldige individuele bronrecords buiten de database te houden. Niet-gecontroleerde records blijven in de verrijkingsrij. Het productionele bewijs wordt hieronder aangevuld zodra de echte writerun is afgerond.
 
 ## Geautoriseerde EAN-automatisering — 2 november 2026
 

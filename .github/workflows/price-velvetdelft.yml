@@ -1,4 +1,4 @@
-name: "Curedplant | Price | Velvet Delft | Manual review"
+name: "Curedplant | Price | Velvet Delft | Daily listing write"
 on:
   schedule:
     - cron: '3 4 * * *'

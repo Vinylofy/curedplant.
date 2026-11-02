@@ -21,6 +21,7 @@ def map_velvet_row(row,line):
         if RELEASE.match(urlsplit(url).path)[1]!=str(row['source_product_id']):return None,'release_id_conflict'
         if not row.get('artist') or not row.get('title'):return None,'missing_artist_title'
         if row.get('currency')!='EUR':return None,'currency_conflict'
+        if row.get('price') in (None,''):return None,'missing_listing_price'
         price=Decimal(str(row['price']))
         if not price.is_finite() or price<=0:return None,'invalid_listing_price'
         at=datetime.fromisoformat(row['listing_observed_at']);detail=datetime.fromisoformat(row['detail_observed_at'])
@@ -35,7 +36,7 @@ def map_velvet_row(row,line):
     except (ValueError,KeyError,TypeError,ArithmeticError):return None,'invalid_source_fields'
 
 
-SHOP_DEFINITION=ShopImporterDefinition(key='velvetdelft',config=CONFIG,importer_module='scripts.importers.import_velvetdelft',scraper_command_env='VINYLOFY_SCRAPER_CMD_VELVETDELFT',storage_prefix='velvetdelft',files=ImportFileLayout('output/velvetdelft/products.csv','output/velvetdelft/rejects.csv','output/velvetdelft/import-summary.json'),row_mapper=map_velvet_row,description=__doc__,required_columns=('source_product_id','source_url','artist','title','format','price','currency','availability','listing_observed_at','condition','ean','gtin14','ean_status','detail_observed_at','reason'),optional_columns=('regular_price','availability_raw','listing_url','detail_next_at'),tags=('vinyl','listing-first','ean-gated','manual-only'),include_in_all=False)
+SHOP_DEFINITION=ShopImporterDefinition(key='velvetdelft',config=CONFIG,importer_module='scripts.importers.import_velvetdelft',scraper_command_env='VINYLOFY_SCRAPER_CMD_VELVETDELFT',storage_prefix='velvetdelft',files=ImportFileLayout('output/velvetdelft/products.csv','output/velvetdelft/rejects.csv','output/velvetdelft/import-summary.json'),row_mapper=map_velvet_row,description=__doc__,required_columns=('source_product_id','source_url','artist','title','format','price','currency','availability','listing_observed_at','condition','ean','gtin14','ean_status','detail_observed_at','reason'),optional_columns=('regular_price','availability_raw','listing_url','detail_next_at'),tags=('vinyl','listing-first','ean-gated','usf-write'),include_in_all=False)
 
 if __name__=='__main__':
     if '--dry-run' not in sys.argv:raise SystemExit('Use the Velvet Delft USF pipeline with --write for database processing. This direct importer requires --dry-run.')

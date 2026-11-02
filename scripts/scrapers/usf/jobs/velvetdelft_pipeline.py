@@ -127,13 +127,15 @@ def _ingest(rows,dsn,run,*,production=False,promote=True):
                 # Prevent the shared permissive staging path from admitting rejected sources.
                 conn.execute("insert into staged_offers(raw_scrape_id,run_id,shop_id,source_url,source_product_id,stage_status,stage_reason) values(%s,%s,%s,%s,%s,'quarantined',%s)",(raw['id'],run,SHOP_ID,row['source_url'],row['source_product_id'],reason))
             else:good.append((raw['id'],rec))
+            if i%50==0:print(json.dumps({'phase':'raw_preparation','processed':i,'target':len(rows)}),flush=True)
+    print(json.dumps({'phase':'raw_committed','inserted':raw_inserted,'reused':raw_reused}),flush=True)
     staged=stage_latest_raw_snapshots(shop_id=SHOP_ID,limit=max(1,len(rows)),write=True)
     with psycopg.connect(dsn,prepare_threshold=None) as conn:
         with conn.cursor() as cur:
             shop=ensure_shop(cur,CONFIG)
             if production:
                 cur.execute("update shops set shop_type='physical_record_store' where id=%s and shop_type is null",(shop,))
-            for raw_id,record in good:
+            for promotion_index,(raw_id,record) in enumerate(good,1):
                 if not promote:continue
                 target=cur.execute("select id from staged_offers where raw_scrape_id=%s and stage_status='staged' for update",(raw_id,)).fetchone()
                 if not target:continue
@@ -147,6 +149,7 @@ def _ingest(rows,dsn,run,*,production=False,promote=True):
                 prices_inserted+=int(inserted);prices_changed+=int(changed);prices_written+=1
                 history_written+=int(maybe_insert_history(cur,product,shop,record))
                 cur.execute("update staged_offers set stage_status='promoted',stage_reason=null where id=%s",(target[0],))
+                if promotion_index%50==0:print(json.dumps({'phase':'promotion_in_transaction','processed':promotion_index,'target':len(good)}),flush=True)
                 cur.execute("update quarantine_offers set resolved_at=now() where shop_id=%s and source_url=%s and issue_type='source_validation' and resolved_at is null",(SHOP_ID,record.product_url))
             cur.execute("update scrape_runs set status='completed',finished_at=now(),items_found=%s,items_processed=%s,items_success=%s,items_failed=%s where id=%s",(len(rows),len(rows),result['promotion_valid'],result['quarantine'],run))
     with psycopg.connect(dsn,prepare_threshold=None) as conn:
@@ -172,6 +175,7 @@ def main():
         if not dsn:raise ValueError('DATABASE_URL is required for write=true')
         report=ingest(checked,dsn,production=True,promote=not a.stage_only and not capture.get('error'))
         capture['database']={'last_write_at':datetime.now(timezone.utc).isoformat(),'last_run_id':report['run_id'],'persisted_counts':report['persisted_counts'],'processed_detail_at':{r['source_product_id']:r['detail_observed_at'] for r in checked}}
+        capture['updated_at']=datetime.now(timezone.utc).isoformat()
         save(a.capture,capture)
     else:report=preview(checked)
     save(a.out,report)
