@@ -8,6 +8,9 @@ on:
       max_pages:
         type: string
         default: '25'
+      refresh:
+        type: boolean
+        default: false
       detail_limit:
         type: string
         default: '100'
@@ -35,18 +38,38 @@ jobs:
           path: output/velvetdelft/state.json
           key: velvetdelft-v1-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: velvetdelft-v1-
+      - name: Seed reviewed discovery checkpoint when cache is empty
+        run: |
+          python - <<'PYCODE'
+          import gzip, hashlib, json
+          from pathlib import Path
+          path=Path('output/velvetdelft/state.json')
+          if not path.exists():
+              proof=json.loads(Path('docs/validation/velvetdelft-20261102.json').read_text())
+              data=Path(proof['catalogue_snapshot']['path']).read_bytes()
+              if hashlib.sha256(data).hexdigest()!=proof['catalogue_snapshot']['sha256']:
+                  raise ValueError('Reviewed discovery checkpoint checksum mismatch')
+              state=json.loads(gzip.decompress(data))
+              if state.get('shop_id')!='velvetdelft' or state.get('version')!=1:
+                  raise ValueError('Wrong discovery checkpoint')
+              path.parent.mkdir(parents=True,exist_ok=True)
+              path.write_text(json.dumps(state))
+          PYCODE
       - name: Read-only listing or detail collection
         env:
           MODE: ${{ inputs.mode }}
           MAX_PAGES: ${{ inputs.max_pages }}
           DETAIL_LIMIT: ${{ inputs.detail_limit }}
+          REFRESH: ${{ inputs.refresh && 'true' || 'false' }}
           PYTHONUNBUFFERED: '1'
         run: |
           if [ "$MODE" = details ] && [ ! -f output/velvetdelft/state.json ]; then
             echo 'Run Velvet Delft Discovery first to create a checkpoint.' >&2
             exit 1
           fi
-          python -m scripts.scrapers.velvetdelft --mode "$MODE" --max-pages "$MAX_PAGES" --detail-limit "$DETAIL_LIMIT"
+          args=()
+          if [ "$REFRESH" = true ]; then args+=(--refresh); fi
+          python -m scripts.scrapers.velvetdelft --mode "$MODE" --max-pages "$MAX_PAGES" --detail-limit "$DETAIL_LIMIT" "${args[@]}"
       - name: Importer header validation and dry-run
         run: python -m scripts.importers.import_velvetdelft --dry-run
       - name: USF staging and promotion preview without database connection

@@ -76,6 +76,9 @@ class SourceTests(unittest.TestCase):
         from bs4 import BeautifulSoup
         s=BeautifulSoup(fixture('detail'),'html.parser');s.select_one('small').string='sku'
         self.assertEqual(shop.enrich(row,str(s))['ean_status'],'missing')
+    def test_jsonld_product_barcode_conflicts_are_not_ignored(self):
+        html=fixture('detail')+'<script type="application/ld+json">{"@type":"Product","sku":"544832","gtin13":"0602455508508"}</script>'
+        with self.assertRaisesRegex(ValueError,'Conflicting'):shop.enrich(good(),html)
     def test_wrong_release_and_foreign_urls_fail(self):
         with self.assertRaisesRegex(ValueError,'release conflict'):shop.enrich(good(),fixture('detail').replace('/544832/','/544833/'))
         for u in ['http://www.velvetdelft.nl/nl','https://evil.test/nl/release/1/a','https://x@www.velvetdelft.nl/nl']:
@@ -105,6 +108,11 @@ class SourceTests(unittest.TestCase):
         with patch('psycopg.connect',side_effect=AssertionError('DB must not open')):
             r=good();report=preview([r,{**r,'source_product_id':'544833','ean':'','ean_status':'missing'}])
         self.assertEqual(report['promotion_valid'],1);self.assertEqual(report['quarantine'],1);self.assertFalse(report['database_writes'])
+    def test_conflicting_same_gtin_editions_quarantine_instead_of_merge(self):
+        r=good();other={**r,'source_product_id':'544833','source_url':r['source_url'].replace('/544832/','/544833/'),'format':'2-LP','price':'29.99'}
+        result=preview([r,other])
+        self.assertEqual(result['promotion_valid'],0)
+        self.assertTrue(all(x['reason']=='conflicting_gtin_offers' for x in result['records']))
     def test_test_database_guard(self):
         with self.assertRaises(ValueError):isolated_only('postgresql://user@prod.example/postgres')
         isolated_only('postgresql://user@127.0.0.1/postgres')

@@ -38,16 +38,23 @@ def raw_row(row):
 
 
 def preview(rows):
+    identities={}
+    for row in rows:
+        if row.get('gtin14') and row.get('ean_status')=='verified':
+            identities.setdefault(row['gtin14'],set()).add((row.get('artist'),row.get('title'),row.get('format'),row.get('price'),row.get('availability')))
+    conflicts={gtin for gtin,offers in identities.items() if len(offers)>1}
     results=[]
     for line,row in enumerate(rows,1):
         record,reason=map_velvet_row(row,line);raw=raw_row(row)
+        if row.get('gtin14') in conflicts:record,reason=None,'conflicting_gtin_offers'
         stage=build_stage_item(raw)
         if record:
             staged={'staged_offer_id':'dry-run','source_url':row['source_url'],'source_product_id':row['source_product_id'],'title_raw':raw['title_raw'],'ean_match_key':record.ean,'price':record.price,'availability':record.availability,'currency':'EUR','scraped_at':record.captured_at,'raw_payload':raw['payload']}
             check=staged_row_to_record(row=staged,config=PROMOTION,line_number=line)
             if check.price!=record.price or check.ean!=record.ean:raise ValueError('USF contract disagreement')
-        results.append({'release_id':row['source_product_id'],'stage_reason':stage.stage_reason,'promotion':'valid' if record else 'quarantine','reason':reason,'price_source':'listing','price':row.get('price'),'availability':row['availability'],'ean':record.ean if record else None})
-    return {'shop_id':SHOP_ID,'database_writes':False,'discovered':len(rows),'stage_valid':sum(not r['stage_reason'] for r in results),'promotion_valid':sum(r['promotion']=='valid' for r in results),'quarantine':sum(r['promotion']=='quarantine' for r in results),'records':results}
+        waiting=row.get('ean_status')=='pending' and not row.get('ean') and not row.get('gtin14')
+        results.append({'release_id':row['source_product_id'],'stage_reason':stage.stage_reason,'promotion':'valid' if record else 'awaiting_details' if waiting else 'quarantine','reason':reason,'price_source':'listing','price':row.get('price'),'availability':row['availability'],'ean':record.ean if record else None})
+    return {'shop_id':SHOP_ID,'database_writes':False,'discovered':len(rows),'stage_valid':sum(not r['stage_reason'] for r in results),'promotion_valid':sum(r['promotion']=='valid' for r in results),'quarantine':sum(r['promotion']=='quarantine' for r in results),'awaiting_details':sum(r['promotion']=='awaiting_details' for r in results),'records':results}
 
 
 def isolated_only(dsn):
@@ -57,15 +64,38 @@ def isolated_only(dsn):
 
 
 def ingest(rows,dsn):
-    """Standard USF tables, helpers and transactions. Test-only mutation entrypoint."""
+    """Test-only entrypoint with explicit failed-run evidence and safe recovery."""
+    import psycopg
+    isolated_only(dsn)
+    if os.environ.get('DATABASE_URL')!=dsn:raise ValueError('Test DB must match the explicit DATABASE_URL')
+    run=str(uuid4())
+    try:return _ingest(rows,dsn,run)
+    except Exception as exc:
+        with psycopg.connect(dsn,prepare_threshold=None) as conn:
+            conn.execute("update scrape_runs set status='failed',finished_at=now(),error_message=%s where id=%s and shop_id=%s",(str(exc)[:1000],run,SHOP_ID))
+        raise
+
+
+def _ingest(rows,dsn,run):
+    """Standard USF tables, helpers and transactions. Never called by source workflows."""
     import psycopg
     isolated_only(dsn)
     # Helpers intentionally share the existing DATABASE_URL contract in tests.
     if os.environ.get('DATABASE_URL')!=dsn:raise ValueError('Test DB must match the explicit DATABASE_URL')
-    result=preview(rows);run=str(uuid4());good=[]
+    result=preview(rows);good=[]
+    guarded={r['release_id']:r['reason'] for r in result['records'] if r['reason']}
+    waiting={r['release_id'] for r in result['records'] if r['promotion']=='awaiting_details'}
     with psycopg.connect(dsn,prepare_threshold=None) as conn:
         conn.execute("insert into scrape_runs(id,shop_id,job_type,status,config) values(%s,%s,'onboarding','running',%s)",(run,SHOP_ID,Jsonb({'isolated_test':True})))
-    # Preserve prior detail evidence/URL; no delisting is ever performed here.
+    # Reuse the existing release link if the storefront changes a slug/URL.
+    # Duplicate pre-existing release identities need review, never a broad cleanup.
+    with psycopg.connect(dsn,prepare_threshold=None) as conn:
+        for row in rows:
+            existing=conn.execute('select id,source_url from shop_product_links where shop_id=%s and source_product_id=%s for update',(SHOP_ID,row['source_product_id'])).fetchall()
+            if len(existing)>1:raise ValueError('Ambiguous existing release links')
+            if existing and existing[0][1]!=row['source_url']:
+                conn.execute('update shop_product_links set source_url=%s where id=%s and shop_id=%s',(row['source_url'],existing[0][0],SHOP_ID))
+    # Preserve prior detail evidence; no delisting is ever performed here.
     links=[DiscoveredLink(SHOP_ID,r['source_url'],r['source_product_id'],{'listing':r}) for r in rows]
     upsert_discovered_links(links,preserve_payload_keys=('last_successful_ean','last_successful_ean_at'))
     with psycopg.connect(dsn,prepare_threshold=None) as conn:
@@ -73,10 +103,15 @@ def ingest(rows,dsn):
             raw=raw_row(row);signature=hashlib.sha256(json.dumps(row,sort_keys=True).encode()).hexdigest()
             # Source release identity and exact snapshot fingerprint: repeat is a no-op.
             exists=conn.execute("select id from raw_shop_scrapes where shop_id=%s and source_product_id=%s and payload->>'capture_fingerprint'=%s limit 1",(SHOP_ID,row['source_product_id'],signature)).fetchone()
-            if exists:continue
+            if exists:
+                record,reason=map_velvet_row(row,i)
+                if record and row['source_product_id'] not in guarded:good.append((exists[0],record))
+                continue
             raw['payload']['capture_fingerprint']=signature
             conn.execute("insert into raw_shop_scrapes(id,run_id,shop_id,source_url,source_product_id,title_raw,ean_raw,price_raw,availability_raw,payload,scraped_at) values(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)",(raw['id'],run,SHOP_ID,raw['source_url'],raw['source_product_id'],raw['title_raw'],raw['ean_raw'],raw['price_raw'],raw['availability_raw'],Jsonb(raw['payload']),raw['scraped_at']))
             rec,reason=map_velvet_row(row,i)
+            reason=guarded.get(row['source_product_id']) or reason
+            if row['source_product_id'] in waiting:continue
             if reason:
                 conn.execute("insert into quarantine_offers(shop_id,source_url,issue_type,issue_detail,payload) values(%s,%s,'source_validation',%s,%s)",(SHOP_ID,row['source_url'],reason,Jsonb({'raw_scrape_id':raw['id'],'source':row})))
                 # Prevent the shared permissive staging path from admitting rejected sources.

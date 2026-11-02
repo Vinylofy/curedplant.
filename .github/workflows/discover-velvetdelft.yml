@@ -2,6 +2,10 @@ name: "Curedplant | Discovery | Velvet Delft | Manual review"
 on:
   workflow_dispatch:
     inputs:
+      refresh:
+        description: 'Start a new listing cycle, retaining verified EANs'
+        type: boolean
+        default: false
       max_pages:
         description: 'Maximum listing pages; resumes at next saved category/page (1..1000)'
         type: string
@@ -13,4 +17,5 @@ jobs:
     uses: ./.github/workflows/_velvetdelft-worker.yml
     with:
       mode: discovery
+      refresh: ${{ inputs.refresh }}
       max_pages: ${{ inputs.max_pages }}

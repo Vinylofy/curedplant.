@@ -14,7 +14,7 @@ CONFIG=ImportConfig(shop_name='Velvet Music Delft',shop_domain='velvetdelft.nl',
 def map_velvet_row(row,line):
     try:
         gtin=strict_normalize_gtin(row.get('ean'))
-        if not gtin or row.get('ean_status')!='verified' or row.get('gtin14')!=gtin:return None,'unverified_or_conflicting_gtin'
+        if not gtin or not int(gtin) or row.get('ean_status')!='verified' or row.get('gtin14')!=gtin:return None,'unverified_or_conflicting_gtin'
         if row.get('condition')!='new' or not VINYL.fullmatch(row.get('format','')):return None,'not_new_unambiguous_vinyl'
         if row.get('reason'):return None,'source_quarantine'
         url=safe_url(row['source_url'],True)

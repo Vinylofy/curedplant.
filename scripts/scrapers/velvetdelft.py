@@ -17,6 +17,7 @@ from scripts.importers.common import strict_normalize_gtin
 
 BASE = 'https://www.velvetdelft.nl'
 SHOP_ID = 'velvetdelft'
+DETAIL_REVISION = 'velvetdelft-detail-v1'
 USER_AGENT = 'VinylofyVelvetDelftResearch/1.0'
 GENRES = ('countryblues','danceelektronisch','heavy-metal','hip-hop','jazz','kpop','nederlands','poprock','prog','reggae','soulrnb','soundtracks','wereld')
 # Verified against the current Jazz / Sale controls (see source proof).
@@ -145,6 +146,8 @@ def block_config(html):
     payload['media']=','.join(VINYL_MEDIA);payload['blockid']=block
     # Both are choices actually exposed by the UI's stock checkbox / page-size radios.
     payload['instockonly']='false'
+    # The public paginator flag is needed on blocks whose UI hides pagination.
+    payload['p']='true'
     limits=[n.get('value','') for n in s.select(f'input.limit{block}') if n.get('value','').isdigit()]
     allowed=[int(x) for x in limits if 1<=int(x)<=192]
     if not allowed:raise ValueError('Missing bounded public page size controls')
@@ -209,15 +212,24 @@ def enrich(row,html):
     # Only the product specification labelled barcode, never track text/SKU.
     labels=[n for n in s.select('small') if text(n).lower() in ('barcode','ean','gtin','upc')]
     explicit=[text(n.parent.select_one('strong')) for n in labels]
-    evidence=explicit+row.get('url_barcodes',[])+url_codes(url)
-    invalid=[c for c in evidence if c and not strict_normalize_gtin(c)]
+    structured=[]
+    for script in s.select('script[type="application/ld+json"]'):
+        try:metadata=json.loads(script.string or script.get_text())
+        except (ValueError,TypeError):continue
+        nodes=metadata if isinstance(metadata,list) else metadata.get('@graph',[metadata]) if isinstance(metadata,dict) else []
+        for node in nodes:
+            if not isinstance(node,dict) or node.get('@type')!='Product':continue
+            if node.get('sku') and str(node['sku'])!=row['source_product_id']:continue
+            structured.extend(str(node[k]) for k in ('gtin','gtin8','gtin12','gtin13','gtin14') if node.get(k))
+    evidence=explicit+structured+row.get('url_barcodes',[])+url_codes(url)
+    invalid=[c for c in evidence if c and (not strict_normalize_gtin(c) or not int(strict_normalize_gtin(c)))]
     valid={strict_normalize_gtin(c) for c in evidence if strict_normalize_gtin(c)}
     if invalid:raise ValueError('Invalid barcode checksum')
     if len(valid)>1:raise ValueError('Conflicting detail/listing barcode')
     gtin=next(iter(valid)) if valid else ''
     # Explicitly labelled detail barcode is required for first publication.
     confirmed=bool(gtin and explicit and any(strict_normalize_gtin(c)==gtin for c in explicit))
-    result.update(ean=(gtin[1:] if gtin.startswith('0') else gtin) if confirmed else '',gtin14=gtin if confirmed else '',ean_status='verified' if confirmed else 'missing',detail_observed_at=now(),detail_next_at=(datetime.now(timezone.utc)+timedelta(days=90 if confirmed else 7)).isoformat(),detail_sha256=hashlib.sha256(html.encode()).hexdigest())
+    result.update(ean=(gtin[1:] if gtin.startswith('0') else gtin) if confirmed else '',gtin14=gtin if confirmed else '',ean_status='verified' if confirmed else 'missing',detail_observed_at=now(),detail_next_at=(datetime.now(timezone.utc)+timedelta(days=90 if confirmed else 7)).isoformat(),detail_sha256=hashlib.sha256(html.encode()).hexdigest(),detail_parser_revision=DETAIL_REVISION)
     return result
 
 
@@ -232,8 +244,9 @@ def initial_routes(home):
 def collect(mode='discovery',state_path='output/velvetdelft/state.json',max_pages=25,detail_limit=100,transport=None,refresh=False):
     path=Path(state_path);state=json.loads(path.read_text()) if path.exists() else {'version':1,'shop_id':SHOP_ID,'records':{},'categories':{},'requests':[]}
     if state.get('shop_id')!=SHOP_ID or state.get('version')!=1:raise ValueError('Wrong checkpoint')
-    client=transport or Transport();state['error']=None;processed=0
+    client=transport;state['error']=None;processed=0
     try:
+        if client is None:client=Transport()
         if mode in ('discovery','prices'):
             if refresh and mode!='prices':state['categories']={}
             if mode=='prices' and (state.get('cycle_mode')!='prices' or not any(c.get('next') for c in state['categories'].values())):state['categories']={}
@@ -241,6 +254,9 @@ def collect(mode='discovery',state_path='output/velvetdelft/state.json',max_page
             home_html=client.get(BASE+'/nl');routes=initial_routes(home_html);routes={'home':BASE+'/nl',**routes}
             for category,url in routes.items():
                 progress=state['categories'].setdefault(category,{'next':url,'pages':[],'seen_ids':[],'complete':False})
+                if category=='home' and not progress['next']:progress['complete']=True
+                if progress['pages'] and category!='home' and progress['pages'][-1].get('parameters',{}).get('p')!='true':
+                    progress={'next':url,'pages':[],'seen_ids':[],'complete':False};state['categories'][category]=progress
                 if not progress['next']:continue
                 bootstrap=home_html if category=='home' else client.get(url)
                 cfg=block_config(bootstrap) if category!='home' else None
@@ -256,26 +272,26 @@ def collect(mode='discovery',state_path='output/velvetdelft/state.json',max_page
                         newids={strict_normalize_gtin(c) for c in row.get('url_barcodes',[]) if strict_normalize_gtin(c)}
                         if oldids and newids and oldids!=newids:raise ValueError('Release barcode changed between categories')
                         if prior.get('ean_status')=='verified' and oldids==newids:
-                            for key in ('ean','gtin14','ean_status','detail_observed_at','detail_next_at','detail_sha256'):row[key]=prior.get(key,'')
+                            for key in ('ean','gtin14','ean_status','detail_observed_at','detail_next_at','detail_sha256','detail_parser_revision'):row[key]=prior.get(key,'')
                         row['categories']=sorted(set(prior.get('categories',[])+[category]));state['records'][rid]=row
                     progress['pages'].append({'url':current,'method':'POST' if cfg else 'GET','endpoint':BASE+'/products/blockitems' if cfg else current,'parameters':{**cfg['payload'],'page':page} if cfg else {},**parsed['pagination'],'vinyl':len(parsed['records']),'excluded':len(parsed['excluded']),'sha256':parsed['listing_sha256']})
-                    progress['seen_ids']+=ids;progress['next']=parsed['next_url'];progress['complete']=not parsed['next_url'] and not parsed['pagination']['bounded_collection']
+                    progress['seen_ids']+=ids;progress['next']=parsed['next_url'];progress['complete']=not parsed['next_url'] and (category=='home' or not parsed['pagination']['bounded_collection'])
                     # Static collections have an unproven cap; never claim complete coverage.
                     processed+=1;save(path,state);print(json.dumps({'category':category,'page':parsed['pagination']['page'],'unique_vinyl':len(state['records']),'requests':len(client.requests)}),flush=True)
                 if processed>=max_pages:break
         if mode=='details':
-            due=[r for r in state['records'].values() if not r.get('detail_next_at') or r['detail_next_at']<=now()]
-            due.sort(key=lambda r:(r.get('ean_status')=='verified',r.get('detail_observed_at',''),r['source_product_id']))
+            due=[r for r in state['records'].values() if r.get('detail_parser_revision')!=DETAIL_REVISION or not r.get('detail_next_at') or r['detail_next_at']<=now()]
+            due.sort(key=lambda r:(0 if r.get('detail_observed_at') and r.get('detail_parser_revision')!=DETAIL_REVISION else 1 if r.get('ean_status')=='pending' else 2,r.get('detail_observed_at',''),r['source_product_id']))
             for row in due[:detail_limit]:
                 rid=row['source_product_id'];html=client.get(row['source_url'])
                 try:state['records'][rid]=enrich(row,html)
                 except ValueError as exc:
-                    state['records'][rid]={**row,'ean':'','gtin14':'','ean_status':'quarantine','reason':str(exc),'detail_observed_at':now(),'detail_next_at':(datetime.now(timezone.utc)+timedelta(days=7)).isoformat()}
+                    state['records'][rid]={**row,'ean':'','gtin14':'','ean_status':'quarantine','detail_parser_revision':DETAIL_REVISION,'reason':str(exc),'detail_observed_at':now(),'detail_next_at':(datetime.now(timezone.utc)+timedelta(days=7)).isoformat()}
                 save(path,state);print(json.dumps({'release_id':rid,'ean_status':state['records'][rid]['ean_status']}),flush=True)
     except Exception as exc:
         state['error']=str(exc);raise
     finally:
-        state['requests']+=client.requests;state['updated_at']=now();save(path,state)
+        state['requests']+=client.requests if client is not None else [];state['updated_at']=now();save(path,state)
         rows=list(state['records'].values());out=path.parent;out.mkdir(parents=True,exist_ok=True)
         with (out/'products.csv').open('w',newline='') as f:
             w=csv.DictWriter(f,fieldnames=FIELDS,extrasaction='ignore');w.writeheader();w.writerows(rows)

@@ -33,6 +33,23 @@ class PipelinePostgresTests(unittest.TestCase):
         self.env=patch.dict(os.environ,{'DATABASE_URL':DSN});self.env.start();self.addCleanup(self.env.stop)
         with psycopg.connect(DSN) as conn:
             conn.execute('truncate price_history,prices,products,shops,quarantine_offers,staged_offers,raw_shop_scrapes,shop_product_links,scrape_runs cascade')
+    def test_real_100_release_sample_through_staging_promotion_and_quarantine(self):
+        import json
+        data=json.loads((Path(__file__).parent/'fixtures/velvetdelft/sample100.json').read_text())
+        rows=copy.deepcopy(data['records'])
+        # These are fixed source fixtures: keep all real prices/barcodes, renew
+        # only the test clock so the freshness contract remains testable later.
+        for row in rows:
+            row['listing_observed_at']=datetime.now(timezone.utc).isoformat()
+            row['detail_observed_at']=row['listing_observed_at']
+        expected=preview(rows)
+        self.assertEqual((expected['discovered'],expected['promotion_valid'],expected['quarantine']),(100,92,8))
+        ingest(rows,DSN);ingest(rows,DSN)
+        with psycopg.connect(DSN) as conn:
+            self.assertEqual(conn.execute('select count(*) from raw_shop_scrapes').fetchone()[0],100)
+            self.assertEqual(conn.execute('select count(*) from products').fetchone()[0],92)
+            self.assertEqual(conn.execute('select count(*) from prices').fetchone()[0],92)
+            self.assertEqual(conn.execute('select count(*) from quarantine_offers').fetchone()[0],8)
     def test_complete_usf_chain_and_repeat_idempotency(self):
         r=good();a=ingest([r],DSN);self.assertEqual(a['staged'],1)
         b=ingest([r],DSN);self.assertEqual(b['staged'],0)
@@ -63,6 +80,28 @@ class PipelinePostgresTests(unittest.TestCase):
             self.assertEqual(float(conn.execute('select price from prices').fetchone()[0]),22.)
             self.assertEqual(conn.execute('select artist,title from products').fetchone(),('Canonical artist','Canonical album'))
             self.assertEqual(conn.execute('select count(*) from price_history').fetchone()[0],1)
+    def test_changed_listing_url_reuses_release_and_preserves_canonical_metadata(self):
+        r=good();ingest([r],DSN)
+        with psycopg.connect(DSN) as conn:
+            old=conn.execute('select id from shop_product_links').fetchone()[0]
+            conn.execute("update products set artist='Canonical artist',title='Canonical album',metadata_source='musicbrainz',metadata_status='verified'")
+        changed={**r,'source_url':r['source_url'].replace('Fatal-Flowers','Fatal-Flowers-New-Slug'),'price':'20.99'}
+        ingest([changed],DSN)
+        with psycopg.connect(DSN) as conn:
+            self.assertEqual(conn.execute('select id from shop_product_links').fetchall(),[(old,)])
+            self.assertEqual(conn.execute('select artist,title from products').fetchone(),('Canonical artist','Canonical album'))
+            self.assertEqual(float(conn.execute('select price from prices').fetchone()[0]),20.99)
+    def test_interrupted_promotion_resumes_existing_staged_snapshot(self):
+        r=good()
+        with patch('scripts.scrapers.usf.jobs.velvetdelft_pipeline.upsert_product',side_effect=RuntimeError('simulated DB failure')):
+            with self.assertRaises(RuntimeError):ingest([r],DSN)
+        result=ingest([r],DSN)
+        with psycopg.connect(DSN) as conn:
+            self.assertEqual(conn.execute('select count(*) from raw_shop_scrapes').fetchone()[0],1)
+            self.assertEqual(conn.execute('select count(*) from prices').fetchone()[0],1)
+            self.assertEqual(conn.execute('select stage_status from staged_offers').fetchone()[0],'promoted')
+            self.assertEqual(conn.execute("select count(*) from scrape_runs where status='failed'").fetchone()[0],1)
+            self.assertEqual(conn.execute("select count(*) from scrape_runs where status='running'").fetchone()[0],0)
     def test_usf_preview_does_not_mutate_any_table(self):
         r=good();ingest([r],DSN)
         with psycopg.connect(DSN) as conn:
