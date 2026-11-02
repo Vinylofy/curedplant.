@@ -187,6 +187,21 @@ class PipelinePostgresTests(unittest.TestCase):
             conn.execute("update shop_shipping_destinations set status='not_supported'")
         with self.assertRaisesRegex(ValueError,'exclusion'):register_nl(DSN)
         with psycopg.connect(DSN) as conn:self.assertEqual(conn.execute('select status from shop_shipping_destinations').fetchone()[0],'not_supported')
+    def test_barcode_identified_vinyl_with_bonus_cd_is_not_a_cd_only_conflict(self):
+        row=good();ingest([row],DSN)
+        with psycopg.connect(DSN) as conn:conn.execute('update products set format_label=%s',('12" Vinyl, CD',))
+        result=ingest([row],DSN,production=True)
+        self.assertEqual(result['quarantine'],0)
+        with psycopg.connect(DSN) as conn:self.assertEqual(conn.execute('select is_active from prices').fetchone()[0],True)
+    def test_cleared_format_hold_restores_only_the_previously_held_offer(self):
+        from scripts.workers.velvetdelft_release_controls import conflicts,hold,apply
+        row=good();ingest([row],DSN)
+        with psycopg.connect(DSN) as conn:conn.execute("update products set format_label='CD'")
+        hold([row],conflicts([row],DSN),DSN)
+        with psycopg.connect(DSN) as conn:conn.execute("update products set format_label='LP+CD'")
+        result=apply([row],DSN)
+        self.assertEqual(result['restored_vinyl_release_ids'],[row['source_product_id']])
+        with psycopg.connect(DSN) as conn:self.assertEqual(conn.execute('select is_active from prices').fetchone()[0],True)
     def test_usf_preview_does_not_mutate_any_table(self):
         r=good();ingest([r],DSN)
         with psycopg.connect(DSN) as conn:

@@ -25,8 +25,10 @@ def audit():
             snapshot=conn.execute("select to_jsonb(v) from public.shop_catalog_daily_dashboard_v2 v join shops s on s.id=v.shop_id where s.domain='velvetdelft.nl' order by v.snapshot_day desc limit 1").fetchone()
             snapshot=snapshot[0] if snapshot else None
         price_count=conn.execute("select count(*) from prices p join shops s on s.id=p.shop_id where lower(s.domain) in ('velvetdelft.nl','www.velvetdelft.nl')").fetchone()[0]
+        active_quarantine=conn.execute("select count(*) from quarantine_offers where shop_id='velvetdelft' and resolved_at is null").fetchone()[0]
+        active_prices=conn.execute("select count(*) from prices p join shops s on s.id=p.shop_id where s.domain='velvetdelft.nl' and p.is_active").fetchone()[0]
         counts={t:conn.execute('select count(*) from '+t+' where shop_id=%s',('velvetdelft',)).fetchone()[0] for t in TABLES[:5]}
-    return {'database_writes':False,'write_capabilities':privileges,'columns':columns,'constraints':checks,'registered_shops':[list(map(str,r)) for r in shops],'usf_counts':counts,'price_count':price_count,'monitor_snapshot':snapshot,'excluded_offers':[[str(v) for v in row] for row in excluded],'offer_samples':[[str(v) for v in row] for row in samples]}
+    return {'database_writes':False,'write_capabilities':privileges,'columns':columns,'constraints':checks,'registered_shops':[list(map(str,r)) for r in shops],'usf_counts':counts,'price_count':price_count,'active_price_count':active_prices,'active_quarantine_count':active_quarantine,'monitor_snapshot':snapshot,'excluded_offers':[[str(v) for v in row] for row in excluded],'offer_samples':[[str(v) for v in row] for row in samples]}
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--require-write',action='store_true');parser.add_argument('--refresh-monitor',action='store_true');parser.add_argument('--release-controls',action='store_true');args=parser.parse_args()

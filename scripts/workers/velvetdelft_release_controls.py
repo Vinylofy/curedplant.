@@ -5,8 +5,9 @@ import re
 import psycopg
 from psycopg.types.json import Jsonb
 from scripts.importers.common import strict_normalize_gtin,identifier_variants
-from scripts.importers.import_velvetdelft import CONFIG
+from scripts.importers.import_velvetdelft import CONFIG,map_velvet_row
 
+VINYL_LABEL=re.compile(r'vinyl|\blp\b|\d+\s*x?\s*lp\b|inch',re.I)
 NON_VINYL=re.compile(r'(?<![a-z])(cd|sacd|dvd|cassette|blu[ -]?ray)(?![a-z])',re.I)
 DELIVERY_URL='https://www.velvetdelft.nl/nl/pagina/leveringsvoorwaarden'
 DELIVERY_QUOTE='Bestellingen worden met tracking verstuurd via PostNL.'
@@ -18,7 +19,7 @@ def conflicts(rows,dsn):
     variants=sorted({v for code in codes for v in identifier_variants(code)})
     with psycopg.connect(dsn,prepare_threshold=None) as conn:
         found=conn.execute('select id,gtin_normalized,ean,format_label from products where gtin_normalized=any(%s::text[]) or ean=any(%s::text[])',(variants,variants)).fetchall()
-    return {(strict_normalize_gtin(r[1]) or strict_normalize_gtin(r[2])):{'product_id':str(r[0]),'format':r[3]} for r in found if NON_VINYL.search(r[3] or '')}
+    return {(strict_normalize_gtin(r[1]) or strict_normalize_gtin(r[2])):{'product_id':str(r[0]),'format':r[3]} for r in found if NON_VINYL.search(r[3] or '') and not VINYL_LABEL.search(r[3] or '')}
 
 
 def hold(rows,blocked,dsn):
@@ -28,13 +29,34 @@ def hold(rows,blocked,dsn):
         for row in rows:
             code=strict_normalize_gtin(row.get('ean'));evidence=blocked.get(code)
             if not evidence:continue
-            conn.execute("update prices p set is_active=false,updated_at=now() from shops s where p.shop_id=s.id and s.domain=%s and p.product_id=%s",(CONFIG.shop_domain,evidence['product_id']))
+            conn.execute("update prices p set is_active=false,updated_at=now() from shops s where p.shop_id=s.id and s.domain=%s and p.product_id=%s and p.is_active",(CONFIG.shop_domain,evidence['product_id']))
             conn.execute("update staged_offers set stage_status='quarantined',stage_reason='canonical_format_conflict' where shop_id='velvetdelft' and source_product_id=%s",(row['source_product_id'],))
             conn.execute("""insert into quarantine_offers(shop_id,source_url,ean_normalized,ean_match_key,issue_type,issue_detail,payload)
                 select 'velvetdelft',%s,%s,%s,'canonical_format_conflict',%s,%s
                 where not exists(select 1 from quarantine_offers where shop_id='velvetdelft' and source_url=%s and issue_type='canonical_format_conflict' and resolved_at is null)""",(row['source_url'],row.get('ean'),code,'Listing vinyl conflicts with existing product format '+evidence['format'],Jsonb({'source_product_id':row['source_product_id'],'canonical':evidence,'source_format':row['format']}),row['source_url']))
             held.append(row['source_product_id'])
     return held
+
+
+def restore_cleared_holds(rows,blocked,dsn):
+    restored=[]
+    with psycopg.connect(dsn,prepare_threshold=None) as conn:
+        cases=conn.execute("select id,source_url,payload from quarantine_offers where shop_id='velvetdelft' and issue_type='canonical_format_conflict' and resolved_at is null").fetchall()
+        by_url={r[1]:r for r in cases}
+        for line,row in enumerate(rows,1):
+            case=by_url.get(row['source_url'])
+            if not case or row.get('gtin14') in blocked or map_velvet_row(row,line)[0] is None:continue
+            product=case[2]['canonical']['product_id']
+            # Undo only this control's hold, not a later independent price edit.
+            changed=conn.execute("""update prices p set is_active=true,updated_at=now() from shops s,quarantine_offers q
+                where s.id=p.shop_id and s.domain=%s and p.product_id=%s and q.id=%s
+                  and not p.is_active and p.updated_at=q.created_at returning p.product_id""",(CONFIG.shop_domain,product,case[0])).fetchone()
+            active=changed or conn.execute('select p.product_id from prices p join shops s on s.id=p.shop_id where s.domain=%s and p.product_id=%s and p.is_active',(CONFIG.shop_domain,product)).fetchone()
+            if active:
+                conn.execute('update quarantine_offers set resolved_at=now() where id=%s',(case[0],))
+                conn.execute("update staged_offers set stage_status='promoted',stage_reason=null where shop_id='velvetdelft' and source_product_id=%s and stage_reason='canonical_format_conflict'",(row['source_product_id'],))
+                restored.append(row['source_product_id'])
+    return restored
 
 
 def register_nl(dsn):
@@ -56,4 +78,5 @@ def register_nl(dsn):
 def apply(rows,dsn):
     blocked=conflicts(rows,dsn)
     held=hold(rows,blocked,dsn)
-    return {'canonical_conflicts':blocked,'held_release_ids':held,'market':register_nl(dsn)}
+    restored=restore_cleared_holds(rows,blocked,dsn)
+    return {'canonical_conflicts':blocked,'held_release_ids':held,'restored_vinyl_release_ids':restored,'market':register_nl(dsn)}
