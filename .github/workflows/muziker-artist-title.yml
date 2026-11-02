@@ -1,0 +1,52 @@
+name: "ALBUM | Muziker artist-title catalog | Daily write"
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_pages:
+        type: string
+        default: '25'
+        description: Maximum Muziker pages (1..100)
+      write:
+        type: boolean
+        default: true
+        description: Write raw listings and alternative-link queue entries
+  schedule:
+    - cron: '23 3 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: muziker-artist-title
+  cancel-in-progress: false
+
+jobs:
+  catalog:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: python -m pip install 'psycopg[binary]>=3.2,<4' 'requests>=2.31,<3' 'beautifulsoup4>=4.12,<5' 'python-dotenv>=1,<2'
+      - name: Capture Muziker catalog and queue artist-title alternatives
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          MAX_PAGES: ${{ inputs.max_pages || '25' }}
+          WRITE: ${{ github.event_name == 'schedule' || inputs.write }}
+        run: |
+          args=(--max-pages "$MAX_PAGES")
+          if [ "$WRITE" = true ]; then args+=(--write); fi
+          python -m scripts.workers.muziker_catalog "${args[@]}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: muziker-artist-title-${{ github.run_id }}
+          path: output/muziker/result.json
+          if-no-files-found: warn
+          retention-days: 14
