@@ -24,7 +24,8 @@ AJAX = 'https://www.atube-highfidelity.nl/wp-admin/admin-ajax.php'
 ACTION = 'atube_cs_shop_load_more'
 FIELDS = ('source_product_id', 'source_url', 'artist_raw', 'album_raw', 'title_raw',
           'price', 'currency', 'availability', 'format_status', 'condition_status',
-          'ean_raw', 'ean_status', 'route', 'listing_observed_at', 'detail_status')
+          'ean_raw', 'ean_status', 'route', 'listing_observed_at', 'detail_status',
+          'status', 'detail_observed_at', 'detail_price_crosscheck', 'gtin14', 'offer_url')
 
 
 def stamp():
@@ -318,11 +319,11 @@ def main():
     parser.add_argument('--detail-limit', type=int, default=5)
     parser.add_argument('--output', type=Path, default=Path('output/atubehighfidelity'))
     args = parser.parse_args()
-    if not 1 <= args.pages <= 10 or not 1 <= args.detail_limit <= 25:
-        parser.error('Pilot limits: 1..10 pages, 1..25 details')
+    if not 0 <= args.pages <= 10 or not 1 <= args.detail_limit <= 25:
+        parser.error('Limits: 0=complete catalogue or 1..10 pages; 1..25 details')
     transport = AtubeTransport(DOMAIN)
     try:
-        result = run(transport, args.mode, args.pages, args.detail_limit)
+        result = run(transport, args.mode, args.pages or 1000, args.detail_limit)
     finally:
         transport.close()
     args.output.mkdir(parents=True, exist_ok=True)

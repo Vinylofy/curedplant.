@@ -1,15 +1,11 @@
-name: "Curedplant | Price | A Tube High Fidelity | Pilot"
+name: "Curedplant | Price | A Tube High Fidelity | Catalogue"
 on:
   workflow_dispatch:
     inputs:
       pages:
-        description: 'Catalogue pages: 1..10; pilot default 2'
+        description: '0 = complete catalogue, 1..10 = bounded source check'
         type: string
-        default: '2'
-      detail_limit:
-        description: 'Detail products: 1..25; ignored by price pilot'
-        type: string
-        default: '5'
+        default: '0'
 permissions:
   contents: read
 concurrency:
@@ -19,7 +15,7 @@ jobs:
   pilot:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v5
         with:
@@ -29,12 +25,11 @@ jobs:
           python-version: '3.12'
       - run: python -m pip install 'requests==2.32.5' 'beautifulsoup4==4.13.4' 'psycopg[binary]==3.2.12' 'python-dotenv==1.1.1'
       - name: Verify shop parser and price safety
-        run: python -m unittest discover -s tests -p test_atubehighfidelity.py
-      - name: Capture bounded pilot without database access
+        run: python -m unittest discover -s tests -p 'test_atube*.py'
+      - name: Capture complete catalogue prices without database access
         env:
           PAGES: ${{ inputs.pages }}
-          DETAIL_LIMIT: ${{ inputs.detail_limit }}
-        run: python -m scripts.scrapers.atubehighfidelity --mode prices --pages "$PAGES" --detail-limit "$DETAIL_LIMIT"
+        run: python -m scripts.scrapers.atubehighfidelity --mode prices --pages "$PAGES"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
