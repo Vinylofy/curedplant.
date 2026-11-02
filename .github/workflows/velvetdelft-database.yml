@@ -1,0 +1,45 @@
+name: "Curedplant | Database | Velvet Delft | USF"
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'audit = database read-only; write = process existing checked EANs'
+        type: choice
+        options: [audit, write]
+        default: audit
+permissions:
+  contents: write
+concurrency:
+  group: velvetdelft-source
+  cancel-in-progress: false
+jobs:
+  database:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: python -m pip install 'requests==2.32.5' 'beautifulsoup4==4.13.4' 'psycopg[binary]==3.2.12' 'python-dotenv==1.1.1'
+      - name: Inspect database contract without writes
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python -m scripts.workers.velvetdelft_database_audit
+      - name: Restore the previously collected source data
+        if: inputs.mode == 'write'
+        run: python -m scripts.workers.velvetdelft_schedule restore
+      - name: Write existing verified source results through USF
+        if: inputs.mode == 'write'
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python -m scripts.scrapers.usf.jobs.velvetdelft_pipeline --capture output/velvetdelft/state.json --write
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: velvetdelft-database-${{ github.run_id }}
+          path: output/velvetdelft/
+          retention-days: 30
