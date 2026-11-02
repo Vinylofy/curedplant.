@@ -48,11 +48,11 @@ permissions:
 concurrency:
   group: vinylofy-cover-pipeline
   cancel-in-progress: false
-  queue: max
 
 jobs:
   backfill:
-    if: ${{ vars.COVER_PIPELINE_ENABLED == 'true' }}
+    # Run by default; set the repository variable explicitly to "false" to pause.
+    if: ${{ vars.COVER_PIPELINE_ENABLED != 'false' }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
 
