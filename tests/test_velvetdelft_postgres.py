@@ -11,7 +11,7 @@ from scripts.scrapers.usf.jobs.velvetdelft_pipeline import ingest,isolated_only,
 
 DSN=os.environ.get('VELVET_TEST_DATABASE_URL')
 BUSINESS_SCHEMA='''
-create table shops(id uuid primary key default gen_random_uuid(),name text,domain text unique,country text,is_active boolean default true,updated_at timestamptz default now());
+create table shops(id uuid primary key default gen_random_uuid(),name text,domain text unique,country text,shop_type text,is_active boolean default true,updated_at timestamptz default now());
 create table products(id uuid primary key default gen_random_uuid(),ean text unique,gtin_normalized text unique,artist text,title text,format_label text,cover_url text,canonical_key text,artist_normalized text,title_normalized text,search_text text,metadata_source text,metadata_status text,metadata_confidence numeric,metadata_needs_review boolean,created_at timestamptz default now(),updated_at timestamptz default now());
 create table prices(product_id uuid references products(id),shop_id uuid references shops(id),price numeric,currency text,product_url text,availability text,first_seen_at timestamptz,last_seen_at timestamptz,is_active boolean,ean_raw text,gtin_normalized text,created_at timestamptz,updated_at timestamptz,primary key(product_id,shop_id));
 create table price_history(product_id uuid,shop_id uuid,price numeric,currency text,availability text,captured_at timestamptz,created_at timestamptz);
@@ -102,6 +102,21 @@ class PipelinePostgresTests(unittest.TestCase):
             self.assertEqual(conn.execute('select stage_status from staged_offers').fetchone()[0],'promoted')
             self.assertEqual(conn.execute("select count(*) from scrape_runs where status='failed'").fetchone()[0],1)
             self.assertEqual(conn.execute("select count(*) from scrape_runs where status='running'").fetchone()[0],0)
+    def test_authorized_production_path_and_actual_write_counts(self):
+        result=ingest([good()],DSN,production=True)
+        self.assertFalse(result['isolated_test'])
+        self.assertEqual((result['raw_inserted'],result['prices_written'],result['persisted_counts']['prices']),(1,1,1))
+        repeat=ingest([good()],DSN,production=True)
+        # A new fixture observation is a new source snapshot; no duplicate product.
+        self.assertEqual(repeat['persisted_counts']['prices'],1)
+        with psycopg.connect(DSN) as conn:
+            self.assertEqual(conn.execute('select shop_type from shops').fetchone()[0],'physical_record_store')
+    def test_stage_only_retains_ean_without_publishing_prices(self):
+        result=ingest([good()],DSN,promote=False)
+        self.assertEqual((result['raw_inserted'],result['staged'],result['prices_written']),(1,1,0))
+        with psycopg.connect(DSN) as conn:
+            self.assertEqual(conn.execute('select count(*) from products').fetchone()[0],0)
+            self.assertEqual(conn.execute('select stage_status from staged_offers').fetchone()[0],'staged')
     def test_usf_preview_does_not_mutate_any_table(self):
         r=good();ingest([r],DSN)
         with psycopg.connect(DSN) as conn:

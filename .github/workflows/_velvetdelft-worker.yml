@@ -2,6 +2,9 @@ name: "Curedplant | Internal | Velvet Delft source worker"
 on:
   workflow_call:
     inputs:
+      write:
+        type: boolean
+        default: false
       mode:
         type: string
         required: true
@@ -17,6 +20,9 @@ on:
       detail_limit:
         type: string
         default: '100'
+    secrets:
+      DATABASE_URL:
+        required: false
 permissions:
   contents: write
 concurrency:
@@ -59,7 +65,13 @@ jobs:
       - name: Offline parser, gatekeeper and failure tests
         if: steps.plan.outputs.enabled == 'true'
         run: python -m unittest discover -s tests -p 'test_velvetdelft*.py'
-      - name: Read-only listing or detail collection
+      - name: Write previously collected EANs before starting more source work
+        if: inputs.write && steps.plan.outputs.database_pending == 'true'
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python -m scripts.scrapers.usf.jobs.velvetdelft_pipeline --capture output/velvetdelft/state.json --write --out output/velvetdelft/database-before.json
+      - name: Collect listing or EAN data without database credentials
+        id: collect
         if: steps.plan.outputs.enabled == 'true'
         env:
           MODE: ${{ inputs.mode }}
@@ -76,9 +88,14 @@ jobs:
           args=()
           if [ "$AUTOMATIC" = true ]; then args+=(--automatic); fi
           if [ "$REFRESH" = true ]; then args+=(--refresh); fi
-          python -m scripts.scrapers.velvetdelft --mode "$MODE" --max-pages "$MAX_PAGES" --detail-limit "$DETAIL_LIMIT" "${args[@]}"
+          python -m scripts.scrapers.velvetdelft --mode "$MODE" --max-pages "$MAX_PAGES" --detail-limit "$DETAIL_LIMIT" --max-seconds 3600 "${args[@]}"
+      - name: Write the current source results through USF
+        if: always() && inputs.write && (steps.collect.outcome == 'success' || steps.collect.outcome == 'failure') && hashFiles('output/velvetdelft/state.json') != ''
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python -m scripts.scrapers.usf.jobs.velvetdelft_pipeline --capture output/velvetdelft/state.json --write
       - name: Save source progress to the repository even after an access failure
-        if: always() && steps.plan.outputs.enabled == 'true' && hashFiles('output/velvetdelft/state.json') != ''
+        if: always() && (steps.plan.outputs.enabled == 'true' || (inputs.write && steps.plan.outputs.database_pending == 'true')) && hashFiles('output/velvetdelft/state.json') != ''
         env:
           GH_TOKEN: ${{ github.token }}
         run: python -m scripts.workers.velvetdelft_schedule persist
@@ -89,7 +106,7 @@ jobs:
         if: success() && steps.plan.outputs.enabled == 'true'
         run: python -m scripts.scrapers.usf.jobs.velvetdelft_pipeline --capture output/velvetdelft/state.json
       - uses: actions/cache/save@v4
-        if: always() && steps.plan.outputs.enabled == 'true' && hashFiles('output/velvetdelft/state.json') != ''
+        if: always() && (steps.plan.outputs.enabled == 'true' || (inputs.write && steps.plan.outputs.database_pending == 'true')) && hashFiles('output/velvetdelft/state.json') != ''
         with:
           path: output/velvetdelft/state.json
           key: velvetdelft-v1-${{ github.run_id }}-${{ github.run_attempt }}
@@ -101,10 +118,24 @@ jobs:
           from pathlib import Path
           report=json.loads(Path('output/velvetdelft/summary.json').read_text())
           with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as f:
-              f.write('## Velvet Delft — source validation only\n\n')
+              f.write('## Velvet Delft — source and USF processing\n\n')
               for key in ('unique_vinyl_releases','verified_eans','valid_listing_prices','availability','requests','detail_checks_this_run','automation','catalogue_complete','error'):
                   f.write(f'- {key}: `{report[key]}`\n')
-              f.write('\nDatabase writes: **false**. EAN automation: daily initial round (max 1000), then weekly (max 250). No delisting.\n')
+              f.write('\nDatabase writes follow the explicit workflow write setting; see database evidence below. EAN automation: daily initial round (max 1000), then weekly (max 250). No delisting.\n')
+          PY
+      - name: Publish actual database write counts
+        if: always() && inputs.write
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          files=[p for p in (Path('output/velvetdelft/database-before.json'),Path('output/velvetdelft/database-result.json')) if p.exists()]
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as out:
+              out.write('## Database writes\n\n')
+              if not files:out.write('No pending source data to import on this date.\n')
+              for p in files:
+                  result=json.loads(p.read_text())
+                  out.write(f"{p.name}: raw inserted={result['raw_inserted']}, prices written={result['prices_written']}, quarantine inserted={result['quarantines_inserted']}, persisted={result['persisted_counts']}\n\n")
           PY
       - name: Explain weekly waiting date without contacting the website
         if: steps.plan.outputs.enabled == 'false'
@@ -117,7 +148,7 @@ jobs:
               f.write('## Velvet Delft: no source requests today\n\n'+plan['reason']+'\n')
           PY
       - uses: actions/upload-artifact@v4
-        if: always() && steps.plan.outputs.enabled == 'true'
+        if: always() && (steps.plan.outputs.enabled == 'true' || (inputs.write && steps.plan.outputs.database_pending == 'true'))
         with:
           name: velvetdelft-${{ inputs.mode }}-${{ github.run_id }}
           path: output/velvetdelft/

@@ -1,4 +1,4 @@
-"""Strict EAN-only importer. CLI intentionally permits dry-run only until release approval."""
+"""Strict EAN-only mapper. Direct CLI is read-only; production writes use the USF pipeline."""
 from datetime import datetime,timezone
 from decimal import Decimal
 import sys
@@ -38,5 +38,5 @@ def map_velvet_row(row,line):
 SHOP_DEFINITION=ShopImporterDefinition(key='velvetdelft',config=CONFIG,importer_module='scripts.importers.import_velvetdelft',scraper_command_env='VINYLOFY_SCRAPER_CMD_VELVETDELFT',storage_prefix='velvetdelft',files=ImportFileLayout('output/velvetdelft/products.csv','output/velvetdelft/rejects.csv','output/velvetdelft/import-summary.json'),row_mapper=map_velvet_row,description=__doc__,required_columns=('source_product_id','source_url','artist','title','format','price','currency','availability','listing_observed_at','condition','ean','gtin14','ean_status','detail_observed_at','reason'),optional_columns=('regular_price','availability_raw','listing_url','detail_next_at'),tags=('vinyl','listing-first','ean-gated','manual-only'),include_in_all=False)
 
 if __name__=='__main__':
-    if '--dry-run' not in sys.argv:raise SystemExit('Velvet Delft publication is not approved. Use --dry-run.')
+    if '--dry-run' not in sys.argv:raise SystemExit('Use the Velvet Delft USF pipeline with --write for database processing. This direct importer requires --dry-run.')
     run_registered_importer(SHOP_DEFINITION)

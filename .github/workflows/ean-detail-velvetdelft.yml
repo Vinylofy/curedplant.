@@ -4,6 +4,10 @@ on:
     - cron: '17 5 * * *'
   workflow_dispatch:
     inputs:
+      write:
+        description: 'Write verified source records, staging and eligible product/price updates'
+        type: boolean
+        default: true
       automatic:
         description: 'Use daily initial budget (1000) then weekly rotating review (250)'
         type: boolean
@@ -19,5 +23,7 @@ jobs:
     uses: ./.github/workflows/_velvetdelft-worker.yml
     with:
       mode: details
+      write: ${{ github.event_name == 'schedule' || inputs.write }}
       automatic: ${{ github.event_name == 'schedule' || inputs.automatic }}
       detail_limit: ${{ github.event_name == 'schedule' && '1000' || inputs.detail_limit }}
+    secrets: inherit

@@ -229,7 +229,7 @@ def enrich(row,html):
     gtin=next(iter(valid)) if valid else ''
     # Explicitly labelled detail barcode is required for first publication.
     confirmed=bool(gtin and explicit and any(strict_normalize_gtin(c)==gtin for c in explicit))
-    result.update(ean=(gtin[1:] if gtin.startswith('0') else gtin) if confirmed else '',gtin14=gtin if confirmed else '',ean_status='verified' if confirmed else 'missing',detail_observed_at=now(),detail_next_at=(datetime.now(timezone.utc)+timedelta(days=90 if confirmed else 7)).isoformat(),detail_sha256=hashlib.sha256(html.encode()).hexdigest(),detail_parser_revision=DETAIL_REVISION)
+    result.update(ean=(gtin[1:] if gtin.startswith('0') else gtin) if confirmed else '',gtin14=gtin if confirmed else '',ean_status='verified' if confirmed else 'missing',detail_observed_at=now(),detail_next_at=(datetime.now(timezone.utc)+timedelta(days=90 if confirmed else 7)).isoformat(),detail_sha256=hashlib.sha256(html.encode()).hexdigest(),detail_parser_revision=DETAIL_REVISION,reason='')
     return result
 
 
@@ -276,8 +276,8 @@ def collect(mode='discovery',state_path='output/velvetdelft/state.json',max_page
                         oldids={strict_normalize_gtin(c) for c in prior.get('url_barcodes',[]) if strict_normalize_gtin(c)}
                         newids={strict_normalize_gtin(c) for c in row.get('url_barcodes',[]) if strict_normalize_gtin(c)}
                         if oldids and newids and oldids!=newids:raise ValueError('Release barcode changed between categories')
-                        if prior.get('ean_status')=='verified' and oldids==newids:
-                            for key in ('ean','gtin14','ean_status','detail_observed_at','detail_next_at','detail_sha256','detail_parser_revision'):row[key]=prior.get(key,'')
+                        if prior.get('detail_observed_at') and oldids==newids and prior.get('format')==row['format']:
+                            for key in ('ean','gtin14','ean_status','detail_observed_at','detail_next_at','detail_sha256','detail_parser_revision','reason'):row[key]=prior.get(key,'')
                         row['categories']=sorted(set(prior.get('categories',[])+[category]));state['records'][rid]=row
                     progress['pages'].append({'url':current,'method':'POST' if cfg else 'GET','endpoint':BASE+'/products/blockitems' if cfg else current,'parameters':{**cfg['payload'],'page':page} if cfg else {},**parsed['pagination'],'vinyl':len(parsed['records']),'excluded':len(parsed['excluded']),'sha256':parsed['listing_sha256']})
                     progress['seen_ids']+=ids;progress['next']=parsed['next_url'];progress['complete']=not parsed['next_url'] and (category=='home' or not parsed['pagination']['bounded_collection'])

@@ -124,11 +124,13 @@ def main():
     result=plan(state) if args.automatic else {'enabled':True,'phase':'manual','limit':args.limit,'reason':'manual source review'}
     if not 1<=args.limit<=1000:parser.error('Manual limit must be 1..1000')
     result['limit']=min(result['limit'],args.limit)
+    done=state.get('database',{}).get('processed_detail_at',{})
+    result['database_pending']=any(r.get('detail_observed_at') and done.get(r['source_product_id'])!=r['detail_observed_at'] for r in state['records'].values())
     save(args.state,state)
     save(Path(args.state).parent/'schedule.json',result)
     if os.environ.get('GITHUB_OUTPUT'):
         with open(os.environ['GITHUB_OUTPUT'],'a') as handle:
-            for key in ('enabled','phase','limit'):handle.write(f'{key}={str(result[key]).lower()}\n')
+            for key in ('enabled','phase','limit','database_pending'):handle.write(f'{key}={str(result[key]).lower()}\n')
     print(json.dumps(result))
 
 if __name__=='__main__':main()

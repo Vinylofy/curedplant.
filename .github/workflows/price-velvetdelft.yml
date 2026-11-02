@@ -1,11 +1,17 @@
 name: "Curedplant | Price | Velvet Delft | Manual review"
 on:
+  schedule:
+    - cron: '3 4 * * *'
   workflow_dispatch:
     inputs:
+      write:
+        description: 'Write current listing prices for EAN-verified products via USF'
+        type: boolean
+        default: true
       max_pages:
         description: 'Listing-page budget; catalogue prices only, no detail requests (1..1000)'
         type: string
-        default: '25'
+        default: '200'
 permissions:
   contents: write
 jobs:
@@ -13,4 +19,6 @@ jobs:
     uses: ./.github/workflows/_velvetdelft-worker.yml
     with:
       mode: prices
-      max_pages: ${{ inputs.max_pages }}
+      write: ${{ github.event_name == 'schedule' || inputs.write }}
+      max_pages: ${{ github.event_name == 'schedule' && '200' || inputs.max_pages }}
+    secrets: inherit

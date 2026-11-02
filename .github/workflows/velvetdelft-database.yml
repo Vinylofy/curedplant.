@@ -37,6 +37,11 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: python -m scripts.scrapers.usf.jobs.velvetdelft_pipeline --capture output/velvetdelft/state.json --write
+      - name: Retain successful database processing checkpoint
+        if: inputs.mode == 'write'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python -m scripts.workers.velvetdelft_schedule persist
       - uses: actions/upload-artifact@v4
         if: always()
         with:
