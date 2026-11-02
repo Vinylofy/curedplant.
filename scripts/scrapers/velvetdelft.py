@@ -254,7 +254,8 @@ def collect(mode='discovery',state_path='output/velvetdelft/state.json',max_page
         if client is None:client=Transport()
         if mode in ('discovery','prices'):
             if refresh and mode!='prices':state['categories']={}
-            if mode=='prices' and (state.get('cycle_mode')!='prices' or not any(c.get('next') for c in state['categories'].values())):state['categories']={}
+            if mode=='prices' and (state.get('cycle_mode')!='prices' or not any(c.get('next') for c in state['categories'].values())):
+                state['categories']={};state['listing_cycle_started_at']=now()
             state['cycle_mode']=mode
             home_html=client.get(BASE+'/nl');routes=initial_routes(home_html);routes={'home':BASE+'/nl',**routes}
             for category,url in routes.items():

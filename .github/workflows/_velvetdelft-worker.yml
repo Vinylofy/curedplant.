@@ -32,7 +32,7 @@ jobs:
   source:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: ${{ inputs.mode == 'details' && 120 || 60 }}
     steps:
       - uses: actions/checkout@v5
         with:

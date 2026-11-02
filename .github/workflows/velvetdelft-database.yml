@@ -16,7 +16,7 @@ jobs:
   database:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v5
         with:
@@ -28,9 +28,10 @@ jobs:
       - name: Inspect database contract without writes
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          JOB_MODE: ${{ inputs.mode }}
         run: |
           args=()
-          if [ "${{ inputs.mode }}" = monitor ]; then args+=(--refresh-monitor); fi
+          if [ "$JOB_MODE" = monitor ]; then args+=(--refresh-monitor); fi
           python -m scripts.workers.velvetdelft_database_audit "${args[@]}"
       - name: Restore the previously collected source data
         if: inputs.mode == 'write'

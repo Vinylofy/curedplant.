@@ -141,6 +141,29 @@ class PipelinePostgresTests(unittest.TestCase):
         update_existing('velvetdelft',[{'source_url':row['source_url'],'shop_domain':'velvetdelft.nl','price':'20.99','currency':'EUR','availability':'unknown'}],datetime.now(timezone.utc))
         with psycopg.connect(DSN) as conn:
             self.assertEqual(conn.execute('select availability from prices').fetchone()[0],'in_stock')
+    def test_old_retained_listing_is_excluded_from_new_price_cycle(self):
+        row=good();row['listing_observed_at']=(datetime.now(timezone.utc)-timedelta(minutes=2)).isoformat();ingest([row],DSN)
+        retained={**row,'price':'0.99'}
+        result=sync_existing_prices([retained],DSN,(datetime.now(timezone.utc)-timedelta(minutes=1)).isoformat())
+        self.assertEqual(result['prices_written'],0)
+        with psycopg.connect(DSN) as conn:self.assertEqual(float(conn.execute('select price from prices').fetchone()[0]),19.99)
+    def test_committed_promotion_batch_survives_a_later_failure_and_retry(self):
+        import json
+        from scripts.scrapers.usf.jobs import velvetdelft_pipeline as pipeline
+        data=json.loads((Path(__file__).parent/'fixtures/velvetdelft/sample100.json').read_text());rows=copy.deepcopy(data['records'])
+        for row in rows:row.update(listing_observed_at=datetime.now(timezone.utc).isoformat(),detail_observed_at=datetime.now(timezone.utc).isoformat())
+        original=pipeline.upsert_product;calls=0
+        def fail_after_first_batch(*args):
+            nonlocal calls
+            calls+=1
+            if calls==51:raise RuntimeError('Second promotion batch interrupted')
+            return original(*args)
+        with patch.object(pipeline,'upsert_product',side_effect=fail_after_first_batch):
+            with self.assertRaises(RuntimeError):ingest(rows,DSN)
+        with psycopg.connect(DSN) as conn:self.assertEqual(conn.execute('select count(*) from prices').fetchone()[0],50)
+        retry=ingest(rows,DSN)
+        self.assertEqual((retry['prices_written'],retry['persisted_counts']['prices']),(42,92))
+        self.assertEqual(retry['raw_inserted'],0)
     def test_usf_preview_does_not_mutate_any_table(self):
         r=good();ingest([r],DSN)
         with psycopg.connect(DSN) as conn:
