@@ -133,7 +133,7 @@ def write_rows(conn, rows: list[dict], run_id: str) -> int:
 def run(max_pages: int, write: bool) -> dict:
     observed = now(); run_id = str(uuid.uuid4()); transport = Transport(DOMAIN)
     transport.session.headers["User-Agent"] = UA
-    rows: list[dict] = []; url = CATALOG; seen: set[str] = []; pages = 0
+    rows: list[dict] = []; url = CATALOG; seen: set[str] = set(); pages = 0
     try:
         transport.start(CATALOG)
         while url and pages < max_pages:
