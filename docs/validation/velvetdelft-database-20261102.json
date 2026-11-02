@@ -1,0 +1,147 @@
+{
+  "source": "Velvet Delft",
+  "date": "2026-11-02",
+  "initial_write_run": "https://github.com/Vinylofy/curedplant./actions/runs/41464446761",
+  "write": {
+    "shop_id": "4ccd211f-c150-4f28-846a-8dc1d81c6859",
+    "database_writes": true,
+    "discovered": 1010,
+    "stage_valid": 975,
+    "promotion_valid": 975,
+    "quarantine": 35,
+    "awaiting_details": 0,
+    "isolated_test": false,
+    "promotion_enabled": true,
+    "run_id": "d98875dd-2fe7-4c4e-be6e-81517a893ee7",
+    "usf_shop_id": "velvetdelft",
+    "staged": 975,
+    "links_inserted": 1010,
+    "raw_inserted": 1010,
+    "raw_reused": 0,
+    "quarantines_inserted": 35,
+    "products_created": 41,
+    "prices_inserted": 975,
+    "prices_changed": 0,
+    "prices_written": 975,
+    "history_written": 975,
+    "newer_prices_preserved": 0,
+    "persisted_counts": {
+      "shop_product_links": 1010,
+      "raw_shop_scrapes": 1010,
+      "staged_offers": 1010,
+      "quarantine_offers": 35,
+      "prices": 975
+    }
+  },
+  "final_verification_run": "https://github.com/Vinylofy/curedplant./actions/runs/41472477713",
+  "verified": {
+    "registered_shops": [
+      [
+        "4ccd211f-c150-4f28-846a-8dc1d81c6859",
+        "Velvet Music Delft",
+        "velvetdelft.nl",
+        "NL"
+      ]
+    ],
+    "usf_counts": {
+      "scrape_runs": 1,
+      "shop_product_links": 1010,
+      "raw_shop_scrapes": 1010,
+      "staged_offers": 1010,
+      "quarantine_offers": 43
+    },
+    "price_count": 975,
+    "active_price_count": 974,
+    "active_quarantine_count": 36,
+    "monitor_snapshot": {
+      "shop_id": "4ccd211f-c150-4f28-846a-8dc1d81c6859",
+      "webshop": "Velvet Music Delft",
+      "route_mode": "ean",
+      "captured_at": "2026-11-02T15:32:06.631482+00:00",
+      "data_status": "healthy",
+      "snapshot_day": "2026-11-02",
+      "window_hours": 48,
+      "album_data_status": "empty",
+      "album_offer_count": 0,
+      "seven_day_average": 974.0,
+      "total_offer_count": 974,
+      "active_offer_count": 974,
+      "overall_data_status": "healthy",
+      "album_latest_seen_at": null,
+      "published_title_count": 974,
+      "album_known_offer_count": 0,
+      "combined_latest_seen_at": "2026-11-02T09:29:08.326134+00:00",
+      "latest_eligible_seen_at": "2026-11-02T09:29:08.326134+00:00",
+      "change_from_previous_day": null,
+      "album_change_from_previous": null,
+      "total_change_from_previous": null,
+      "latest_active_offer_seen_at": "2026-11-02T09:29:08.326134+00:00"
+    },
+    "release_controls": {
+      "canonical_conflicts": {
+        "00602438820405": {
+          "product_id": "cee9c889-a18f-4770-be37-2293481ed6f5",
+          "format": "CD"
+        }
+      },
+      "held_release_ids": [
+        "106709"
+      ],
+      "restored_vinyl_release_ids": [
+        "101839",
+        "114194",
+        "100737",
+        "111668",
+        "112903",
+        "104027",
+        "109419"
+      ],
+      "market": {
+        "shop_id": "4ccd211f-c150-4f28-846a-8dc1d81c6859",
+        "country": "NL",
+        "status": "confirmed",
+        "source_url": "https://www.velvetdelft.nl/nl/pagina/leveringsvoorwaarden",
+        "quote": "Bestellingen worden met tracking verstuurd via PostNL.",
+        "fees": "unknown"
+      }
+    },
+    "excluded_offers": [
+      [
+        "cee9c889-a18f-4770-be37-2293481ed6f5",
+        "00602438820405",
+        "Various Artists",
+        "The Women of Def Jam",
+        "CD",
+        "unknown",
+        "False",
+        "https://www.velvetdelft.nl/nl/release/106709/V-A/Women-of-Def-Jam/V-A/3-LP/602438820405"
+      ]
+    ]
+  },
+  "preview": {
+    "product_url": "https://preview.vinylofy.com/product/e781c6f1-af13-4db8-a322-88a6485722ce?market=NL",
+    "http_status": 200,
+    "velvet_in_page": true,
+    "source_links": [
+      "https://www.velvetdelft.nl/nl/release/110958/SWIFT-TAYLOR/MIDNIGHTS-JADE-VELVET-EXCLUSIVE/SWIFT-TAYLOR/1-LP/602445790050",
+      "https://www.velvetdelft.nl/nl/release/111171/Swift-Taylor/Midnights-Blood-Moon-Edition/Swift-Taylor/1-LP/602445790067",
+      "https://www.velvetdelft.nl/nl/release/110726/Swift-Taylor/Midnights-Moonstone-Blue-Edition/Swift-Taylor/1-LP/602445789825",
+      "https://www.velvetdelft.nl/nl/release/111170/Swift-Taylor/Midnights-Mahogany-Edition/Swift-Taylor/1-LP/602445790074"
+    ]
+  },
+  "automatic_resume_run": "https://github.com/Vinylofy/curedplant./actions/runs/41470124095",
+  "automation": {
+    "ean_workflow_active": true,
+    "ean_schedule_utc": "17 5 * * *",
+    "initial_daily_limit": 1000,
+    "maintenance_weekly_limit": 250,
+    "request_interval_seconds_min": 3,
+    "price_schedule_utc": "3 4 * * *",
+    "database_writes": true
+  },
+  "validation": {
+    "offline_tests_passed": 34,
+    "postgres_tests_passed": 19,
+    "actionlint": "passed"
+  }
+}

@@ -1,144 +1,86 @@
-# Velvet Delft — brononderzoek en readiness
+# Velvet Delft — actieve productieflow
 
-Status: **Databasewrites geautoriseerd; eerste productiewrite wordt gecontroleerd vóór hervatting van de planning.**
+**Status op 2 november 2026: databasewrites en beide planningen actief op `main` in `Vinylofy/curedplant.`.**
 
-Geïntegreerd op `main`, via [PR #2](https://github.com/Vinylofy/curedplant./pull/2). Frontend en bestaande shops zijn niet aangepast. Het slug `velvetdelft` is toegevoegd aan de importerregistry en als **disabled** USF-shop geregistreerd; de bestaande productiedatabase-registratie is niet onderzocht of gewijzigd.
+## Daadwerkelijk gecontroleerde uitkomst
 
-## Databasewrites geautoriseerd en hervatting — 2 november 2026
-
-De gebruiker heeft nu expliciet toestemming gegeven voor **databasewrites**. De productieschema-audit is daadwerkelijk groen: [41463471347](https://github.com/Vinylofy/curedplant./actions/runs/41463471347). Voor de eerste write waren geen Velvet-shop, USF-links, raw snapshots of stagingregels aanwezig. Het schema en de constraints passen bij de vijftien opnieuw geslaagde geïsoleerde PostgreSQL-tests, waaronder de expliciete production-opt-in, stage-only, bulkprijsupdates, ongewijzigde standaardwerking voor andere shops en herstel na een reeds gecommitteerde schrijfbatch. Daarnaast slagen 34 offline controles en actionlint.
-
-De productie-ingang is de bestaande Velvet USF-adapter met `--write`; deze ontvangt alleen in die afzonderlijke step het reeds geconfigureerde `DATABASE_URL`-secret. De scraper ontvangt dat secret niet. De directe CSV-importer blijft read-only om de USF-bron-/stagingregels te behouden. Brondata met een afgeronde detailcontrole wordt naar links/raw/staging/quarantaine geschreven. Alleen nieuwe vinylplaten met een checksum-geldige, bevestigde barcode, EUR-prijs en een maximaal 48 uur oude eigen listingwaarneming mogen door naar `products`/`prices`. MusicBrainz/canonieke metadata en recentere prijzen blijven beschermd. Bij een bronfout schrijft de pipeline staging, zonder promotion. Er wordt niet gedelist.
-
-De al verzamelde 1.010 bevestigde EANs worden hergebruikt. De voorafgaande controle vond 975 publiceerbare records en 35 zonder bruikbare listingprijs. [Eerste echte database-write 41464446761](https://github.com/Vinylofy/curedplant./actions/runs/41464446761) is gestart; definitieve opgeslagen aantallen worden pas na de postcontrole opgenomen.
-
-De EAN-flow krijgt `write=true` als standaard voor schedules en handmatige automatische runs. Het dagbudget blijft staan: vandaag zijn al 1.000 detailchecks gedaan; opnieuw starten verwerkt eerst de nog niet weggeschreven gegevens en forceert geen extra 1.000 websiteverzoeken. Databaseachterstand wordt ook verwerkt als de EAN-daglimiet al verbruikt is. De voortgangscheckpoint houdt apart bij welke detailwaarnemingen naar de database zijn verwerkt.
-
-De EAN-schrijver verwerkt alleen nog niet verwerkte detailwaarnemingen. Reeds bekende bronfingerprints worden in één database-read opgezocht; broninserts worden via psycopg gebundeld verstuurd. Promotion commit in batches van 50, met atomische product-/prijs-/historywrites binnen iedere batch. De echte 100-recordtest bewijst ook herstel na een fout ná de eerste 50 gecommitteerde aanbiedingen: de retry schrijft alleen de resterende 42 en laat de 50 al geldige aanbiedingen intact.
-
-Prijsverversing hergebruikt de bestaande bulk-prijsschrijver. Bestaande aanbiedingen worden niet iedere dag opnieuw door de hele EAN-/productimport gehaald. Alleen een EAN-bevestigd artikel dat nog geen aanbieding heeft, doorloopt alsnog USF-promotion, bijvoorbeeld wanneer een prijs later beschikbaar komt. Alleen listingwaarnemingen uit de huidige prijsronde worden voor bulkupdates gebruikt; oude bewaarde records krijgen geen nieuwe prijsactualiteit. De conservatieve voorraadinstelling is uitsluitend voor Velvet opt-in; andere shops behouden hun bestaande gedrag.
-
-Voor nieuwe bronverzoeken controleert de worker zowel de databaseverbinding als de vereiste tabelrechten. De bronfase is zacht begrensd op 55 minuten; de EAN-job heeft maximaal 120 minuten voor bronwerk, databaseverwerking en bewijs. Prijs/discovery-jobs hebben 60 minuten. De eenmalige database-import heeft maximaal 90 minuten. Dit zijn tijdsplafonds voor één winkel, geen onbeperkte gecombineerde shoprun.
-
-De prijsflow blijft onafhankelijk en staat dagelijks op **04:03 UTC** (05:03 Nederlandse wintertijd, 06:03 zomertijd), met databasewrites. Hij ververst de listingcatalogus en hergebruikt bevestigde EANs. De EAN-flow blijft op 05:17 UTC: dagelijks maximaal 1.000 eerste controles, daarna maximaal 250 per week. Wekelijkse EAN-controle verlaagt dus niet de frequentie van de prijsverversing. Een listingrefresh behoudt ook eerder afgehandelde ontbrekende/afgekeurde EANs, zodat de eerste ronde niet onbedoeld opnieuw begint.
-
-De vier onbetrouwbare collectietellingen blijven als bronreview gemarkeerd; ze vormen geen reden om aantoonbaar geldige individuele bronrecords buiten de database te houden. Niet-gecontroleerde records blijven in de verrijkingsrij. Het productionele bewijs wordt hieronder aangevuld zodra de echte writerun is afgerond.
-
-## Geautoriseerde EAN-automatisering — 2 november 2026
-
-De gebruiker heeft de EAN-controles nu expliciet geautomatiseerd: **dagelijks maximaal 1.000 checks tot alle ontdekte releases hun eerste detailcontrole hebben gehad; daarna maximaal 250 roulerende hercontroles per week**. Dit geeft geen toestemming voor databasepublicatie of prijscron. De vier onbetrouwbare collectietellingen blijven bronreviewpunten.
-
-Eén EAN-workflow heeft een dagelijkse trigger om **05:17 UTC** (06:17 Nederlandse wintertijd, 07:17 zomertijd). Tijdens onderhoud slaat de planner dagen over zonder de winkel te benaderen; na zeven kalenderdagen in Europe/Amsterdam komen maximaal 250 oudste detailwaarnemingen aan de beurt. Nieuwe onbehandelde releases zetten de dagelijkse eerste ronde weer aan. Ook ontbrekende/afgekeurde EANs tellen als gecontroleerd; ze blokkeren de overgang naar onderhoud niet. Een HTTP-blokkade geldt niet als afgeronde inhoudelijke controle en stopt bronverkeer.
-
-Er wordt slechts één artikel tegelijk opgehaald, minimaal drie seconden tussen aanvragen. Bij 1.000 checks duurt alleen de wachttijd ongeveer 50 minuten; de bronrun stopt zacht na 70 minuten en de job heeft 90 minuten om checkpoints/artifacts af te handelen. Bij trage responses kan een dag minder dan 1.000 checks halen; de volgende dag pakt het checkpoint verder. De dagteller voorkomt meer dan 1.000 automatische checks door herstarten; een onderbroken onderhoudsronde hervat het resterende weekbudget van 250.
-
-De broncheckpoint wordt duurzaam bewaard in `state/velvetdelft/checkpoint.json.gz` via een aparte stap met alleen repository-schrijfrechten. De scraper zelf ontvangt geen GitHub-token of databasegeheimen. Voor het eerste websiteverzoek wordt de duurzame opslag gecontroleerd. De cache blijft een herstelmiddel; de nieuwste bewaarde bronversie wint bij herstel. Dit voorkomt een reset wanneer een wekelijkse Actions-cache verloopt. Artifacts blijven 90 dagen beschikbaar. Een bron-/opslagfout wordt rood gemeld; er is geen agressieve herstartketen.
-
-**Daadwerkelijk gestart:** [eerste automatische ronde 41429886010](https://github.com/Vinylofy/curedplant./actions/runs/41429886010). De runner heeft planning, tests en het duurzaam schrijven van de broncheckpoint succesvol afgerond en is bezig met de detailcontroles. Deze run is nog niet als afgerond of inhoudelijk groen aangemerkt. Negen extra plannertests zijn geslaagd; de bestaande acht PostgreSQL-tests blijven de eerdere databasevalidatie.
-
-De voorwaarden voor productiepublicatie blijven onveranderd: alle gates, actuele listingprijzen, productieregistratie en een afzonderlijke write-goedkeuring. Een geslaagde automatische EAN-run bewijst geen productie-import.
-
-## Werkelijke bron en paginering
-
-Er is geen volledige centrale vinylcatalogus bewezen. De bron bestaat uit de 13 werkelijke genre-URL’s en aanvullende releases/actiecollecties hieronder. De eerste HTML bevat productkaarten en filters. De paginalinks zijn JavaScript-triggers: gewone GET-requests met `?page=2` gaven bij Prog en Jazz opnieuw pagina 1. De website zelf gebruikt **POST https://www.velvetdelft.nl/products/blockitems**, met het publieke `blockid`, genre-/tagfilters, een normale sessie-CSRF-header en een paginanummer. Dit endpoint is toegestaan door de gecontroleerde robots.txt; zoekroutes, API, account, cart en afbeeldingen worden niet bezocht. Geen blokkade-omzeiling.
-
-Filter-ID’s zijn rechtstreeks gecontroleerd tegen zichtbare formatlabels: **5 = 10-inch, 6 = LP, 7 = 12-inch maxi-single, 11 = 7-inch single**. De payload hergebruikt bronfilters en vraagt deze vinyltypen; iedere kaart wordt vervolgens opnieuw op een eenduidig vinylformaat gecontroleerd. `instockonly=false` behoudt leveranciersaanbod. De bestaande publieke parameter `p=true` maakt paginering ook beschikbaar op genres die deze in hun UI verbergen. De gekozen paginaomvang komt uit broncontrols (48/192); de server leverde soms maximaal 100 kaarten per response. De scraper gebruikt de werkelijk teruggegeven aantallen, geen aangenomen page size.
-
-Robots: https://www.velvetdelft.nl/robots.txt. Algemene voorwaarden: https://www.velvetdelft.nl/nl/pagina/algemene-voorwaarden. Het robots-sitemapadres wijst naar LPos, niet naar een bewezen complete Velvet-catalogus; het is daarom niet als catalogus gebruikt. De 13 voorafgaande probe-slugs zijn gecorrigeerd, waaronder Dance, Heavy en K-Pop.
-
-## Gevonden dekking
-
-**9,285 unieke vinylrelease-ID’s** zijn daadwerkelijk opgeslagen; een geschat volledig winkelbestand is **onbekend**. Alle 13 genres zijn tot hun laatste getelde pagina doorlopen. De som van categorieën bevat overlap en is geen unieke totaaltelling. Vier tagcollecties melden foutief één resultaat en blijven als onvolledig gemarkeerd. Aanvullende pagina-2-proeven op Indie en Black Friday waren leeg, maar bewijzen geen onbekende globale serverlimiet weg. Er wordt niets gedelist of verwijderd.
-
-| Categorie | URL | Pagina’s | Bron-ID’s | Dekking |
-|---|---|---:|---:|---|
-| home | [bron](https://www.velvetdelft.nl/nl) | 1 | 14 | Doorlopen |
-| countryblues | [bron](https://www.velvetdelft.nl/nl/pagina/countryblues) | 3 | 121 | Doorlopen |
-| danceelektronisch | [bron](https://www.velvetdelft.nl/nl/pagina/danceelektronisch) | 3 | 284 | Doorlopen |
-| heavy-metal | [bron](https://www.velvetdelft.nl/nl/pagina/heavy-metal) | 6 | 537 | Doorlopen |
-| hip-hop | [bron](https://www.velvetdelft.nl/nl/pagina/hip-hop) | 9 | 881 | Doorlopen |
-| jazz | [bron](https://www.velvetdelft.nl/nl/pagina/jazz) | 11 | 497 | Doorlopen |
-| kpop | [bron](https://www.velvetdelft.nl/nl/pagina/kpop) | 1 | 59 | Doorlopen |
-| nederlands | [bron](https://www.velvetdelft.nl/nl/pagina/nederlands) | 3 | 258 | Doorlopen |
-| poprock | [bron](https://www.velvetdelft.nl/nl/pagina/poprock) | 44 | 4316 | Doorlopen |
-| prog | [bron](https://www.velvetdelft.nl/nl/pagina/prog) | 3 | 271 | Doorlopen |
-| reggae | [bron](https://www.velvetdelft.nl/nl/pagina/reggae) | 2 | 132 | Doorlopen |
-| soulrnb | [bron](https://www.velvetdelft.nl/nl/pagina/soulrnb) | 5 | 411 | Doorlopen |
-| soundtracks | [bron](https://www.velvetdelft.nl/nl/pagina/soundtracks) | 6 | 503 | Doorlopen |
-| wereld | [bron](https://www.velvetdelft.nl/nl/pagina/wereld) | 9 | 824 | Doorlopen |
-| nieuw-binnen | [bron](https://www.velvetdelft.nl/nl/pagina/nieuw-binnen) | 2 | 155 | Doorlopen |
-| vinyl-sale | [bron](https://www.velvetdelft.nl/nl/pagina/vinyl-sale) | 8 | 778 | Doorlopen |
-| speciale-uitgaven | [bron](https://www.velvetdelft.nl/nl/pagina/speciale-uitgaven) | 1 | 100 | Totaaltelling onbewezen |
-| Gekleurd-vinyl-actie | [bron](https://www.velvetdelft.nl/nl/pagina/Gekleurd-vinyl-actie) | 1 | 25 | Totaaltelling onbewezen |
-| black-friday-special-releases | [bron](https://www.velvetdelft.nl/nl/pagina/black-friday-special-releases) | 1 | 92 | Totaaltelling onbewezen |
-| national-album-day-2026 | [bron](https://www.velvetdelft.nl/nl/pagina/national-album-day-2026) | 1 | 24 | Totaaltelling onbewezen |
-
-LP, 7-inch, 10-inch en 12-inch zijn daadwerkelijk gevonden en in de 100-detailtest opgenomen. Nieuwe releases, Vinyl Sale, Indie Only, Velvet Exclusives, Black Friday en National Album Day zijn onderzocht. Er is in de opgenomen listings geen expliciete preorderstatus gevonden; toekomstige/ongeprijsde items worden niet als direct bestelbare voorraad verzonnen. De parser ondersteunt een expliciete preordervermelding; zonder zo’n bronvermelding blijft de waargenomen leveranciers-/onbekende status behouden.
-
-## Kwaliteit en EAN-gate
-
-| Metriek | Uitkomst |
+| Onderdeel | Aantal |
 |---|---:|
-| Unieke releases in detailsteekproef | 100 |
-| Geldige, in het gelabelde detailveld bevestigde GTIN | 100 / 100 (100%) |
-| Geldige listingprijs in steekproef | 92 / 100 (92%) |
-| Bevestigde beschikbaarheidsklasse in steekproef | 92 / 100 (92%) |
-| USF-testpublicaties in geïsoleerde database | 92 |
-| Quarantaine in geïsoleerde database | 8 |
-| Geldige listingprijs in volledige bronvangst | 9032 / 9285 |
-| Extra details in hervatbare cataloguscheckpoint | 10 |
-| HTTP 403/429 in geslaagde bron-/detailproeven | 0 |
-| Productiewrites / verwijderingen | 0 / 0 |
+| Detailbevestigde EAN-bronrecords in Supabase | 1.010 |
+| Shoplinks / raw snapshots / stagingregels | 1.010 elk |
+| Aangemaakte prijsregels | 975 |
+| Actieve, voor NL zichtbare aanbiedingen | 974 |
+| Nieuwe producten via bestaande GTIN-gate | 41 |
+| Open quarantainerecords | 36 |
 
-De 100%-EAN-dekking geldt uitsluitend voor de 100 geselecteerde details, niet voor alle ontdekte releases. De acht niet-publiceerbare steekproefrecords hebben geen bevestigde verkoopprijs/beschikbaarheid. De 564 niet-vinylkaarten uit het eerste gemengde brononderzoek zijn uitgesloten; dit is een waarneming over onderzochte pagina’s, geen unieke winkelbrede telling.
+De eerste [echte writerun 41464446761](https://github.com/Vinylofy/curedplant./actions/runs/41464446761) is succesvol afgerond: 1.010 raw snapshots, 975 staging-promoties, 975 prijsregels en 975 historyregels. 41 producten waren nieuw; overige EANs koppelen aan bestaande producten. De bronlistingprijs bepaalt `last_seen_at`, geen kunstmatige actualisering naar het importtijdstip.
 
-Beschikbaarheid in de catalogus: `{'in_stock': 7558, 'unknown': 289, 'supplier_order': 1438}`. **supplier_order** blijft expliciet in brondata; de gedeelde openbare prijsstructuur ondersteunt die status niet, dus de adapter zet deze conservatief om naar **unknown**, nooit naar **in_stock**. Ongeprijsde records zijn uitgesloten van promotion.
+35 bevestigde EANs hebben geen bruikbare listingprijs en blijven buiten publicatie. Eén extra aanbieding is afgeschermd wegens een tegenstrijdig bestaand productformaat: **Various Artists — The Women of Def Jam**, GTIN `00602438820405`, bronrelease `106709` (bron: 3-LP; bestaand product: CD). Canonieke metadata zijn behouden. Er is geen product of geschiedenis verwijderd.
 
-Checksums en GTIN-14 komen uit de bestaande centrale helper. UPC/EAN met equivalente voorloopnullen matchen op GTIN-14. Release-ID en SKU zijn nooit EAN. Conflicterende URL/detail/JSON-LD-identificaties, ongeldige codes, niet-nieuw vinyl en ambiguë bundles worden geweigerd. De bronprijs wordt uitsluitend uit de eigen listingkaart/cartprijs gelezen; doorgestreepte prijzen en verzending worden niet als verkoopprijs gebruikt. Detail leest geen prijs of voorraad. De bestaande MusicBrainz/canonieke metadata worden door de gedeelde product-upsert beschermd.
+Een tussentijdse formaatrestrictie hield ook zeven barcode-geïdentificeerde vinyluitgaven met bonus-CD/DVD tegen. Die regel was te streng. De zeven aanbiedingen zijn gecontroleerd hersteld; alleen het CD-only-conflict blijft vaststaan. Er zijn 43 historische quarantaineregels, waarvan **36 nog open**. De [definitieve controle 41472477713](https://github.com/Vinylofy/curedplant./actions/runs/41472477713) bevestigt **974 EAN + 0 artiest/album = 974 totaal**, status **healthy**.
 
-Steekproeven tegen de werkelijk opgeslagen bronpagina’s:
+De NL-marktregistratie is gecontroleerd toegevoegd op basis van de Nederlandse winkel/vestiging en de publieke [PostNL-leveringsvoorwaarden](https://www.velvetdelft.nl/nl/pagina/leveringsvoorwaarden). Alleen NL is bevestigd; kosten en drempels zijn onbekend gebleven. Expliciete uitsluitingen worden niet overschreven. Winkeltype: `physical_record_store`, dus de bestaande UI toont Winkel & Webshop. Geen frontendwijziging of hostingdeploy nodig.
 
-| Release | Listingprijs | GTIN-14 | Bron |
-|---|---:|---|---|
-| 150596 | € 15.99 | 00602488050265 | [detail](https://www.velvetdelft.nl/nl/release/150596/Frenna-Shallipopi/7-Zaazaa/Frenna-Shallipopi/1-7-inch-single/602488050265) |
-| 544832 | € 19.99 | 08720589667907 | [detail](https://www.velvetdelft.nl/nl/release/544832/Fatal-Flowers/SEVEN-DAYS-TO-REMEMBER/Fatal-Flowers/1-10-inch/8720589667907) |
-| 133481 | € 29.99 | 05060944577216 | [detail](https://www.velvetdelft.nl/nl/release/133481/Aphex-Twin/Digeridoo/Aphex-Twin/2-12-inch-maxi-single/5060944577216) |
-| 524509 | € onbekend | 04099964275605 | [detail](https://www.velvetdelft.nl/nl/release/524509/IOMMI-TONY/FROM-THE-DARK-Velvet-Exclusive/IOMMI-TONY/2-LP/4099964275605) |
-| 534028 | € 49.99 | 00888072804142 | [detail](https://www.velvetdelft.nl/nl/release/534028/Alvin-Dave/Blackjack-david/Alvin-Dave/2-LP/888072804142) |
+Zichtbaarheid is gecontroleerd op [Taylor Swift — Midnights](https://preview.vinylofy.com/product/e781c6f1-af13-4db8-a322-88a6485722ce?market=NL): HTTP 200, Velvet Music Delft en de eigen winkellink staan daadwerkelijk op de pagina. Dezelfde detailpagina biedt ook andere gekoppelde Midnights-uitvoeringen van Velvet aan.
 
-## USF en herstartbaarheid
+## Planning en databasewrites
 
-De importer heeft een vaste CSV-header, required/optional columns, CanonicalRecord-mapper en registry-entry, met `include_in_all=False`. De shop-adapter gebruikt de bestaande USF-tabellen **scrape_runs → shop_product_links → raw_shop_scrapes → staged_offers / quarantine_offers → products/prices** en hergebruikt link-upsert, staging, promotion-conversie, product-/price-/historyhelpers. Er is geen nieuwe matchingdatabase of frontendroute toegevoegd.
+- **Prijs — dagelijks 04:03 UTC:** 05:03 Nederlandse wintertijd / 06:03 zomertijd. Nieuwe listingronde, maximaal 200 pagina’s; bestaande bevestigde EANs worden hergebruikt.
+- **EAN/detail — dagelijks 05:17 UTC:** 06:17 Nederlandse wintertijd / 07:17 zomertijd. Maximaal 1.000 eerste detailchecks per Amsterdamse kalenderdag totdat alle ontdekte releases een eerste controle hebben gehad. Daarna maximaal 250 roulerende checks per zeven kalenderdagen.
+- Beide workflows hebben standaard **write=true** voor de geautoriseerde planning. Discovery blijft handmatig. De generieke bulk-onboarding wordt niet voor andere winkels geactiveerd.
+- Eén bronrequest tegelijk, minimaal drie seconden interval, gezamenlijke concurrency-lock voor Velvet. 403/429/challenges stoppen bronverkeer; geen directe herstartketen of blokkade-omzeiling.
 
-De echte 100-recordset is in een wegwerp-PostgreSQL zonder netwerk door de keten gegaan: 100 raw snapshots, 92 producten/prijzen, acht quarantaineregels. Herhalen maakt geen extra bron/product/prijsregels. De tests beschermen recentere listingwaarnemingen en canonieke metadata, hervatten na een onderbroken promotion en hergebruiken bestaande release-ID’s wanneer een bron-URL wijzigt. Snapshot-fingerprints voorkomen dubbel verwerken. Pending EANs blijven verrijkingswerk, geen definitieve afkeuring.
+[Hervattingscontrole 41470124095](https://github.com/Vinylofy/curedplant./actions/runs/41470124095) is groen. Het dagbudget van 1.000 was al verbruikt; de eerste batch is hergebruikt voor de database-import. Er zijn daarvoor geen nieuwe 1.000 detailrequests uitgevoerd. De vervolgrun gaat bij de volgende onbehandelde bronregel verder.
 
-Publieke workflows hebben geen databasesecrets of database-write-input. Alleen de EAN-workflow heeft na de expliciete toestemming hierboven een cron; Discovery en Price blijven handmatig. De importer-CLI eist `--dry-run`; de muterende USF-testadapter weigert externe databasehosts en vereist expliciet dezelfde geïsoleerde DATABASE_URL. De productiewrite-ingang is bewust nog niet vrijgegeven. Voor livegang moeten registratie/schema en de gewenste begrensde productiepromotie expliciet worden gecontroleerd en goedgekeurd.
+De worker controleert databaseverbinding en schrijfrechten vóór nieuwe bronrequests. Het databasegeheim is alleen aanwezig in de afzonderlijke schrijfstappen; de scraper ontvangt het niet. Broncheckpoints staan duurzaam in `state/velvetdelft/checkpoint.json.gz`, met een herstelcache en 90 dagen Actions-artifacts. Dag-/weekbudgetten blijven bij herstart behouden.
 
-## Kosten, planning en gebruik
+De initiële import gebruikte nog de oorspronkelijke schrijflus en kostte circa een half uur. Vervolgruns verwerken uitsluitend nieuwe detailwaarnemingen, zoeken bestaande fingerprints in bulk op en bundelen broninserts via psycopg. Promotion commit in batches van 50, atomisch per batch. De test met de echte 100 bronrecords bewijst herstel na een fout na de eerste 50 gecommitteerde aanbiedingen: de retry schrijft alleen de resterende 42, zonder duplicaten.
 
-De hervatbare catalogusvangst registreert 163 requests inclusief hervattingen/ontwikkelcontroles en tien extra details. De afzonderlijke steekproef gebruikte 101 requests (robots + 100 details), naast de beperkte bron-/pagineringresearch. Verzoeken lopen enkelvoudig met minimaal drie seconden interval; alleen 502/503/504 krijgen één vertraagde herhaling. 401/403/429, challenge, onverwachte structuur, herhaalde pagina of tegenstrijdige telling stoppen gecontroleerd met een checkpoint. Session-CSRF/cookies worden niet opgeslagen in artifacts.
+Dagelijkse prijsverversing gebruikt de bestaande snelle bulk-prijsschrijver. Eerder geïmporteerde producten worden niet opnieuw door de hele EAN-keten gehaald. Een eerder ongeprijsd artikel kan alsnog via USF promoveren wanneer een valide prijs beschikbaar komt. Alleen waarnemingen uit de huidige listingronde verversen prijzen. Onbekende/leveranciersvoorraad wordt voor Velvet niet als op voorraad behouden. De bestaande standaardwerking voor andere shops is ongewijzigd.
 
-De volledige cataloguscheckpoint is als gecomprimeerd bronbewijs opgeslagen, geen actieve publicatielijst. De 100-detailbronset en steekproefquotes zijn ook opgeslagen. Een nieuwe listingcyclus behoudt bevestigde EANs; de initiële ronde controleert onopgeloste records en gewijzigde parserrevisies. De wekelijkse ronde controleert de 250 oudste detailwaarnemingen, ook als hun reguliere vervaldatum nog niet is bereikt. Bevestigde details vervallen na 90 dagen voor hercontrole, ontbrekende/afgekeurde detailresultaten krijgen zeven dagen wachttijd. Nieuwe/onopgeloste releases krijgen voorrang.
+Bronwerk stopt zacht na 55 minuten. EAN-jobs hebben maximaal 120 minuten voor bron, databaseverwerking en bewijs; prijs/discovery 60 minuten, de losse databaseflow 90 minuten. Dit zijn harde plafonds voor één shop. Bij trage responses kan de bronfase minder dan 1.000 checks afronden; de volgende run hervat zonder budgetreset.
 
-Handmatige workflows (Ubuntu):
+## Bron en ontdekte dekking
 
-- `Curedplant | Discovery | Velvet Delft | Manual review`: `max_pages`, `refresh`. Hervat categorie/pagina; voor een nieuwe periodieke cyclus `refresh=true`.
-- `Curedplant | Price | Velvet Delft | Manual review`: afzonderlijke listingcyclus; cached EANs blijven behouden.
-- `Curedplant | EAN Detail | Velvet Delft | Manual review`: dagelijks maximaal 1.000 initiële checks en daarna wekelijks 250 roulerende hercontroles, met aparte handmatige limiet.
-- Gedeelde worker: concurrency `velvetdelft-source`, jobtimeout 90 minuten, zachte bronlimiet 70 minuten, duurzame broncheckpoint, herstelcache en artifacts met 90 dagen retentie.
+Er zijn **9.285 unieke vinylrelease-ID’s** opgeslagen in het [beoordeelde broncheckpoint](validation/velvetdelft-catalogue-20261102.json.gz). Dat is discovery, niet een claim dat al 9.285 aanbiedingen zijn gepubliceerd. Alle 13 genres zijn tot hun getelde eindpagina doorlopen. Vier tagcollecties hebben onbetrouwbare totaaltellingen; volledige wereldwijde catalogusdekking blijft onbewezen. Er wordt niets op basis van een onvolledige ronde gedelist.
 
-Bij een lege Actions-cache wordt het beoordeelde broncheckpoint uit deze PR geladen en tegen de opgeslagen SHA-256 gecontroleerd; er is dus geen tweede initiële discovery nodig. Voor nieuwe listings is `refresh=true` beschikbaar; bestaande versheidscontroles blijven gelden.
+De echte paginator werkt via publieke **POST `/products/blockitems`**. Gewone GET-paginalinks gaven soms opnieuw pagina 1; de scraper controleert dat. Publieke form controls bevestigen ID 5 = 10-inch, 6 = LP, 7 = 12-inch maxi-single, 11 = 7-inch single. Bronfilters, block-ID en publieke sessie-CSRF worden uit de pagina gelezen; sessiegeheimen worden niet opgeslagen. De robots-toegestane listingroute wordt gebruikt; uitgesloten zoek-, API-, account-, cart- en image-routes worden niet gecrawld.
 
-Alle workflows voeren de offline tests, importer-dry-run en USF-preview uit en tonen tellingen in de Actions-summary. Een poging om de nieuwe Discovery-workflow direct op de featurebranch te starten gaf **HTTP 404**: deze workflow is nog niet op de standaardbranch geregistreerd. Er is dus **geen geslaagde Actions-run** om te linken. Lokaal is na de succesvolle PostgreSQL-tests een extra begrensde read-only detailproef uitgevoerd; tien details uit twee vijf-recordproeven waren geldig, nul databasewrites. Dat was de situatie vóór de aansluitende toestemming: PR #2 is inmiddels gemerged en de eerste automatische EAN-run is daadwerkelijk gestart.
+| Categorie | Pagina’s | Bron-ID’s inclusief overlap | Dekking |
+|---|---:|---:|---|
+| [home](https://www.velvetdelft.nl/nl) | 1 | 14 | Doorlopen |
+| [countryblues](https://www.velvetdelft.nl/nl/pagina/countryblues) | 3 | 121 | Doorlopen |
+| [danceelektronisch](https://www.velvetdelft.nl/nl/pagina/danceelektronisch) | 3 | 284 | Doorlopen |
+| [heavy-metal](https://www.velvetdelft.nl/nl/pagina/heavy-metal) | 6 | 537 | Doorlopen |
+| [hip-hop](https://www.velvetdelft.nl/nl/pagina/hip-hop) | 9 | 881 | Doorlopen |
+| [jazz](https://www.velvetdelft.nl/nl/pagina/jazz) | 11 | 497 | Doorlopen |
+| [kpop](https://www.velvetdelft.nl/nl/pagina/kpop) | 1 | 59 | Doorlopen |
+| [nederlands](https://www.velvetdelft.nl/nl/pagina/nederlands) | 3 | 258 | Doorlopen |
+| [poprock](https://www.velvetdelft.nl/nl/pagina/poprock) | 44 | 4316 | Doorlopen |
+| [prog](https://www.velvetdelft.nl/nl/pagina/prog) | 3 | 271 | Doorlopen |
+| [reggae](https://www.velvetdelft.nl/nl/pagina/reggae) | 2 | 132 | Doorlopen |
+| [soulrnb](https://www.velvetdelft.nl/nl/pagina/soulrnb) | 5 | 411 | Doorlopen |
+| [soundtracks](https://www.velvetdelft.nl/nl/pagina/soundtracks) | 6 | 503 | Doorlopen |
+| [wereld](https://www.velvetdelft.nl/nl/pagina/wereld) | 9 | 824 | Doorlopen |
+| [nieuw-binnen](https://www.velvetdelft.nl/nl/pagina/nieuw-binnen) | 2 | 155 | Doorlopen |
+| [vinyl-sale](https://www.velvetdelft.nl/nl/pagina/vinyl-sale) | 8 | 778 | Doorlopen |
+| [speciale-uitgaven](https://www.velvetdelft.nl/nl/pagina/speciale-uitgaven) | 1 | 100 | Totaal onbewezen |
+| [Gekleurd-vinyl-actie](https://www.velvetdelft.nl/nl/pagina/Gekleurd-vinyl-actie) | 1 | 25 | Totaal onbewezen |
+| [black-friday-special-releases](https://www.velvetdelft.nl/nl/pagina/black-friday-special-releases) | 1 | 92 | Totaal onbewezen |
+| [national-album-day-2026](https://www.velvetdelft.nl/nl/pagina/national-album-day-2026) | 1 | 24 | Totaal onbewezen |
 
-Voorgesteld **na afzonderlijke goedkeuring**: één initiële discovery, dagelijks listing-prijzen, tweemaal per week bounded detailenrichment en periodiek een verse discovery. Een initiële detailbevestiging voor ~9.285 releases kost bij drie seconden per request minimaal ~7,7 uur, te verdelen over circa 38 batches van 250; dagelijkse prijzen mogen daar niet op wachten zodra bestaande EANs bewezen zijn. De EAN-planning is inmiddels geautoriseerd en geactiveerd zoals boven beschreven; prijzen en discovery blijven handmatig.
+De bronproef van 100 unieke vinylproducten omvat LP, 7-inch, 10-inch en 12-inch, meerdere genres, nieuwe releases, sale en exclusives: 100 geldige gelabelde detail-GTINs; 92 geldige listingprijzen/beschikbaarheden, acht niet publiceerbaar. Die 100%-EAN-dekking geldt voor de steekproef. Het geautomatiseerde vervolg heeft daarna 1.000 extra checks gedaan; opgeslagen bronresultaten zijn herbruikbaar.
 
-## Validatie en overgebleven gates
+## USF en veiligheidsregels
 
-Uitgevoerd: **23 offline tests en acht echte PostgreSQL-tests**; actionlint en `git diff --check`. De SQL-tests gebruikten uitsluitend een wegwerpcontainer met `--network none`, geen Supabase. De 100 opgeslagen detailpagina’s zijn ook opnieuw tegen de strengere JSON-LD-conflictcontrole gevalideerd zonder nieuwe netwerkrequests.
+Importcontract en registry leveren een vaste CSV-header en CanonicalRecord. De bestaande USF-structuur blijft leidend: **scrape_runs → shop_product_links → raw_shop_scrapes → staged_offers / quarantine_offers → products / prices / price_history**. Primaire sleutels en centrale barcode-normalisatie voorkomen samenvoeging van verschillende barcodes. Release-ID/SKU is geen EAN.
 
-GO: handmatige broncontrole, importerdry-run en geïsoleerde USF-tests. **NO-GO voor databasepublicatie**: de vier foutieve collectietellers verhinderen een claim van volledige winkeldekking; alle overige releases moeten nog door detail-gate; productie-registratie, gecontroleerde write-route en een echte Actions-proef moeten nog worden gecontroleerd na review/merge. Geen schema- of productieauthwijzigingen gedaan.
+Listing is uitsluitend leidend voor prijs, saleprijs, EUR, beschikbaarheid, URL en waarnemingstijd. Detail bevestigt EAN en metadata; een detailprijs kan een listingprijs niet overschrijven. Verschillende of ongeldige identificaties en CD-only-conflicten gaan apart. Barcode-geïdentificeerd vinyl met bonusmedia wordt toegelaten. Canonieke/MusicBrainz-metadata en recentere prijzen blijven beschermd.
 
-Gewijzigde onderdelen: `scripts/scrapers/velvetdelft.py`, de bestaande probe, `scripts/importers/import_velvetdelft.py`, importerregistry, disabled USF-shopregistry, `scripts/scrapers/usf/jobs/velvetdelft_pipeline.py`, drie handmatige workflows plus herbruikbare worker, Velvet-tests/fixtures, dit bestaande readinessdocument en machineleesbaar bronbewijs. Andere shops en frontend zijn ongewijzigd.
+## Validatie, code en bewijs
 
-Bewijs: [kwaliteit/paginering](validation/velvetdelft-20261102.json), [volledige broncheckpoint](validation/velvetdelft-catalogue-20261102.json.gz), [100 echte detailrecords](../tests/fixtures/velvetdelft/sample100.json).
+**34 offline tests + 19 echte PostgreSQL-integratietests geslaagd**, actionlint en `git diff --check`. De tests gebruiken een wegwerp-PostgreSQL zonder netwerk. Gedekt: echte 100-recordset, checksum/variantconflicten, idempotentie, bron-URL-wijziging, oude prijzen/metadata, batchherstel, snelle prijsupdates, oude bewaarde listings, budgetten, roterende selectie, NL-registratie en respect voor expliciete uitsluitingen.
+
+Gewijzigde onderdelen: Velvet scraper en probe; importer/registries; USF-adapter; EAN-planner/checkpoint; productie-audit en publicatiecontroles; handmatige Discovery, geplande Price en EAN, gedeelde worker en Database-beheerworkflow; tests/fixtures; dit bestaande statusdocument en bron-/databasebewijs. De gedeelde bulk-prijsschrijver heeft alleen een optionele Velvet-instelling; de standaard voor andere shops bleef gelijk. Geen frontendwijziging.
+
+Bewijs: [actuele database-uitkomst en planning](validation/velvetdelft-database-20261102.json), [oorspronkelijke broncontrole](validation/velvetdelft-20261102.json), [100 bronrecords](../tests/fixtures/velvetdelft/sample100.json).
