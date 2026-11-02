@@ -92,7 +92,15 @@ def parse_page(body: str, source_url: str, observed_at: str) -> tuple[list[dict]
 def write_rows(conn, rows: list[dict], run_id: str) -> int:
     shop = conn.execute("select id from public.shops where is_active and regexp_replace(domain,'^www\\.','')=%s", (DOMAIN,)).fetchone()
     if not shop:
-        raise RuntimeError("muziker_shop_not_registered")
+        # Registration is part of the explicit production setup; it does not
+        # infer shipping eligibility or publish an alternative.
+        conn.execute("""insert into public.shops(name,domain,country,is_active)
+          values('Muziker',%s,'NL',true)
+          on conflict(domain) do update set name=excluded.name,is_active=true
+          returning id""", (DOMAIN,))
+        shop = conn.execute("select id from public.shops where regexp_replace(domain,'^www\\.','')=%s", (DOMAIN,)).fetchone()
+    if not shop:
+        raise RuntimeError("muziker_shop_registration_failed")
     shop_id = shop[0]
     written = 0
     for row in rows:
