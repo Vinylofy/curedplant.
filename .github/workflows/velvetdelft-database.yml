@@ -10,7 +10,7 @@ on:
 permissions:
   contents: write
 concurrency:
-  group: velvetdelft-source
+  group: ${{ inputs.mode == 'audit' && 'velvetdelft-database-audit' || 'velvetdelft-source' }}
   cancel-in-progress: false
 jobs:
   database:
