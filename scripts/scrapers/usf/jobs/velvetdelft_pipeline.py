@@ -158,12 +158,41 @@ def _ingest(rows,dsn,run,*,production=False,promote=True):
     return {**result,'database_writes':True,'isolated_test':not production,'promotion_enabled':promote,'run_id':run,'shop_id':shop,'usf_shop_id':SHOP_ID,'staged':staged.inserted,'links_inserted':links_result.inserted,'raw_inserted':raw_inserted,'raw_reused':raw_reused,'quarantines_inserted':quarantined,'products_created':products_created,'prices_inserted':prices_inserted,'prices_changed':prices_changed,'prices_written':prices_written,'history_written':history_written,'newer_prices_preserved':newer_preserved,'persisted_counts':persisted}
 
 
+def sync_existing_prices(rows,dsn):
+    """Use the existing bulk price writer; only new offers enter USF promotion."""
+    import psycopg
+    from scripts.workers.price_database import update_existing
+    from scripts.workers.price_evidence import url_key
+    validation=preview(rows)
+    allowed={r['release_id'] for r in validation['records'] if r['promotion']=='valid'}
+    valid=[r for r in rows if r['source_product_id'] in allowed]
+    with psycopg.connect(dsn,prepare_threshold=None) as conn:
+        existing={url_key(r[0]) for r in conn.execute('select p.product_url from prices p join shops s on s.id=p.shop_id where s.domain=%s',(CONFIG.shop_domain,)).fetchall()}
+    missing=[r for r in valid if url_key(r['source_url']) not in existing]
+    created=ingest(missing,dsn,production=True) if missing else None
+    records=[];bulk_rows=[];new_keys={url_key(r['source_url']) for r in missing}
+    for i,row in enumerate(valid,1):
+        if url_key(row['source_url']) in new_keys:continue
+        bulk_rows.append(row)
+        record,_=map_velvet_row(row,i)
+        records.append({'source_url':record.product_url,'shop_domain':CONFIG.shop_domain,'price':str(record.price),'currency':'EUR','availability':record.availability})
+    if records:
+        oldest=min(datetime.fromisoformat(r['listing_observed_at']) for r in bulk_rows)
+        stats=update_existing(SHOP_ID,records,oldest,allow_no_matches=True,preserve_unknown=False)
+    else:stats={'updated':0,'verified':0,'changed':0}
+    with psycopg.connect(dsn,prepare_threshold=None) as conn:
+        counts={table:conn.execute('select count(*) from '+table+' where shop_id=%s',(SHOP_ID,)).fetchone()[0] for table in ('shop_product_links','raw_shop_scrapes','staged_offers','quarantine_offers')}
+        counts['prices']=conn.execute('select count(*) from prices p join shops s on s.id=p.shop_id where s.domain=%s',(CONFIG.shop_domain,)).fetchone()[0]
+    return {'shop_id':SHOP_ID,'database_writes':True,'mode':'listing_prices','run_id':created['run_id'] if created else None,'raw_inserted':created['raw_inserted'] if created else 0,'quarantines_inserted':created['quarantines_inserted'] if created else 0,'prices_written':stats['updated']+(created['prices_written'] if created else 0),'prices_verified':stats['verified'],'new_offers':len(missing),'persisted_counts':counts,'bulk_price_stats':stats}
+
+
 def main():
     p=argparse.ArgumentParser(description=__doc__)
     p.add_argument('--capture',required=True)
     p.add_argument('--out',default='output/velvetdelft/database-result.json')
     p.add_argument('--write',action='store_true')
     p.add_argument('--stage-only',action='store_true')
+    p.add_argument('--prices-only',action='store_true')
     a=p.parse_args()
     capture=json.loads(Path(a.capture).read_text())
     rows=load_rows(a.capture)
@@ -173,8 +202,16 @@ def main():
     if a.write:
         dsn=os.environ.get('DATABASE_URL')
         if not dsn:raise ValueError('DATABASE_URL is required for write=true')
-        report=ingest(checked,dsn,production=True,promote=not a.stage_only and not capture.get('error'))
-        capture['database']={'last_write_at':datetime.now(timezone.utc).isoformat(),'last_run_id':report['run_id'],'persisted_counts':report['persisted_counts'],'processed_detail_at':{r['source_product_id']:r['detail_observed_at'] for r in checked}}
+        previous=capture.setdefault('database',{})
+        done=previous.get('processed_detail_at',{})
+        pending=[r for r in checked if done.get(r['source_product_id'])!=r['detail_observed_at']]
+        if a.prices_only:
+            if capture.get('error'):raise ValueError('Listing capture failed; no price refresh performed')
+            report=sync_existing_prices(checked,dsn)
+        else:
+            report=ingest(pending,dsn,production=True,promote=not a.stage_only and not capture.get('error'))
+            done.update({r['source_product_id']:r['detail_observed_at'] for r in pending})
+        capture['database']={**previous,'last_write_at':datetime.now(timezone.utc).isoformat(),'last_run_id':report['run_id'],'persisted_counts':report['persisted_counts'],'processed_detail_at':done}
         capture['updated_at']=datetime.now(timezone.utc).isoformat()
         save(a.capture,capture)
     else:report=preview(checked)

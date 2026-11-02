@@ -65,6 +65,11 @@ jobs:
       - name: Offline parser, gatekeeper and failure tests
         if: steps.plan.outputs.enabled == 'true'
         run: python -m unittest discover -s tests -p 'test_velvetdelft*.py'
+      - name: Check database access before any new source requests
+        if: inputs.write && (steps.plan.outputs.enabled == 'true' || steps.plan.outputs.database_pending == 'true')
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python -m scripts.workers.velvetdelft_database_audit --require-write
       - name: Write previously collected EANs before starting more source work
         if: inputs.write && steps.plan.outputs.database_pending == 'true'
         env:
@@ -88,12 +93,16 @@ jobs:
           args=()
           if [ "$AUTOMATIC" = true ]; then args+=(--automatic); fi
           if [ "$REFRESH" = true ]; then args+=(--refresh); fi
-          python -m scripts.scrapers.velvetdelft --mode "$MODE" --max-pages "$MAX_PAGES" --detail-limit "$DETAIL_LIMIT" --max-seconds 3600 "${args[@]}"
+          python -m scripts.scrapers.velvetdelft --mode "$MODE" --max-pages "$MAX_PAGES" --detail-limit "$DETAIL_LIMIT" --max-seconds 3300 "${args[@]}"
       - name: Write the current source results through USF
         if: always() && inputs.write && (steps.collect.outcome == 'success' || steps.collect.outcome == 'failure') && hashFiles('output/velvetdelft/state.json') != ''
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: python -m scripts.scrapers.usf.jobs.velvetdelft_pipeline --capture output/velvetdelft/state.json --write
+          SOURCE_MODE: ${{ inputs.mode }}
+        run: |
+          args=()
+          if [ "$SOURCE_MODE" = prices ]; then args+=(--prices-only); fi
+          python -m scripts.scrapers.usf.jobs.velvetdelft_pipeline --capture output/velvetdelft/state.json --write "${args[@]}"
       - name: Save source progress to the repository even after an access failure
         if: always() && (steps.plan.outputs.enabled == 'true' || (inputs.write && steps.plan.outputs.database_pending == 'true')) && hashFiles('output/velvetdelft/state.json') != ''
         env:

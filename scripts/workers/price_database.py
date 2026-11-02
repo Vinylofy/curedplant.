@@ -23,7 +23,7 @@ def shop_domain(worker, rows):
     return get_shop_importer(worker).config.shop_domain
 
 
-def update_existing(worker, records, started_at, *, allow_no_matches=False):
+def update_existing(worker, records, started_at, *, allow_no_matches=False, preserve_unknown=True):
     """Never creates products/offers or changes EAN, covers or detail queues."""
     domain = shop_domain(worker, records)
     expected = {url_key(r["source_url"]): r for r in records}
@@ -86,7 +86,7 @@ def update_existing(worker, records, started_at, *, allow_no_matches=False):
                     raise RuntimeError(f"Currency mismatch for {record['source_url']}")
                 value = Decimal(record["price"])
                 availability = normalize_availability(record.get("availability"))
-                if availability == "unknown":
+                if availability == "unknown" and preserve_unknown:
                     availability = target["availability"]
                 changed = value != target["price"] or availability != target["availability"]
                 product_url = (record["source_url"] if str(target["product_id"]) in fallbacks

@@ -7,7 +7,7 @@ import unittest
 from unittest.mock import patch
 import psycopg
 from tests.test_velvetdelft import good
-from scripts.scrapers.usf.jobs.velvetdelft_pipeline import ingest,isolated_only,preview
+from scripts.scrapers.usf.jobs.velvetdelft_pipeline import ingest,isolated_only,preview,sync_existing_prices
 
 DSN=os.environ.get('VELVET_TEST_DATABASE_URL')
 BUSINESS_SCHEMA='''
@@ -117,6 +117,30 @@ class PipelinePostgresTests(unittest.TestCase):
         with psycopg.connect(DSN) as conn:
             self.assertEqual(conn.execute('select count(*) from products').fetchone()[0],0)
             self.assertEqual(conn.execute('select stage_status from staged_offers').fetchone()[0],'staged')
+    def test_price_refresh_uses_bulk_existing_offers_and_does_not_restage_catalogue(self):
+        row=good();row['listing_observed_at']=(datetime.now(timezone.utc)-timedelta(minutes=2)).isoformat()
+        ingest([row],DSN)
+        refreshed={**row,'price':'20.99','availability':'supplier_order','listing_observed_at':(datetime.now(timezone.utc)-timedelta(minutes=1)).isoformat()}
+        result=sync_existing_prices([refreshed],DSN)
+        self.assertEqual((result['new_offers'],result['prices_verified'],result['raw_inserted']),(0,1,0))
+        with psycopg.connect(DSN) as conn:
+            self.assertEqual(conn.execute('select count(*) from raw_shop_scrapes').fetchone()[0],1)
+            self.assertEqual(conn.execute('select availability from prices').fetchone()[0],'unknown')
+            self.assertEqual(float(conn.execute('select price from prices').fetchone()[0]),20.99)
+    def test_price_becoming_available_promotes_previously_quarantined_ean(self):
+        row=good();row['listing_observed_at']=(datetime.now(timezone.utc)-timedelta(minutes=2)).isoformat();row['detail_observed_at']=row['listing_observed_at']
+        ingest([{**row,'price':None}],DSN)
+        row['listing_observed_at']=(datetime.now(timezone.utc)-timedelta(minutes=1)).isoformat()
+        result=sync_existing_prices([row],DSN)
+        self.assertEqual((result['new_offers'],result['persisted_counts']['prices']),(1,1))
+        with psycopg.connect(DSN) as conn:
+            self.assertEqual(conn.execute('select count(*) from quarantine_offers where resolved_at is null').fetchone()[0],0)
+    def test_shared_bulk_default_keeps_existing_shop_policy_unchanged(self):
+        from scripts.workers.price_database import update_existing
+        row=good();ingest([row],DSN)
+        update_existing('velvetdelft',[{'source_url':row['source_url'],'shop_domain':'velvetdelft.nl','price':'20.99','currency':'EUR','availability':'unknown'}],datetime.now(timezone.utc))
+        with psycopg.connect(DSN) as conn:
+            self.assertEqual(conn.execute('select availability from prices').fetchone()[0],'in_stock')
     def test_usf_preview_does_not_mutate_any_table(self):
         r=good();ingest([r],DSN)
         with psycopg.connect(DSN) as conn:
