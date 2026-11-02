@@ -81,6 +81,34 @@ class ScheduleTests(unittest.TestCase):
             with patch('scripts.workers.velvetdelft_schedule.CHECKPOINT',str(repo)):
                 result=restore(cache)
             self.assertEqual(result['automation']['daily_checks'],700)
+    def test_extra_initial_skips_confirmed_and_already_checked_even_after_parser_change(self):
+        s=state(4)
+        s['records']['0']=dict(good(),source_product_id='0',detail_parser_revision='old')
+        s['records']['1'].update(detail_observed_at=AT.isoformat(),ean_status='missing')
+        s['records']['2'].update(ean_status='verified',ean='1234567890123')
+        self.assertEqual([r['source_product_id'] for r in selected_rows(s,'extra_initial',1000)],['3'])
+        s['automation']={'budget_day':day(AT),'daily_checks':1000}
+        self.assertEqual(plan(s,AT,extra_initial=True)['limit'],1)
+        attempt(s,AT,extra_initial=True)
+        self.assertEqual(s['automation']['daily_checks'],1000)
+        self.assertEqual(s['automation']['extra_initial_checks'],1)
+        s['records']['3'].update(detail_observed_at=AT.isoformat())
+        self.assertFalse(plan(s,AT,extra_initial=True)['enabled'])
+    def test_extra_initial_resumes_next_unenriched_record_from_saved_checkpoint(self):
+        s=state(3);s['records']['0']=dict(good(),source_product_id='0')
+        client=Mock(requests=[]);client.get.return_value='detail'
+        def enriched(row,html):
+            return dict(row,ean_status='verified',ean='test',detail_observed_at=AT.isoformat(),detail_parser_revision=DETAIL_REVISION)
+        with tempfile.TemporaryDirectory() as tmp:
+            p=Path(tmp)/'state.json';save(p,s)
+            with patch('scripts.scrapers.velvetdelft.enrich',side_effect=enriched):
+                collect('details',p,detail_limit=1,extra_initial=True,transport=client)
+                collect('details',p,detail_limit=1,extra_initial=True,transport=client)
+                collect('details',p,detail_limit=1,extra_initial=True,transport=client)
+            self.assertEqual(client.get.call_count,2)
+            saved=json.loads(p.read_text())
+            self.assertEqual(saved['records']['0'],s['records']['0'])
+            self.assertEqual(saved['automation']['extra_initial_checks'],2)
     def test_budget_day_uses_amsterdam_calendar_date(self):
         self.assertEqual(day(datetime(2026,11,2,23,30,tzinfo=timezone.utc)),'2026-11-03')
 

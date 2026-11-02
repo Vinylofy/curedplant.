@@ -241,15 +241,16 @@ def initial_routes(home):
     return {slug:BASE+'/nl/pagina/'+slug for slug in mandatory}
 
 
-def collect(mode='discovery',state_path='output/velvetdelft/state.json',max_pages=25,detail_limit=100,transport=None,refresh=False,automatic=False,max_seconds=4200):
+def collect(mode='discovery',state_path='output/velvetdelft/state.json',max_pages=25,detail_limit=100,transport=None,refresh=False,automatic=False,max_seconds=4200,extra_initial=False):
     path=Path(state_path);state=json.loads(path.read_text()) if path.exists() else {'version':1,'shop_id':SHOP_ID,'records':{},'categories':{},'requests':[]}
     if state.get('shop_id')!=SHOP_ID or state.get('version')!=1:raise ValueError('Wrong checkpoint')
     client=transport;state['error']=None;processed=0;checks=0;phase=None;started=time.monotonic()
+    if extra_initial:automatic=True
     if automatic and mode!='details':raise ValueError('Automatic budget is EAN-only')
     try:
         if automatic:
             from scripts.workers.velvetdelft_schedule import plan
-            schedule=plan(state);phase=schedule['phase'];detail_limit=min(detail_limit,schedule['limit'])
+            schedule=plan(state,extra_initial=extra_initial);phase=schedule['phase'];detail_limit=min(detail_limit,schedule['limit'])
             if not schedule['enabled']:return state
         if client is None:client=Transport()
         if mode in ('discovery','prices'):
@@ -293,7 +294,7 @@ def collect(mode='discovery',state_path='output/velvetdelft/state.json',max_page
                 due=selected_rows(state,phase,detail_limit)
             for row in due[:detail_limit]:
                 if time.monotonic()-started>=max_seconds:break
-                if automatic:attempt(state)
+                if automatic:attempt(state,extra_initial=extra_initial)
                 checks+=1
                 rid=row['source_product_id'];html=client.get(row['source_url'])
                 try:state['records'][rid]=enrich(row,html)
@@ -316,7 +317,7 @@ def collect(mode='discovery',state_path='output/velvetdelft/state.json',max_page
 
 
 def main():
-    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--mode',choices=('discovery','prices','details'),default='discovery');p.add_argument('--state',default='output/velvetdelft/state.json');p.add_argument('--max-pages',type=int,default=25);p.add_argument('--detail-limit',type=int,default=100);p.add_argument('--refresh',action='store_true');p.add_argument('--automatic',action='store_true');p.add_argument('--max-seconds',type=int,default=4200);a=p.parse_args()
+    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--mode',choices=('discovery','prices','details'),default='discovery');p.add_argument('--state',default='output/velvetdelft/state.json');p.add_argument('--max-pages',type=int,default=25);p.add_argument('--detail-limit',type=int,default=100);p.add_argument('--refresh',action='store_true');p.add_argument('--automatic',action='store_true');p.add_argument('--extra-initial',action='store_true');p.add_argument('--max-seconds',type=int,default=4200);a=p.parse_args()
     if not 1<=a.max_pages<=1000 or not 1<=a.detail_limit<=1000 or not 1<=a.max_seconds<=4200:p.error('Pages 1..1000, detail limit 1..1000, runtime 1..4200 seconds')
-    collect(a.mode,a.state,a.max_pages,a.detail_limit,refresh=a.refresh,automatic=a.automatic,max_seconds=a.max_seconds)
+    collect(a.mode,a.state,a.max_pages,a.detail_limit,refresh=a.refresh,automatic=a.automatic,max_seconds=a.max_seconds,extra_initial=a.extra_initial)
 if __name__=='__main__':main()

@@ -23,11 +23,14 @@ def day(at=None):
     return (at or datetime.now(timezone.utc)).astimezone(ZoneInfo('Europe/Amsterdam')).date().isoformat()
 
 
-def plan(state, at=None):
+def plan(state, at=None, extra_initial=False):
     today=day(at)
     ledger=state.setdefault('automation',{})
     if ledger.get('budget_day')!=today:
         ledger.update(budget_day=today,daily_checks=0)
+    if extra_initial:
+        pending=len(selected_rows(state,'extra_initial',1000000))
+        return {'enabled':pending>0,'phase':'extra_initial','limit':min(1000,pending),'initial_remaining':pending,'reason':'explicit extra batch of never-enriched records; regular daily budget unchanged'}
     pending=sum(initial_pending(r) for r in state['records'].values())
     if pending:
         if ledger.get('phase')!='initial':ledger.pop('initial_completed_day',None)
@@ -47,14 +50,18 @@ def plan(state, at=None):
 def selected_rows(state, phase, limit):
     rows=list(state['records'].values())
     if phase=='initial':rows=[r for r in rows if initial_pending(r)]
+    if phase=='extra_initial':rows=[r for r in rows if not r.get('detail_observed_at') and not (r.get('ean') or r.get('gtin14') or r.get('ean_status')=='verified')]
     # Oldest observation first makes weekly 250-record checks rotate.
     rows.sort(key=lambda r:(r.get('detail_observed_at',''),r['source_product_id']))
     return rows[:limit]
 
 
-def attempt(state, at=None):
+def attempt(state, at=None, extra_initial=False):
     ledger=state.setdefault('automation',{});today=day(at)
     if ledger.get('budget_day')!=today:ledger.update(budget_day=today,daily_checks=0)
+    if extra_initial:
+        ledger['extra_initial_checks']=int(ledger.get('extra_initial_checks',0))+1
+        return
     if ledger.get('daily_checks',0)>=1000:raise ValueError('Daily EAN budget exhausted')
     ledger['daily_checks']=int(ledger.get('daily_checks',0))+1
     if ledger.get('phase')=='maintenance':ledger['weekly_checks']=int(ledger.get('weekly_checks',0))+1
@@ -116,12 +123,13 @@ def main():
     parser.add_argument('command',choices=('restore','plan','persist'))
     parser.add_argument('--state',default='output/velvetdelft/state.json')
     parser.add_argument('--automatic',action='store_true')
+    parser.add_argument('--extra-initial',action='store_true')
     parser.add_argument('--limit',type=int,default=100)
     args=parser.parse_args()
     if args.command=='restore':restore(args.state);return
     if args.command=='persist':persist(args.state);return
     state=json.loads(Path(args.state).read_text())
-    result=plan(state) if args.automatic else {'enabled':True,'phase':'manual','limit':args.limit,'reason':'manual source review'}
+    result=plan(state,extra_initial=args.extra_initial) if (args.automatic or args.extra_initial) else {'enabled':True,'phase':'manual','limit':args.limit,'reason':'manual source review'}
     if not 1<=args.limit<=1000:parser.error('Manual limit must be 1..1000')
     result['limit']=min(result['limit'],args.limit)
     done=state.get('database',{}).get('processed_detail_at',{})

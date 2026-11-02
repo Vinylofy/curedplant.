@@ -12,6 +12,10 @@ on:
         description: 'Use daily initial budget (1000) then weekly rotating review (250)'
         type: boolean
         default: true
+      extra_initial_batch:
+        description: 'Extra batch: only never-enriched records, skip confirmed EANs; regular daily quota unchanged'
+        type: boolean
+        default: false
       detail_limit:
         description: 'Maximum detail checks; automatic mode also enforces daily/weekly budgets (1..1000)'
         type: string
@@ -23,6 +27,7 @@ jobs:
     uses: ./.github/workflows/_velvetdelft-worker.yml
     with:
       mode: details
+      extra_initial_batch: ${{ github.event_name == 'workflow_dispatch' && inputs.extra_initial_batch }}
       write: ${{ github.event_name == 'schedule' || inputs.write }}
       automatic: ${{ github.event_name == 'schedule' || inputs.automatic }}
       detail_limit: ${{ github.event_name == 'schedule' && '1000' || inputs.detail_limit }}

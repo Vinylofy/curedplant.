@@ -91,3 +91,18 @@ Bewijs: [actuele database-uitkomst en planning](validation/velvetdelft-database-
 [Run 41481936699](https://github.com/Vinylofy/curedplant./actions/runs/41481936699) ververste en verifieerde **964 prijzen** succesvol. Bron, databasewrites, checkpoint en monitoring waren groen. De afsluitende rapportage faalde met `KeyError: raw_inserted`: de daaropvolgende read-only USF-preview had `database-result.json` overschreven.
 
 De CLI heeft nu aparte standaardbestanden voor write-bewijs (`database-result.json`) en preview (`pipeline-preview.json`); de workflow geeft het previewpad bovendien expliciet mee. Een CLI-regressietest bewijst dat preview het echte schrijfbewijs intact laat. De exacte Actions-summary is lokaal opnieuw uitgevoerd op het uit de runlog herstelde echte 964-resultaat. 35 offline tests, actionlint en diff-check zijn geslaagd; geen databasecode gewijzigd en geen nieuwe volledige scrape gestart voor deze correctie.
+
+
+### Extra EAN-verrijking hervatten — 2026-11-02
+
+De EAN Detail-workflow heeft een handmatige optie `extra_initial_batch`.
+Deze verwerkt maximaal 1000 nog nooit verrijkte artikelen vanuit het nieuwste
+checkpoint. Artikelen met een bevestigde barcode of een eerdere detailcontrole
+worden overgeslagen, ook bij een gewijzigde parser. Ontbrekende of afgekeurde
+EANs blijven beschikbaar voor de afzonderlijke onderhoudsronde.
+Na iedere detailcontrole wordt de voortgang opgeslagen. Een volgende extra run
+pakt de volgende onbewerkte artikelen. De extra controles hebben een afzonderlijke
+teller; de normale dagelijkse 1000 en latere wekelijkse 250 blijven behouden.
+Deze hervatting gebruikt de EAN-workflow met database writes aan, geen prijsrun
+of herhaling van alleen rapportage. Het rustige tempo en stoppen bij 403/429
+blijven actief.

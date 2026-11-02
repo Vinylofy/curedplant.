@@ -14,6 +14,9 @@ on:
       automatic:
         type: boolean
         default: false
+      extra_initial_batch:
+        type: boolean
+        default: false
       refresh:
         type: boolean
         default: false
@@ -52,10 +55,12 @@ jobs:
         id: plan
         env:
           AUTOMATIC: ${{ inputs.automatic && 'true' || 'false' }}
+          EXTRA_INITIAL: ${{ inputs.extra_initial_batch && 'true' || 'false' }}
           DETAIL_LIMIT: ${{ inputs.detail_limit }}
         run: |
           args=()
           if [ "$AUTOMATIC" = true ]; then args+=(--automatic); fi
+          if [ "$EXTRA_INITIAL" = true ]; then args+=(--extra-initial); fi
           python -m scripts.workers.velvetdelft_schedule plan --limit "$DETAIL_LIMIT" "${args[@]}"
       - name: Verify durable checkpoint access before source requests
         if: steps.plan.outputs.enabled == 'true'
@@ -83,6 +88,7 @@ jobs:
           MAX_PAGES: ${{ inputs.max_pages }}
           DETAIL_LIMIT: ${{ steps.plan.outputs.limit }}
           AUTOMATIC: ${{ inputs.automatic && 'true' || 'false' }}
+          EXTRA_INITIAL: ${{ inputs.extra_initial_batch && 'true' || 'false' }}
           REFRESH: ${{ inputs.refresh && 'true' || 'false' }}
           PYTHONUNBUFFERED: '1'
         run: |
@@ -92,6 +98,7 @@ jobs:
           fi
           args=()
           if [ "$AUTOMATIC" = true ]; then args+=(--automatic); fi
+          if [ "$EXTRA_INITIAL" = true ]; then args+=(--extra-initial); fi
           if [ "$REFRESH" = true ]; then args+=(--refresh); fi
           python -m scripts.scrapers.velvetdelft --mode "$MODE" --max-pages "$MAX_PAGES" --detail-limit "$DETAIL_LIMIT" --max-seconds 3300 "${args[@]}"
       - name: Write the current source results through USF
