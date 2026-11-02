@@ -241,11 +241,16 @@ def initial_routes(home):
     return {slug:BASE+'/nl/pagina/'+slug for slug in mandatory}
 
 
-def collect(mode='discovery',state_path='output/velvetdelft/state.json',max_pages=25,detail_limit=100,transport=None,refresh=False):
+def collect(mode='discovery',state_path='output/velvetdelft/state.json',max_pages=25,detail_limit=100,transport=None,refresh=False,automatic=False,max_seconds=4200):
     path=Path(state_path);state=json.loads(path.read_text()) if path.exists() else {'version':1,'shop_id':SHOP_ID,'records':{},'categories':{},'requests':[]}
     if state.get('shop_id')!=SHOP_ID or state.get('version')!=1:raise ValueError('Wrong checkpoint')
-    client=transport;state['error']=None;processed=0
+    client=transport;state['error']=None;processed=0;checks=0;phase=None;started=time.monotonic()
+    if automatic and mode!='details':raise ValueError('Automatic budget is EAN-only')
     try:
+        if automatic:
+            from scripts.workers.velvetdelft_schedule import plan
+            schedule=plan(state);phase=schedule['phase'];detail_limit=min(detail_limit,schedule['limit'])
+            if not schedule['enabled']:return state
         if client is None:client=Transport()
         if mode in ('discovery','prices'):
             if refresh and mode!='prices':state['categories']={}
@@ -282,7 +287,13 @@ def collect(mode='discovery',state_path='output/velvetdelft/state.json',max_page
         if mode=='details':
             due=[r for r in state['records'].values() if r.get('detail_parser_revision')!=DETAIL_REVISION or not r.get('detail_next_at') or r['detail_next_at']<=now()]
             due.sort(key=lambda r:(0 if r.get('detail_observed_at') and r.get('detail_parser_revision')!=DETAIL_REVISION else 1 if r.get('ean_status')=='pending' else 2,r.get('detail_observed_at',''),r['source_product_id']))
+            if automatic:
+                from scripts.workers.velvetdelft_schedule import selected_rows,attempt
+                due=selected_rows(state,phase,detail_limit)
             for row in due[:detail_limit]:
+                if time.monotonic()-started>=max_seconds:break
+                if automatic:attempt(state)
+                checks+=1
                 rid=row['source_product_id'];html=client.get(row['source_url'])
                 try:state['records'][rid]=enrich(row,html)
                 except ValueError as exc:
@@ -291,17 +302,20 @@ def collect(mode='discovery',state_path='output/velvetdelft/state.json',max_page
     except Exception as exc:
         state['error']=str(exc);raise
     finally:
+        if automatic:
+            from scripts.workers.velvetdelft_schedule import finish
+            finish(state,phase,checks,state['error'])
         state['requests']+=client.requests if client is not None else [];state['updated_at']=now();save(path,state)
         rows=list(state['records'].values());out=path.parent;out.mkdir(parents=True,exist_ok=True)
         with (out/'products.csv').open('w',newline='') as f:
             w=csv.DictWriter(f,fieldnames=FIELDS,extrasaction='ignore');w.writeheader();w.writerows(rows)
-        summary={'shop_id':SHOP_ID,'database_writes':False,'unique_vinyl_releases':len(rows),'verified_eans':sum(r.get('ean_status')=='verified' for r in rows),'valid_listing_prices':sum(bool(r.get('price')) for r in rows),'availability':{a:sum(r.get('availability')==a for r in rows) for a in ('in_stock','supplier_order','preorder','out_of_stock','unknown')},'categories':state['categories'],'requests':len(state['requests']),'error':state['error'],'catalogue_complete':bool(len(state['categories'])==len(GENRES)+len(COLLECTIONS)+1 and all(c['complete'] for c in state['categories'].values())),'deletions':0}
+        summary={'shop_id':SHOP_ID,'database_writes':False,'unique_vinyl_releases':len(rows),'verified_eans':sum(r.get('ean_status')=='verified' for r in rows),'valid_listing_prices':sum(bool(r.get('price')) for r in rows),'availability':{a:sum(r.get('availability')==a for r in rows) for a in ('in_stock','supplier_order','preorder','out_of_stock','unknown')},'categories':state['categories'],'requests':len(state['requests']),'error':state['error'],'catalogue_complete':bool(len(state['categories'])==len(GENRES)+len(COLLECTIONS)+1 and all(c['complete'] for c in state['categories'].values())),'deletions':0,'detail_checks_this_run':checks,'automation':state.get('automation',{})}
         save(out/'summary.json',summary)
     return state
 
 
 def main():
-    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--mode',choices=('discovery','prices','details'),default='discovery');p.add_argument('--state',default='output/velvetdelft/state.json');p.add_argument('--max-pages',type=int,default=25);p.add_argument('--detail-limit',type=int,default=100);p.add_argument('--refresh',action='store_true');a=p.parse_args()
-    if not 1<=a.max_pages<=1000 or not 1<=a.detail_limit<=250:p.error('Pages 1..1000, detail limit 1..250')
-    collect(a.mode,a.state,a.max_pages,a.detail_limit,refresh=a.refresh)
+    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--mode',choices=('discovery','prices','details'),default='discovery');p.add_argument('--state',default='output/velvetdelft/state.json');p.add_argument('--max-pages',type=int,default=25);p.add_argument('--detail-limit',type=int,default=100);p.add_argument('--refresh',action='store_true');p.add_argument('--automatic',action='store_true');p.add_argument('--max-seconds',type=int,default=4200);a=p.parse_args()
+    if not 1<=a.max_pages<=1000 or not 1<=a.detail_limit<=1000 or not 1<=a.max_seconds<=4200:p.error('Pages 1..1000, detail limit 1..1000, runtime 1..4200 seconds')
+    collect(a.mode,a.state,a.max_pages,a.detail_limit,refresh=a.refresh,automatic=a.automatic,max_seconds=a.max_seconds)
 if __name__=='__main__':main()

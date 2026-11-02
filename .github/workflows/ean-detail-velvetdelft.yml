@@ -1,16 +1,23 @@
-name: "Curedplant | EAN Detail | Velvet Delft | Manual review"
+name: "Curedplant | EAN Detail | Velvet Delft | Daily 1000 then weekly 250"
 on:
+  schedule:
+    - cron: '17 5 * * *'
   workflow_dispatch:
     inputs:
+      automatic:
+        description: 'Use daily initial budget (1000) then weekly rotating review (250)'
+        type: boolean
+        default: true
       detail_limit:
-        description: 'Maximum due detail pages, verified EANs reused (1..250)'
+        description: 'Maximum detail checks; automatic mode also enforces daily/weekly budgets (1..1000)'
         type: string
-        default: '100'
+        default: '1000'
 permissions:
-  contents: read
+  contents: write
 jobs:
   source:
     uses: ./.github/workflows/_velvetdelft-worker.yml
     with:
       mode: details
-      detail_limit: ${{ inputs.detail_limit }}
+      automatic: ${{ github.event_name == 'schedule' || inputs.automatic }}
+      detail_limit: ${{ github.event_name == 'schedule' && '1000' || inputs.detail_limit }}

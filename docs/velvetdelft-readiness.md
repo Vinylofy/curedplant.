@@ -4,6 +4,18 @@ Status: **GO voor handmatige bron-/pipelinecontrole; NO-GO voor onbeheerde produ
 
 Werkbranch: `feature/velvetdelft-probe`, bestaande [draft PR #2](https://github.com/Vinylofy/curedplant./pull/2). Frontend en bestaande shops zijn niet aangepast. Het slug `velvetdelft` is toegevoegd aan de importerregistry en als **disabled** USF-shop geregistreerd; de bestaande productiedatabase-registratie is niet onderzocht of gewijzigd.
 
+## Geautoriseerde EAN-automatisering — 2 november 2026
+
+De gebruiker heeft de EAN-controles nu expliciet geautomatiseerd: **dagelijks maximaal 1.000 checks tot alle ontdekte releases hun eerste detailcontrole hebben gehad; daarna maximaal 250 roulerende hercontroles per week**. Dit geeft geen toestemming voor databasepublicatie of prijscron. De vier onbetrouwbare collectietellingen blijven bronreviewpunten.
+
+Eén EAN-workflow heeft een dagelijkse trigger om **05:17 UTC** (06:17 Nederlandse wintertijd, 07:17 zomertijd). Tijdens onderhoud slaat de planner dagen over zonder de winkel te benaderen; na zeven kalenderdagen in Europe/Amsterdam komen maximaal 250 oudste detailwaarnemingen aan de beurt. Nieuwe onbehandelde releases zetten de dagelijkse eerste ronde weer aan. Ook ontbrekende/afgekeurde EANs tellen als gecontroleerd; ze blokkeren de overgang naar onderhoud niet. Een HTTP-blokkade geldt niet als afgeronde inhoudelijke controle en stopt bronverkeer.
+
+Er wordt slechts één artikel tegelijk opgehaald, minimaal drie seconden tussen aanvragen. Bij 1.000 checks duurt alleen de wachttijd ongeveer 50 minuten; de bronrun stopt zacht na 70 minuten en de job heeft 90 minuten om checkpoints/artifacts af te handelen. Bij trage responses kan een dag minder dan 1.000 checks halen; de volgende dag pakt het checkpoint verder. De dagteller voorkomt meer dan 1.000 automatische checks door herstarten; een onderbroken onderhoudsronde hervat het resterende weekbudget van 250.
+
+De broncheckpoint wordt duurzaam bewaard in `state/velvetdelft/checkpoint.json.gz` via een aparte stap met alleen repository-schrijfrechten. De scraper zelf ontvangt geen GitHub-token of databasegeheimen. Voor het eerste websiteverzoek wordt de duurzame opslag gecontroleerd. De cache blijft een herstelmiddel; de nieuwste bewaarde bronversie wint bij herstel. Dit voorkomt een reset wanneer een wekelijkse Actions-cache verloopt. Artifacts blijven 90 dagen beschikbaar. Een bron-/opslagfout wordt rood gemeld; er is geen agressieve herstartketen.
+
+De voorwaarden voor productiepublicatie blijven onveranderd: alle gates, actuele listingprijzen, productieregistratie en een afzonderlijke write-goedkeuring. Een geslaagde automatische EAN-run bewijst geen productie-import.
+
 ## Werkelijke bron en paginering
 
 Er is geen volledige centrale vinylcatalogus bewezen. De bron bestaat uit de 13 werkelijke genre-URL’s en aanvullende releases/actiecollecties hieronder. De eerste HTML bevat productkaarten en filters. De paginalinks zijn JavaScript-triggers: gewone GET-requests met `?page=2` gaven bij Prog en Jazz opnieuw pagina 1. De website zelf gebruikt **POST https://www.velvetdelft.nl/products/blockitems**, met het publieke `blockid`, genre-/tagfilters, een normale sessie-CSRF-header en een paginanummer. Dit endpoint is toegestaan door de gecontroleerde robots.txt; zoekroutes, API, account, cart en afbeeldingen worden niet bezocht. Geen blokkade-omzeiling.

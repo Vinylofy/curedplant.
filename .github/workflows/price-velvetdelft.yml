@@ -7,7 +7,7 @@ on:
         type: string
         default: '25'
 permissions:
-  contents: read
+  contents: write
 jobs:
   source:
     uses: ./.github/workflows/_velvetdelft-worker.yml
