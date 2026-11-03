@@ -1,11 +1,13 @@
 """Integration checks against an explicitly configured disposable database."""
 import os
 import unittest
+from unittest.mock import patch
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 import psycopg
 from tests.test_rarevinyl_staging import record
 from scripts.workers.rarevinyl_staging import write_raw, checkpoint_page
+from scripts.workers.rarevinyl_prices import sync_existing
 
 DSN = os.environ.get('RAREVINYL_TEST_DATABASE_URL')
 
@@ -50,5 +52,24 @@ class RareVinylDatabaseTests(unittest.TestCase):
         self.assertEqual(self.conn.execute("select count(*) from shop_product_links where shop_id='rarevinyl'").fetchone()[0], 1)
         self.assertEqual(checkpoint_page(self.conn, 2, [], end_of_catalogue=True)['cycle_complete'], True)
         with self.assertRaises(ValueError): checkpoint_page(self.conn, 2, [], end_of_catalogue=True)
+
+    def test_existing_price_write_is_scoped_and_verified(self):
+        self.conn.execute('create table if not exists shops(id uuid primary key default gen_random_uuid(),domain text unique)')
+        self.conn.execute("""create table if not exists prices(product_id uuid default gen_random_uuid(),shop_id uuid,
+          product_url text,price numeric,currency text,availability text,last_seen_at timestamptz,
+          updated_at timestamptz,is_active boolean default true,primary key(product_id,shop_id))""")
+        self.conn.execute('create table if not exists price_history(product_id uuid,shop_id uuid,price numeric,currency text,availability text,captured_at timestamptz,created_at timestamptz)')
+        self.conn.execute('truncate price_history, prices, shops')
+        shop = self.conn.execute("insert into shops(domain) values('eu.rarevinyl.com') returning id").fetchone()[0]
+        url = 'https://eu.rarevinyl.com/products/example'
+        self.conn.execute("insert into prices(shop_id,product_url,price,currency,availability) values(%s,%s,20,'EUR','in_stock')", (shop,url))
+        current = datetime.now(timezone.utc).isoformat()
+        source = record(observed_at=current,detail_checked_at=current,currency='EUR',
+                        condition_evidence='Factory sealed from new. This item is unplayed.')
+        with patch.dict(os.environ, {'DATABASE_URL':DSN}):
+            result = sync_existing([source], write=True)
+        self.assertEqual((result['writer']['updated'], result['writer']['verified']), (1,1))
+        self.assertEqual(str(self.conn.execute('select price from prices').fetchone()[0]), '29.95')
+        self.assertEqual(self.conn.execute('select count(*) from price_history').fetchone()[0], 1)
 
 if __name__ == '__main__': unittest.main()

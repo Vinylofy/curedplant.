@@ -47,3 +47,22 @@ def price_records(rows, now=None):
     if any(r['reason']=='duplicate_url' for r in rejected):
         raise ValueError('ambiguous_duplicate_listing')
     return {'records':list(records.values()), 'rejected':rejected, 'database_writes':0}
+
+
+def sync_existing(rows, *, write=False, writer=None, now=None):
+    """Update only registered shop URLs; no creation of products or offers."""
+    if len(rows) > 100:
+        raise ValueError('maximum batch size is 100')
+    assessed = price_records(rows, now=now)
+    if not write or not assessed['records']:
+        return assessed | {'mode':'dry_run' if not write else 'no_eligible_records'}
+    if writer is None:
+        from scripts.workers.price_database import update_existing
+        writer = update_existing
+    # Using the oldest observation avoids overwriting any write that occurred
+    # after a listing was collected, even when the batch spans multiple pages.
+    started_at = min(datetime.fromisoformat(r['observed_at']) for r in assessed['records'])
+    result = writer('rarevinyl', assessed['records'], started_at,
+                    allow_no_matches=True, preserve_unknown=True)
+    return {'mode':'write', 'eligible':len(assessed['records']),
+            'rejected':assessed['rejected'], 'database_writes':result['updated'], 'writer':result}
