@@ -1,6 +1,12 @@
 name: 'RareVinyl | Read-only source pilot | Ubuntu'
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - 'scripts/scrapers/rarevinyl.py'
+      - 'scripts/workers/rarevinyl_*.py'
+      - 'tests/test_rarevinyl*.py'
+      - '.github/workflows/rarevinyl-research.yml'
 permissions:
   contents: read
 concurrency:
