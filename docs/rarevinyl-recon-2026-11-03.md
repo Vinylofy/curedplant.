@@ -43,3 +43,26 @@ Every record remains blocked from publication: source evidence and market
 prices have not yet passed the NEW-condition and NL/BE eligibility gates.
 The research workflow is manually dispatched only; it does not activate a
 production scraper, stage records or schedule any job.
+
+## Follow-up: destinations and condition
+
+The storefront's own localization form was used in separate sessions for NL
+and BE, and the rendered Shopify country confirmed each selection. The same
+three product variants showed EUR 54.99, 62.99 and 39.99 in both sessions.
+This is a three-product sample of article prices, not a checkout or proof of
+all taxes, shipping costs or delivery conditions.
+
+The shop's [shipping information](https://eu.rarevinyl.com/pages/postage-shipping-and-worldwide-delivery)
+states that local tax/customs and duty-paid delivery is offered for the
+Netherlands; for other countries the available duty/tax-paid service is shown
+at checkout and otherwise the customer is responsible for import taxes.
+Belgium is not explicitly named in that duty-paid list.
+
+In ten sealed product descriptions the shop's own `Condition` field stated
+`Factory sealed from new. This item is unplayed.` Used vinyl and CD samples
+included `Excellent condition` or explicit signs of play. The scraper now
+recognizes the exact product-specific NEW condition statement; tags such as
+`NewInStock` or a sealed banner alone do not prove NEW. A subsequent one-page
+pilot returned 50 listings, 10 checked details, 10 explicit NEW vinyl records,
+10 valid barcodes, one missing artist/title, no duplicate IDs and zero errors.
+All records remain blocked pending destination/checkout and integration checks.

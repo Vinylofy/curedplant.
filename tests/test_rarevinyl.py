@@ -1,6 +1,6 @@
 import unittest
 from unittest.mock import Mock, patch
-from scripts.scrapers.rarevinyl import listing, enrich, valid_gtin, fetch
+from scripts.scrapers.rarevinyl import listing, enrich, valid_gtin, fetch, detail_condition
 
 def product(**changes):
     result = {'id': 123, 'handle': 'artist-album-lp', 'title': 'Artist Album - Sealed Vinyl LP',
@@ -20,6 +20,14 @@ class RareVinylTests(unittest.TestCase):
         self.assertEqual(valid_gtin('0602508046131'), '0602508046131')
         self.assertIsNone(valid_gtin('0602508046132'))
         self.assertIsNone(valid_gtin('barcode:0602508046131'))
+
+    def test_condition_is_product_specific(self):
+        new = '<p>Condition - Factory sealed from new. This item is unplayed. Click here for more info.</p><p>RareVinyl.com Ref No - ABC</p>'
+        used = '<p>still sealed</p><p>Condition - This item is in Excellent condition or better.</p><p>RareVinyl.com Ref No - DEF</p>'
+        self.assertEqual(detail_condition(new)[0], 'new')
+        self.assertEqual(detail_condition(used)[0], 'unknown')
+        self.assertEqual(detail_condition('Factory sealed from new. This item is unplayed.')[0], 'unknown')
+        self.assertEqual(detail_condition(new + new)[0], 'unknown')
 
     def test_cd_and_no_ean(self):
         row = listing(product(title='Artist Album CD', tags=['CD', 'Sealed']))

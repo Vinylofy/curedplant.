@@ -1,6 +1,7 @@
 """Bounded, read-only RareVinyl source pilot; no database writes or publication."""
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
+from html.parser import HTMLParser
 import argparse
 import json
 import re
@@ -15,6 +16,27 @@ COLLECTION = '/collections/brand-new-factory-sealed-vinyl-records-and-cds/produc
 UA = 'VinylofyRareVinylResearch/1.0 (+https://vinylofy.com)'
 VINYL = re.compile(r'\b(?:vinyl|(?:\d\s*[-x]?\s*)?lp|picture\s+disc|[1270]+[ -]?inch)\b', re.I)
 NON_VINYL = re.compile(r'\b(?:\d+\s*)?(?:cd|dvd|cassette|blu[ -]?ray)\b', re.I)
+
+class TextExtractor(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.parts = []
+    def handle_data(self, data):
+        self.parts.append(data)
+
+def detail_condition(html):
+    parser = TextExtractor()
+    parser.feed(str(html or ''))
+    text = ' '.join(' '.join(parser.parts).split())
+    sections = re.findall(r'\bCondition\s*[-:]\s*(.*?)(?=\s+RareVinyl\.com Ref No\s*[-:]|$)', text, re.I)
+    if len(sections) != 1:
+        return 'unknown', None
+    condition = sections[0].strip()[:500]
+    # Require the shop's own specific condition statement, not a collection
+    # banner, generic sealed tag, or a marketing statement elsewhere.
+    if re.match(r'^Factory sealed from new\.\s*This item is unplayed\.', condition, re.I):
+        return 'new', condition
+    return 'unknown', condition
 
 
 def valid_gtin(value):
@@ -67,8 +89,9 @@ def enrich(row, product):
     if detail_price != Decimal(row['price']):
         raise ValueError('listing_detail_price_conflict')
     result = dict(row)
+    condition, evidence = detail_condition(product.get('description') or product.get('body_html'))
     result.update(barcode=valid_gtin(variant.get('barcode')), detail_checked_at=datetime.now(timezone.utc).isoformat(),
-                  detail_price=str(detail_price), condition_status='unknown')
+                  detail_price=str(detail_price), condition_status=condition, condition_evidence=evidence)
     return result
 
 
@@ -146,7 +169,7 @@ def run(pages, details, delay):
     return {'status': 'research_only', 'database_writes': 0, 'publication_blocked': True,
             'summary': {'discovered': len(records), 'valid_prices': len(records),
                         'sealed_candidates': sum(r['sealed_candidate'] for r in records),
-                        'confirmed_new': 0, 'detail_checked': detail_count, 'detail_attempts': detail_attempts,
+                        'confirmed_new': sum(r['condition_status']=='new' and r['format_status']=='vinyl' for r in records), 'detail_checked': detail_count, 'detail_attempts': detail_attempts,
                         'valid_barcodes': sum(bool(r['barcode']) for r in records),
                         'without_barcode': sum(not r['barcode'] for r in records),
                         'missing_artist_or_title': sum(not r['artist'] or not r['album_raw'] for r in records),
