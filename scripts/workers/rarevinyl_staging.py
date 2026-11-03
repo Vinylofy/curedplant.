@@ -158,3 +158,56 @@ def ingest_capture(conn, capture):
         raw = write_raw(conn, eligible)
         checkpoint = checkpoint_page(conn, page, rows, capture.get('end_of_catalogue') is True)
     return {'raw':raw, 'checkpoint':checkpoint, 'pending_detail':len(rows)-len(eligible)}
+
+
+def verify_project(conn, supabase_url):
+    """Refuse production writes unless the configured project matches the DB."""
+    import re
+    expected = re.fullmatch(r'([a-z0-9]{20})\.supabase\.co', urlsplit(supabase_url).hostname or '')
+    host = conn.info.host or ''
+    direct = re.fullmatch(r'db\.([a-z0-9]{20})\.supabase\.co', host)
+    pooler = re.fullmatch(r'[a-z0-9.-]+\.pooler\.supabase\.com', host)
+    login = re.fullmatch(r'postgres\.([a-z0-9]{20})', conn.info.user or '')
+    actual = direct.group(1) if direct else (login.group(1) if pooler and login else None)
+    if not expected or expected.group(1) != actual or str(conn.info.port) != '5432':
+        raise ValueError('supabase_project_identity_not_verified')
+
+
+def main():
+    import argparse
+    import json
+    import os
+    from pathlib import Path
+    import psycopg
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--capture', type=Path)
+    parser.add_argument('--write', action='store_true')
+    parser.add_argument('--checkpoint', action='store_true')
+    parser.add_argument('--install-checkpoint', action='store_true')
+    args = parser.parse_args()
+    if args.install_checkpoint and not args.write:
+        parser.error('install-checkpoint requires --write')
+    if args.write and not (args.install_checkpoint or args.capture):
+        parser.error('a capture is required for writes')
+    if not args.write and not args.checkpoint and not args.capture:
+        parser.error('select a capture or checkpoint query')
+    if args.capture and not args.write and not args.checkpoint:
+        capture = json.loads(args.capture.read_text())
+        results = [preview_record(row) for row in capture['records']]
+        print(json.dumps({'database_writes':0, 'routes':{route:sum(r['route']==route for r in results)
+              for route in ('ean_staging','artist_title','review','quarantine')}}))
+        return
+    with psycopg.connect(os.environ['DATABASE_URL'], autocommit=True, connect_timeout=20) as conn:
+        verify_project(conn, os.environ.get('SUPABASE_URL',''))
+        if args.install_checkpoint:
+            sql = (Path(__file__).resolve().parents[1]/'scrapers/usf/migrations/20261103_rarevinyl_source_checkpoint.sql').read_text()
+            conn.execute(sql, prepare=False)
+            print(json.dumps({'checkpoint_installed':True}))
+        elif args.checkpoint:
+            row = conn.execute("select next_page,cycle_complete from rarevinyl_source_checkpoint where name='discovery'").fetchone()
+            print(json.dumps({'next_page':row[0] if row else 1,'cycle_complete':row[1] if row else False}))
+        elif args.write:
+            print(json.dumps(ingest_capture(conn, json.loads(args.capture.read_text())), default=str))
+
+if __name__ == '__main__':
+    main()
