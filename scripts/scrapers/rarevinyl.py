@@ -118,8 +118,8 @@ def fetch(session, robots, url, params=None):
     raise RuntimeError('request_failed')
 
 
-def run(pages, details, delay):
-    if not 1 <= pages <= 2 or not 0 <= details <= 10 or delay < 1:
+def run(pages, details, delay, start_page=1):
+    if not 1 <= pages <= 2 or not 0 <= details <= 10 or delay < 1 or not 1 <= start_page <= 100000:
         raise ValueError('pilot bounds: pages 1..2, details 0..10, delay >=1s')
     session = requests.Session()
     session.headers.update({'User-Agent': UA, 'Accept-Language': 'nl-NL,nl;q=0.9'})
@@ -129,7 +129,8 @@ def run(pages, details, delay):
     robots = RobotFileParser()
     robots.parse(response.text.splitlines())
     rows, errors, duplicates, page_ids = {}, [], 0, set()
-    for page in range(1, pages + 1):
+    end_of_catalogue = False
+    for page in range(start_page, start_page + pages):
         time.sleep(delay)
         data = fetch(session, robots, BASE + COLLECTION, {'limit': 50, 'page': page})
         products = data.get('products')
@@ -137,6 +138,7 @@ def run(pages, details, delay):
             raise ValueError('invalid_listing_response')
         ids = tuple(str(p.get('id')) for p in products)
         if not ids:
+            end_of_catalogue = True
             break
         if ids in page_ids:
             raise ValueError('repeated_page')
@@ -167,6 +169,7 @@ def run(pages, details, delay):
             errors.append({'source_id': row['source_id'], 'reason': str(exc)})
     records = list(rows.values())
     return {'status': 'research_only', 'database_writes': 0, 'publication_blocked': True,
+            'start_page': start_page, 'end_of_catalogue': end_of_catalogue,
             'summary': {'discovered': len(records), 'valid_prices': len(records),
                         'sealed_candidates': sum(r['sealed_candidate'] for r in records),
                         'confirmed_new': sum(r['condition_status']=='new' and r['format_status']=='vinyl' for r in records), 'detail_checked': detail_count, 'detail_attempts': detail_attempts,
@@ -182,9 +185,10 @@ def main():
     parser.add_argument('--pages', type=int, default=1)
     parser.add_argument('--details', type=int, default=0)
     parser.add_argument('--delay', type=float, default=1.5)
+    parser.add_argument('--start-page', type=int, default=1)
     parser.add_argument('--output', default='rarevinyl-pilot.json')
     args = parser.parse_args()
-    result = run(args.pages, args.details, args.delay)
+    result = run(args.pages, args.details, args.delay, args.start_page)
     with open(args.output, 'w', encoding='utf-8') as handle:
         json.dump(result, handle, ensure_ascii=False, indent=2)
     print(json.dumps(result['summary']))

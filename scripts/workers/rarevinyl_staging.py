@@ -80,3 +80,57 @@ def write_raw(conn, rows):
                raw['ean_raw'], raw['price_raw'], raw['availability_raw'], Jsonb(payload), observed))
             inserted += 1
     return {'inserted': inserted, 'reused': reused, 'prices_written': 0, 'products_written': 0}
+
+
+def checkpoint_page(conn, page, rows, end_of_catalogue=False):
+    """Atomically retain listing evidence and the next page in the source registry.
+
+    Only a complete listing response may be checkpointed. URLs and IDs are
+    validated before any mutation. This function never publishes offers.
+    """
+    import hashlib
+    if not isinstance(page, int) or page < 1 or len(rows) > 50:
+        raise ValueError('invalid_page_or_batch')
+    if not rows and not end_of_catalogue:
+        raise ValueError('empty_page_without_end_confirmation')
+    urls = [row.get('url') for row in rows]
+    ids = [row.get('source_id') for row in rows]
+    if len(set(urls)) != len(urls) or len(set(ids)) != len(ids) or any(not str(i or '').isdigit() for i in ids):
+        raise ValueError('duplicate_or_invalid_source_identity')
+    for row in rows:
+        parsed = urlsplit(row.get('url') or '')
+        if parsed.scheme != 'https' or parsed.hostname != 'eu.rarevinyl.com' or not parsed.path.startswith('/products/') or parsed.query or parsed.fragment:
+            raise ValueError('invalid_source_url')
+        at = datetime.fromisoformat(row['observed_at'])
+        if at.tzinfo is None or not 0 <= (datetime.now(timezone.utc)-at).total_seconds() <= 3600:
+            raise ValueError('source_observation_not_fresh')
+    with conn.transaction():
+        conn.execute("set local lock_timeout='3s';set local statement_timeout='30s'")
+        conn.execute("select pg_advisory_xact_lock(hashtextextended('rarevinyl_source_checkpoint_v1',0))")
+        current = conn.execute("select next_page, cycle_complete, last_page_signature from rarevinyl_source_checkpoint where name='discovery' for update").fetchone()
+        expected = current[0] if current else 1
+        if current and current[1]:
+            raise ValueError('cycle_complete_requires_explicit_restart')
+        if page != expected:
+            raise ValueError('checkpoint_page_mismatch')
+        signature = hashlib.sha256(','.join(sorted(str(i) for i in ids)).encode()).hexdigest() if rows else None
+        if signature and current and signature == current[2]:
+            raise ValueError('repeated_listing_page')
+        for row in rows:
+            existing = conn.execute("""select source_url from shop_product_links
+              where shop_id='rarevinyl' and source_product_id=%s and source_url<>%s limit 1""",
+              (row['source_id'], row['url'])).fetchone()
+            if existing:
+                raise ValueError('source_id_conflicts_with_existing_url')
+            written = conn.execute("""insert into shop_product_links(shop_id,source_url,source_product_id,status,payload)
+              values('rarevinyl',%s,%s,'active',%s) on conflict(shop_id,source_url) do update set
+              source_product_id=excluded.source_product_id,last_seen_at=now(),
+              payload=shop_product_links.payload || excluded.payload
+              where shop_product_links.source_product_id=excluded.source_product_id returning id""",
+              (row['url'], row['source_id'], Jsonb({'listing':row}))).fetchone()
+            if not written:
+                raise ValueError('source_id_conflicts_with_existing_url')
+        conn.execute("""insert into rarevinyl_source_checkpoint(name,next_page,cycle_complete,last_page_signature)
+          values('discovery',%s,%s,%s) on conflict(name) do update set next_page=excluded.next_page,
+          cycle_complete=excluded.cycle_complete,last_page_signature=excluded.last_page_signature,updated_at=now()""", (page if end_of_catalogue else page+1,end_of_catalogue,signature))
+    return {'next_page':page if end_of_catalogue else page+1, 'retained':len(rows), 'cycle_complete':end_of_catalogue}
