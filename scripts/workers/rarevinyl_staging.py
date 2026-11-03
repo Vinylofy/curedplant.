@@ -160,6 +160,48 @@ def ingest_capture(conn, capture):
     return {'raw':raw, 'checkpoint':checkpoint, 'pending_detail':len(rows)-len(eligible)}
 
 
+def pending_details(conn, limit=10):
+    """Return bounded listing snapshots awaiting source-detail verification."""
+    if not 1 <= limit <= 50:
+        raise ValueError('detail limit must be between 1 and 50')
+    rows = conn.execute("""select source_url,source_product_id,payload->'listing'
+        from shop_product_links where shop_id='rarevinyl' and status='active'
+          and last_detail_scraped_at is null
+          and payload->'listing'->>'format_status'='vinyl'
+          and payload->'listing'->>'sealed_candidate'='true'
+        order by first_seen_at,id limit %s""", (limit,)).fetchall()
+    return [dict(row[2] or {}, url=row[0], source_id=row[1]) for row in rows]
+
+
+def persist_detail(conn, row):
+    """Write validated source evidence and mark exactly its registry item done."""
+    result = preview_record(row)
+    if result['route'] not in ('ean_staging','artist_title'):
+        raise ValueError('detail_requires_review')
+    checked = datetime.fromisoformat(row.get('detail_checked_at') or '')
+    if checked.tzinfo is None or not 0 <= (datetime.now(timezone.utc)-checked).total_seconds() <= 3600:
+        raise ValueError('detail_observation_not_fresh')
+    if not str(row.get('condition_evidence') or '').lower().startswith('factory sealed from new. this item is unplayed.'):
+        raise ValueError('condition_evidence_missing')
+    with conn.transaction():
+        conn.execute("set local lock_timeout='3s';set local statement_timeout='30s'")
+        link = conn.execute("""select id,payload->'listing' from shop_product_links
+          where shop_id='rarevinyl' and source_url=%s and source_product_id=%s for update""",
+          (row['url'],row['source_id'])).fetchone()
+        if not link or not link[1]:
+            raise ValueError('listing_registry_missing')
+        # Listing price can change after fetching details. Never attach a
+        # barcode or older condition proof to a different price/variant.
+        for field in ('variant_id','price','observed_at'):
+            if str(link[1].get(field)) != str(row.get(field)):
+                raise ValueError('listing_changed_since_detail_fetch')
+        raw = write_raw(conn,[row])
+        conn.execute("""update shop_product_links set last_detail_scraped_at=%s,
+          payload=payload || %s where id=%s""",
+          (checked, Jsonb({'detail':row}), link[0]))
+    return {'route':result['route'], 'raw':raw}
+
+
 def verify_project(conn, supabase_url):
     """Refuse production writes unless the configured project matches the DB."""
     import re

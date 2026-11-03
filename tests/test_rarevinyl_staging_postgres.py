@@ -6,7 +6,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 import psycopg
 from tests.test_rarevinyl_staging import record
-from scripts.workers.rarevinyl_staging import write_raw, checkpoint_page, ingest_capture
+from scripts.workers.rarevinyl_staging import write_raw, checkpoint_page, ingest_capture, pending_details, persist_detail
 from scripts.workers.rarevinyl_prices import sync_existing
 
 DSN = os.environ.get('RAREVINYL_TEST_DATABASE_URL')
@@ -64,6 +64,20 @@ class RareVinylDatabaseTests(unittest.TestCase):
         newer = source | {'price':'31.00'}
         with self.assertRaisesRegex(ValueError,'checkpoint_page_mismatch'):
             ingest_capture(self.conn, capture | {'records':[newer]})
+        self.assertEqual(self.conn.execute("select count(*) from raw_shop_scrapes where shop_id='rarevinyl'").fetchone()[0],1)
+
+    def test_detail_queue_preserves_identity_and_rejects_changed_listing(self):
+        current = datetime.now(timezone.utc).isoformat()
+        source = record(observed_at=current,variant_id='22',sealed_candidate=True)
+        checkpoint_page(self.conn, 1, [source])
+        self.assertEqual(len(pending_details(self.conn,10)),1)
+        detail = source | {'detail_checked_at':current,'condition_evidence':'Factory sealed from new. This item is unplayed.'}
+        with self.assertRaisesRegex(ValueError,'listing_changed'):
+            persist_detail(self.conn, detail | {'price':'999.00'})
+        self.assertEqual(self.conn.execute("select count(*) from raw_shop_scrapes where shop_id='rarevinyl'").fetchone()[0],0)
+        result = persist_detail(self.conn,detail)
+        self.assertEqual(result['route'],'ean_staging')
+        self.assertEqual(len(pending_details(self.conn,10)),0)
         self.assertEqual(self.conn.execute("select count(*) from raw_shop_scrapes where shop_id='rarevinyl'").fetchone()[0],1)
 
     def test_existing_price_write_is_scoped_and_verified(self):
