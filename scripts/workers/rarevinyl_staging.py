@@ -9,7 +9,7 @@ from psycopg.types.json import Jsonb
 
 def preview_record(row):
     parsed = urlsplit(row.get('url') or '')
-    if parsed.scheme != 'https' or parsed.hostname != 'eu.rarevinyl.com' or not parsed.path.startswith('/products/') or parsed.query or parsed.fragment:
+    if parsed.scheme != 'https' or parsed.hostname != 'eu.rarevinyl.com' or parsed.username or parsed.password or parsed.port not in (None,443) or not parsed.path.startswith('/products/') or parsed.query or parsed.fragment:
         raise ValueError('invalid_source_url')
     if row.get('format_status') != 'vinyl' or row.get('condition_status') != 'new':
         return {'route': 'quarantine', 'reason': 'new_vinyl_not_confirmed'}
@@ -99,7 +99,7 @@ def checkpoint_page(conn, page, rows, end_of_catalogue=False):
         raise ValueError('duplicate_or_invalid_source_identity')
     for row in rows:
         parsed = urlsplit(row.get('url') or '')
-        if parsed.scheme != 'https' or parsed.hostname != 'eu.rarevinyl.com' or not parsed.path.startswith('/products/') or parsed.query or parsed.fragment:
+        if parsed.scheme != 'https' or parsed.hostname != 'eu.rarevinyl.com' or parsed.username or parsed.password or parsed.port not in (None,443) or not parsed.path.startswith('/products/') or parsed.query or parsed.fragment:
             raise ValueError('invalid_source_url')
         at = datetime.fromisoformat(row['observed_at'])
         if at.tzinfo is None or not 0 <= (datetime.now(timezone.utc)-at).total_seconds() <= 3600:
@@ -134,3 +134,27 @@ def checkpoint_page(conn, page, rows, end_of_catalogue=False):
           values('discovery',%s,%s,%s) on conflict(name) do update set next_page=excluded.next_page,
           cycle_complete=excluded.cycle_complete,last_page_signature=excluded.last_page_signature,updated_at=now()""", (page if end_of_catalogue else page+1,end_of_catalogue,signature))
     return {'next_page':page if end_of_catalogue else page+1, 'retained':len(rows), 'cycle_complete':end_of_catalogue}
+
+
+def ingest_capture(conn, capture):
+    """Persist a single complete capture; a retry reuses raw observations.
+
+    Non-eligible records remain in the listing registry for later enrichment.
+    No price or product publication takes place here.
+    """
+    if capture.get('status') != 'research_only' or capture.get('database_writes') != 0 or capture.get('publication_blocked') is not True:
+        raise ValueError('invalid_capture_envelope')
+    page = capture.get('start_page')
+    rows = capture.get('records')
+    errors = capture.get('errors')
+    if not isinstance(page, int) or not isinstance(rows, list) or not isinstance(errors, list) or errors:
+        raise ValueError('incomplete_or_invalid_capture')
+    if len(rows) > 50 or capture.get('summary', {}).get('discovered') != len(rows):
+        raise ValueError('capture_page_size_or_count_mismatch')
+    eligible = [row for row in rows if preview_record(row)['route'] in ('ean_staging', 'artist_title')]
+    with conn.transaction():
+        # Both nested operations are savepoints inside this transaction. A
+        # failed checkpoint must also roll back any inserted raw observations.
+        raw = write_raw(conn, eligible)
+        checkpoint = checkpoint_page(conn, page, rows, capture.get('end_of_catalogue') is True)
+    return {'raw':raw, 'checkpoint':checkpoint, 'pending_detail':len(rows)-len(eligible)}

@@ -19,5 +19,6 @@ class StagingTests(unittest.TestCase):
         self.assertEqual(preview_record(record(barcode='0602508046132'))['route'], 'quarantine')
         self.assertEqual(preview_record(record(condition_status='unknown'))['route'], 'quarantine')
         with self.assertRaises(ValueError): preview_record(record(url='https://evil.example/products/example'))
+        with self.assertRaises(ValueError): preview_record(record(url='https://evil@eu.rarevinyl.com/products/example'))
 
 if __name__ == '__main__': unittest.main()
