@@ -16,6 +16,8 @@ def preview_record(row):
     if not row.get('artist') or not row.get('album_raw'):
         return {'route': 'review', 'reason': 'missing_artist_or_title'}
     barcode = row.get('barcode')
+    if row.get('barcode_status') == 'invalid' or (row.get('barcode_raw') and not strict_normalize_gtin(row['barcode_raw'])):
+        return {'route': 'quarantine', 'reason': 'invalid_barcode'}
     gtin = strict_normalize_gtin(barcode) if barcode else None
     if barcode and not gtin:
         return {'route': 'quarantine', 'reason': 'invalid_barcode'}
@@ -167,6 +169,7 @@ def pending_details(conn, limit=10):
     rows = conn.execute("""select source_url,source_product_id,payload->'listing'
         from shop_product_links where shop_id='rarevinyl' and status='active'
           and last_detail_scraped_at is null
+          and last_seen_at >= now() - interval '1 hour'
           and payload->'listing'->>'format_status'='vinyl'
           and payload->'listing'->>'sealed_candidate'='true'
         order by first_seen_at,id limit %s""", (limit,)).fetchall()
@@ -226,12 +229,14 @@ def main():
     parser.add_argument('--write', action='store_true')
     parser.add_argument('--checkpoint', action='store_true')
     parser.add_argument('--install-checkpoint', action='store_true')
+    parser.add_argument('--pending-details', type=int)
+    parser.add_argument('--detail-capture', type=Path)
     args = parser.parse_args()
     if args.install_checkpoint and not args.write:
         parser.error('install-checkpoint requires --write')
-    if args.write and not (args.install_checkpoint or args.capture):
+    if args.write and not (args.install_checkpoint or args.capture or args.detail_capture):
         parser.error('a capture is required for writes')
-    if not args.write and not args.checkpoint and not args.capture:
+    if not args.write and not args.checkpoint and not args.capture and args.pending_details is None:
         parser.error('select a capture or checkpoint query')
     if args.capture and not args.write and not args.checkpoint:
         capture = json.loads(args.capture.read_text())
@@ -248,6 +253,18 @@ def main():
         elif args.checkpoint:
             row = conn.execute("select next_page,cycle_complete from rarevinyl_source_checkpoint where name='discovery'").fetchone()
             print(json.dumps({'next_page':row[0] if row else 1,'cycle_complete':row[1] if row else False}))
+        elif args.pending_details is not None:
+            print(json.dumps(pending_details(conn,args.pending_details),ensure_ascii=False,default=str))
+        elif args.detail_capture:
+            if not args.write: parser.error('detail-capture requires --write')
+            capture = json.loads(args.detail_capture.read_text())
+            if capture.get('status')!='research_only' or capture.get('database_writes')!=0 or capture.get('publication_blocked') is not True:
+                raise ValueError('invalid_detail_capture')
+            rows = capture.get('records')
+            if not isinstance(rows,list) or len(rows)>50: raise ValueError('invalid_detail_batch')
+            results = [persist_detail(conn,row) for row in rows]
+            print(json.dumps({'processed':len(results),'raw_inserted':sum(r['raw']['inserted'] for r in results),
+                              'source_errors':len(capture.get('errors',[]))},default=str))
         elif args.write:
             print(json.dumps(ingest_capture(conn, json.loads(args.capture.read_text())), default=str))
 

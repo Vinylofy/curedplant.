@@ -17,6 +17,7 @@ class StagingTests(unittest.TestCase):
         self.assertEqual(result['raw']['payload']['artist_raw'], 'Artist')
     def test_invalid_or_unsafe(self):
         self.assertEqual(preview_record(record(barcode='0602508046132'))['route'], 'quarantine')
+        self.assertEqual(preview_record(record(barcode=None,barcode_raw='0602508046132',barcode_status='invalid'))['route'], 'quarantine')
         self.assertEqual(preview_record(record(condition_status='unknown'))['route'], 'quarantine')
         with self.assertRaises(ValueError): preview_record(record(url='https://evil.example/products/example'))
         with self.assertRaises(ValueError): preview_record(record(url='https://evil@eu.rarevinyl.com/products/example'))

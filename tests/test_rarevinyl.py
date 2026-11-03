@@ -39,6 +39,8 @@ class RareVinylTests(unittest.TestCase):
         row = listing(product())
         detail = {'id': 123, 'variants': [{'id': 77, 'price': 1999, 'barcode': '0602508046131'}]}
         self.assertEqual(enrich(row, detail)['barcode'], '0602508046131')
+        invalid = enrich(row, {'id':123,'variants':[{'id':77,'price':1999,'barcode':'0602508046132'}]})
+        self.assertEqual(invalid['barcode_status'], 'invalid')
         for changed in ({'id': 124, 'variants': detail['variants']}, {'id': 123, 'variants': [{'id': 77, 'price': 999}]}):
             with self.assertRaises(ValueError): enrich(row, changed)
 

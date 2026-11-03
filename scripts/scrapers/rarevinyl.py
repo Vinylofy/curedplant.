@@ -90,7 +90,10 @@ def enrich(row, product):
         raise ValueError('listing_detail_price_conflict')
     result = dict(row)
     condition, evidence = detail_condition(product.get('description') or product.get('body_html'))
-    result.update(barcode=valid_gtin(variant.get('barcode')), detail_checked_at=datetime.now(timezone.utc).isoformat(),
+    raw_barcode = str(variant.get('barcode') or '').strip()
+    result.update(barcode=valid_gtin(raw_barcode), barcode_raw=raw_barcode or None,
+                  barcode_status='valid' if valid_gtin(raw_barcode) else 'invalid' if raw_barcode else 'missing',
+                  detail_checked_at=datetime.now(timezone.utc).isoformat(),
                   detail_price=str(detail_price), condition_status=condition, condition_evidence=evidence)
     return result
 
@@ -180,6 +183,32 @@ def run(pages, details, delay, start_page=1):
             'errors': errors, 'records': records}
 
 
+def run_details(rows, delay=1.5):
+    """Recheck a bounded queue of independently captured listing snapshots."""
+    if len(rows) > 50 or delay < 1:
+        raise ValueError('detail bounds: maximum 50 records and delay >=1s')
+    session = requests.Session()
+    session.headers.update({'User-Agent': UA, 'Accept-Language': 'nl-NL,nl;q=0.9'})
+    response = session.get(BASE + '/robots.txt', timeout=25, allow_redirects=False)
+    if response.status_code != 200:
+        raise RuntimeError('robots_unavailable_%s' % response.status_code)
+    robots = RobotFileParser(); robots.parse(response.text.splitlines())
+    result, errors = [], []
+    for row in rows:
+        if row.get('format_status') != 'vinyl' or not row.get('sealed_candidate'):
+            errors.append({'source_id':row.get('source_id'), 'reason':'not_a_sealed_vinyl_candidate'})
+            continue
+        try:
+            url = str(row.get('url') or '')
+            time.sleep(delay)
+            details = fetch(session, robots, url + '.js')
+            result.append(enrich(row, details))
+        except (ValueError, KeyError, InvalidOperation) as exc:
+            errors.append({'source_id':row.get('source_id'), 'reason':str(exc)})
+    return {'status':'research_only', 'database_writes':0, 'publication_blocked':True,
+            'records':result, 'errors':errors}
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--pages', type=int, default=1)
@@ -187,11 +216,16 @@ def main():
     parser.add_argument('--delay', type=float, default=1.5)
     parser.add_argument('--start-page', type=int, default=1)
     parser.add_argument('--output', default='rarevinyl-pilot.json')
+    parser.add_argument('--detail-input')
     args = parser.parse_args()
-    result = run(args.pages, args.details, args.delay, args.start_page)
+    if args.detail_input:
+        with open(args.detail_input, encoding='utf-8') as handle:
+            result = run_details(json.load(handle), args.delay)
+    else:
+        result = run(args.pages, args.details, args.delay, args.start_page)
     with open(args.output, 'w', encoding='utf-8') as handle:
         json.dump(result, handle, ensure_ascii=False, indent=2)
-    print(json.dumps(result['summary']))
+    print(json.dumps(result.get('summary', {'detail_checked':len(result['records']),'errors':len(result['errors'])})))
 
 if __name__ == '__main__':
     main()
