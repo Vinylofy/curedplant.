@@ -1,0 +1,32 @@
+name: RareVinyl sealed pilot (manual only)
+on:
+  workflow_dispatch:
+    inputs:
+      pages:
+        description: Collection pages
+        required: false
+        default: '2'
+      details:
+        description: Maximum detail requests
+        required: false
+        default: '20'
+permissions:
+  contents: read
+jobs:
+  pilot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install requests beautifulsoup4
+      - run: python -m unittest tests/test_rarevinyl.py
+      - run: python -m scripts.scrapers.rarevinyl --pages "${{ inputs.pages }}" --details "${{ inputs.details }}" --output rarevinyl-pilot.jsonl
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: rarevinyl-pilot
+          path: rarevinyl-pilot.jsonl
+          if-no-files-found: ignore
