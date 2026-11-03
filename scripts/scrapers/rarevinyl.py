@@ -101,7 +101,7 @@ def run(max_pages, max_details, delay, output):
             continue
         response = session.get(row["url"], timeout=25)
         response.raise_for_status()
-        row.update(extract_detail(response.text))
+        row.update(extract_detail(response.text))\n        if row.get("detail_price_eur") != row.get("price_eur"):\n            row["price_review_required"] = True
         row["detail_status"] = "VALIDATED" if row["sealed_confirmed"] else "REVIEW"
         count += 1
         time.sleep(delay)
