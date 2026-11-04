@@ -240,7 +240,9 @@ def run_details(rows, delay=1.5):
     """Recheck a bounded queue of independently captured listing snapshots."""
     if len(rows) > 50 or delay < 1:
         raise ValueError('detail bounds: maximum 50 records and delay >=1s')
-    session = requests.Session()
+    # Hosted runners may land on the US storefront; choose the same NL EUR
+    # market used for the independently verified listing before detail checks.
+    session = select_market('NL')
     session.headers.update({'User-Agent': UA, 'Accept-Language': 'nl-NL,nl;q=0.9'})
     response = session.get(BASE + '/robots.txt', timeout=25, allow_redirects=False)
     if response.status_code != 200:
