@@ -5,7 +5,8 @@ def record(**updates):
     row = {'url':'https://eu.rarevinyl.com/products/example', 'source_id':'123',
            'title_raw':'Artist Album LP', 'artist':'Artist', 'album_raw':'Album',
            'format_status':'vinyl', 'condition_status':'new', 'barcode':'0602508046131',
-           'price':'29.95', 'availability':'in_stock'}
+           'price':'29.95', 'availability':'in_stock',
+           'condition_evidence':'Factory sealed from new. This item is unplayed.'}
     return row | updates
 
 class StagingTests(unittest.TestCase):

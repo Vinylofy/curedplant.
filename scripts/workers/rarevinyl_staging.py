@@ -1,4 +1,4 @@
-"""Conservative RareVinyl USF staging preview. This module never writes to a DB."""
+"""Conservative RareVinyl source staging; database writes require explicit opt-in."""
 from datetime import datetime, timezone
 from urllib.parse import urlsplit
 from uuid import uuid4
@@ -13,6 +13,8 @@ def preview_record(row):
         raise ValueError('invalid_source_url')
     if row.get('format_status') != 'vinyl' or row.get('condition_status') != 'new':
         return {'route': 'quarantine', 'reason': 'new_vinyl_not_confirmed'}
+    if not str(row.get('condition_evidence') or '').lower().startswith('factory sealed from new. this item is unplayed.'):
+        return {'route': 'quarantine', 'reason': 'condition_evidence_missing'}
     if not row.get('artist') or not row.get('album_raw'):
         return {'route': 'review', 'reason': 'missing_artist_or_title'}
     barcode = row.get('barcode')
@@ -218,6 +220,25 @@ def verify_project(conn, supabase_url):
         raise ValueError('supabase_project_identity_not_verified')
 
 
+def register_shop(conn):
+    """Register the UK source shop without changing any product or offer."""
+    with conn.transaction():
+        conn.execute("set local lock_timeout='3s';set local statement_timeout='30s'")
+        conn.execute("select pg_advisory_xact_lock(hashtextextended('rarevinyl_shop_registration_v1',0))")
+        rows = conn.execute("select id,country,is_active from shops where lower(domain)='eu.rarevinyl.com' for update").fetchall()
+        if len(rows) > 1:
+            raise ValueError('ambiguous_registered_shop')
+        if rows:
+            if rows[0][1] != 'GB' or rows[0][2] is not True:
+                raise ValueError('existing_shop_requires_review')
+            shop_id = rows[0][0]
+            created = False
+        else:
+            shop_id = conn.execute("insert into shops(name,domain,country,is_active) values('RareVinyl','eu.rarevinyl.com','GB',true) returning id").fetchone()[0]
+            created = True
+        return {'shop_id':str(shop_id), 'created':created, 'products_written':0, 'prices_written':0}
+
+
 def main():
     import argparse
     import json
@@ -229,12 +250,13 @@ def main():
     parser.add_argument('--write', action='store_true')
     parser.add_argument('--checkpoint', action='store_true')
     parser.add_argument('--install-checkpoint', action='store_true')
+    parser.add_argument('--register-shop', action='store_true')
     parser.add_argument('--pending-details', type=int)
     parser.add_argument('--detail-capture', type=Path)
     args = parser.parse_args()
-    if args.install_checkpoint and not args.write:
-        parser.error('install-checkpoint requires --write')
-    if args.write and not (args.install_checkpoint or args.capture or args.detail_capture):
+    if (args.install_checkpoint or args.register_shop) and not args.write:
+        parser.error('installation or registration requires --write')
+    if args.write and not (args.install_checkpoint or args.register_shop or args.capture or args.detail_capture):
         parser.error('a capture is required for writes')
     if not args.write and not args.checkpoint and not args.capture and args.pending_details is None:
         parser.error('select a capture or checkpoint query')
@@ -250,6 +272,8 @@ def main():
             sql = (Path(__file__).resolve().parents[1]/'scrapers/usf/migrations/20261103_rarevinyl_source_checkpoint.sql').read_text()
             conn.execute(sql, prepare=False)
             print(json.dumps({'checkpoint_installed':True}))
+        elif args.register_shop:
+            print(json.dumps(register_shop(conn)))
         elif args.checkpoint:
             row = conn.execute("select next_page,cycle_complete from rarevinyl_source_checkpoint where name='discovery'").fetchone()
             print(json.dumps({'next_page':row[0] if row else 1,'cycle_complete':row[1] if row else False}))

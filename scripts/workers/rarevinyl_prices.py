@@ -66,3 +66,29 @@ def sync_existing(rows, *, write=False, writer=None, now=None):
                     allow_no_matches=True, preserve_unknown=True)
     return {'mode':'write', 'eligible':len(assessed['records']),
             'rejected':assessed['rejected'], 'database_writes':result['updated'], 'writer':result}
+
+
+def main():
+    import argparse
+    import json
+    import os
+    from pathlib import Path
+    import psycopg
+    from scripts.workers.rarevinyl_staging import verify_project
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--capture', required=True, type=Path)
+    parser.add_argument('--write', action='store_true')
+    args = parser.parse_args()
+    capture = json.loads(args.capture.read_text())
+    if capture.get('status')!='research_only' or capture.get('database_writes')!=0 or capture.get('publication_blocked') is not True:
+        raise ValueError('invalid_source_capture')
+    rows = capture.get('records')
+    if not isinstance(rows,list) or capture.get('errors'):
+        raise ValueError('incomplete_source_capture')
+    if args.write:
+        with psycopg.connect(os.environ['DATABASE_URL'],autocommit=True,connect_timeout=20) as conn:
+            verify_project(conn,os.environ.get('SUPABASE_URL',''))
+    print(json.dumps(sync_existing(rows,write=args.write),default=str))
+
+if __name__ == '__main__':
+    main()

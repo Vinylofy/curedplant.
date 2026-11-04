@@ -1,12 +1,13 @@
 """Integration checks against an explicitly configured disposable database."""
 import os
+import json
 import unittest
 from unittest.mock import patch
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 import psycopg
 from tests.test_rarevinyl_staging import record
-from scripts.workers.rarevinyl_staging import write_raw, checkpoint_page, ingest_capture, pending_details, persist_detail
+from scripts.workers.rarevinyl_staging import write_raw, checkpoint_page, ingest_capture, pending_details, persist_detail, register_shop
 from scripts.workers.rarevinyl_prices import sync_existing
 
 DSN = os.environ.get('RAREVINYL_TEST_DATABASE_URL')
@@ -98,5 +99,24 @@ class RareVinylDatabaseTests(unittest.TestCase):
         self.assertEqual((result['writer']['updated'], result['writer']['verified']), (1,1))
         self.assertEqual(str(self.conn.execute('select price from prices').fetchone()[0]), '29.95')
         self.assertEqual(self.conn.execute('select count(*) from price_history').fetchone()[0], 1)
+
+    def test_registration_is_idempotent_and_does_not_reactivate(self):
+        self.conn.execute('create table if not exists shops(id uuid primary key default gen_random_uuid(),domain text unique)')
+        self.conn.execute('alter table shops add column if not exists name text, add column if not exists country text, add column if not exists is_active boolean')
+        self.conn.execute('truncate shops')
+        self.assertTrue(register_shop(self.conn)['created'])
+        self.assertFalse(register_shop(self.conn)['created'])
+        self.conn.execute("update shops set is_active=false where domain='eu.rarevinyl.com'")
+        with self.assertRaisesRegex(ValueError,'existing_shop_requires_review'): register_shop(self.conn)
+        self.assertFalse(self.conn.execute("select is_active from shops where domain='eu.rarevinyl.com'").fetchone()[0])
+
+    @unittest.skipUnless(os.environ.get('RAREVINYL_LIVE_CAPTURE'), 'live source capture not supplied')
+    def test_fresh_real_capture_enters_source_registry(self):
+        capture = json.loads(Path(os.environ['RAREVINYL_LIVE_CAPTURE']).read_text())
+        result = ingest_capture(self.conn,capture)
+        self.assertEqual(result['checkpoint']['retained'],capture['summary']['discovered'])
+        self.assertGreater(result['raw']['inserted'],0)
+        self.assertGreater(result['pending_detail'],0)
+        self.assertEqual(self.conn.execute("select count(*) from shop_product_links where shop_id='rarevinyl'").fetchone()[0],capture['summary']['discovered'])
 
 if __name__ == '__main__': unittest.main()
