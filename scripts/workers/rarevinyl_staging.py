@@ -30,6 +30,7 @@ def preview_record(row):
            'scraped_at': datetime.now(timezone.utc),
            'payload': {'artist_raw': row['artist'], 'album_raw': row['album_raw'],
                        'format_status': row['format_status'], 'condition_status': row['condition_status'],
+                       'format': 'Vinyl',
                        'listing_observed_at': row.get('observed_at')}}
     staged = build_stage_item(raw)
     if staged.price is None or staged.price <= 0:
@@ -146,7 +147,7 @@ def ingest_capture(conn, capture):
     Non-eligible records remain in the listing registry for later enrichment.
     No price or product publication takes place here.
     """
-    if capture.get('status') != 'research_only' or capture.get('database_writes') != 0 or capture.get('publication_blocked') is not True:
+    if capture.get('status') != 'research_only' or capture.get('database_writes') != 0 or capture.get('publication_blocked') is not True or capture.get('verified_markets') != ['NL','BE']:
         raise ValueError('invalid_capture_envelope')
     page = capture.get('start_page')
     rows = capture.get('records')
@@ -170,7 +171,7 @@ def pending_details(conn, limit=10):
         raise ValueError('detail limit must be between 1 and 50')
     rows = conn.execute("""select source_url,source_product_id,payload->'listing'
         from shop_product_links where shop_id='rarevinyl' and status='active'
-          and last_detail_scraped_at is null
+          and (last_detail_scraped_at is null or last_detail_scraped_at < now() - interval '30 days')
           and last_seen_at >= now() - interval '1 hour'
           and payload->'listing'->>'format_status'='vinyl'
           and payload->'listing'->>'sealed_candidate'='true'
@@ -239,6 +240,18 @@ def register_shop(conn):
         return {'shop_id':str(shop_id), 'created':created, 'products_written':0, 'prices_written':0}
 
 
+def restart_completed_cycle(conn):
+    """Start a new listing pass only after the preceding pass reached EOF."""
+    with conn.transaction():
+        conn.execute("set local lock_timeout='3s'")
+        conn.execute("select pg_advisory_xact_lock(hashtextextended('rarevinyl_source_checkpoint_v1',0))")
+        row = conn.execute("select cycle_complete from rarevinyl_source_checkpoint where name='discovery' for update").fetchone()
+        if not row or not row[0]:
+            raise ValueError('previous_cycle_not_complete')
+        conn.execute("update rarevinyl_source_checkpoint set next_page=1,cycle_complete=false,last_page_signature=null,updated_at=now() where name='discovery'")
+    return {'next_page':1,'cycle_restarted':True}
+
+
 def main():
     import argparse
     import json
@@ -251,12 +264,14 @@ def main():
     parser.add_argument('--checkpoint', action='store_true')
     parser.add_argument('--install-checkpoint', action='store_true')
     parser.add_argument('--register-shop', action='store_true')
+    parser.add_argument('--restart-completed', action='store_true')
+    parser.add_argument('--stage-raw', action='store_true')
     parser.add_argument('--pending-details', type=int)
     parser.add_argument('--detail-capture', type=Path)
     args = parser.parse_args()
-    if (args.install_checkpoint or args.register_shop) and not args.write:
+    if (args.install_checkpoint or args.register_shop or args.restart_completed or args.stage_raw) and not args.write:
         parser.error('installation or registration requires --write')
-    if args.write and not (args.install_checkpoint or args.register_shop or args.capture or args.detail_capture):
+    if args.write and not (args.install_checkpoint or args.register_shop or args.restart_completed or args.stage_raw or args.capture or args.detail_capture):
         parser.error('a capture is required for writes')
     if not args.write and not args.checkpoint and not args.capture and args.pending_details is None:
         parser.error('select a capture or checkpoint query')
@@ -274,6 +289,12 @@ def main():
             print(json.dumps({'checkpoint_installed':True}))
         elif args.register_shop:
             print(json.dumps(register_shop(conn)))
+        elif args.restart_completed:
+            print(json.dumps(restart_completed_cycle(conn)))
+        elif args.stage_raw:
+            from scripts.scrapers.usf.core.staging import stage_latest_raw_snapshots
+            result = stage_latest_raw_snapshots(shop_id='rarevinyl',limit=100,write=True)
+            print(json.dumps({'candidates':result.candidates,'staged':result.inserted,'skipped':result.skipped}))
         elif args.checkpoint:
             row = conn.execute("select next_page,cycle_complete from rarevinyl_source_checkpoint where name='discovery'").fetchone()
             print(json.dumps({'next_page':row[0] if row else 1,'cycle_complete':row[1] if row else False}))
@@ -286,9 +307,16 @@ def main():
                 raise ValueError('invalid_detail_capture')
             rows = capture.get('records')
             if not isinstance(rows,list) or len(rows)>50: raise ValueError('invalid_detail_batch')
-            results = [persist_detail(conn,row) for row in rows]
+            results, rejected = [], []
+            for row in rows:
+                try:
+                    results.append(persist_detail(conn,row))
+                except ValueError as error:
+                    if str(error) not in ('detail_requires_review','listing_changed_since_detail_fetch'):
+                        raise
+                    rejected.append({'source_id':row.get('source_id'), 'reason':str(error)})
             print(json.dumps({'processed':len(results),'raw_inserted':sum(r['raw']['inserted'] for r in results),
-                              'source_errors':len(capture.get('errors',[]))},default=str))
+                              'source_errors':len(capture.get('errors',[])), 'review':rejected},default=str))
         elif args.write:
             print(json.dumps(ingest_capture(conn, json.loads(args.capture.read_text())), default=str))
 

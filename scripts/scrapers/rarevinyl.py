@@ -100,7 +100,7 @@ def enrich(row, product):
 
 def fetch(session, robots, url, params=None):
     parsed = urlsplit(url)
-    if parsed.scheme != 'https' or parsed.hostname != 'eu.rarevinyl.com' or not robots.can_fetch(UA, url):
+    if parsed.scheme != 'https' or parsed.hostname != 'eu.rarevinyl.com' or parsed.username or parsed.password or parsed.port not in (None,443) or parsed.fragment or not robots.can_fetch(UA, url):
         raise ValueError('robots_or_host_blocked')
     for attempt in range(3):
         try:
@@ -121,11 +121,44 @@ def fetch(session, robots, url, params=None):
     raise RuntimeError('request_failed')
 
 
-def run(pages, details, delay, start_page=1):
+def select_market(country):
+    """Use the shop's normal localization form and verify the rendered market."""
+    session = requests.Session()
+    session.headers.update({'User-Agent': UA, 'Accept-Language':'nl-NL,nl;q=0.9'})
+    response = session.post(BASE + '/localization', data={'form_type':'localization',
+        'utf8':'✓', '_method':'put', 'country_code':country, 'return_to':'/'}, timeout=25)
+    if response.status_code != 200 or urlsplit(response.url).hostname != 'eu.rarevinyl.com':
+        raise RuntimeError('market_localization_failed')
+    if not re.search(r'Shopify\.country\s*=\s*"'+re.escape(country)+'"',response.text):
+        raise RuntimeError('market_country_not_confirmed')
+    if not re.search(r'Shopify\.currency\s*=\s*\{\s*"active"\s*:\s*"EUR"',response.text):
+        raise RuntimeError('market_currency_not_confirmed')
+    return session
+
+
+def compare_market_listings(first, second):
+    """Refuse a shared EUR price if NL/BE differ for any listed variant."""
+    def normalized(items):
+        result = {}
+        for product in items:
+            variants = product.get('variants') or []
+            if len(variants) != 1:
+                raise ValueError('ambiguous_market_variants')
+            v = variants[0]
+            key = (str(product.get('id')),str(v.get('id')))
+            if key in result: raise ValueError('duplicate_market_identity')
+            result[key] = (str(v.get('price')),v.get('available'))
+        return result
+    if normalized(first) != normalized(second):
+        raise ValueError('nl_be_listing_conflict')
+
+
+def run(pages, details, delay, start_page=1, verify_markets=False):
     if not 1 <= pages <= 2 or not 0 <= details <= 10 or delay < 1 or not 1 <= start_page <= 100000:
         raise ValueError('pilot bounds: pages 1..2, details 0..10, delay >=1s')
-    session = requests.Session()
+    session = select_market('NL') if verify_markets else requests.Session()
     session.headers.update({'User-Agent': UA, 'Accept-Language': 'nl-NL,nl;q=0.9'})
+    be_session = select_market('BE') if verify_markets else None
     response = session.get(BASE + '/robots.txt', timeout=25, allow_redirects=False)
     if response.status_code != 200:
         raise RuntimeError('robots_unavailable_%s' % response.status_code)
@@ -139,8 +172,15 @@ def run(pages, details, delay, start_page=1):
         products = data.get('products')
         if not isinstance(products, list):
             raise ValueError('invalid_listing_response')
+        if be_session:
+            time.sleep(delay)
+            be_products = fetch(be_session, robots, BASE + COLLECTION, {'limit':50, 'page':page}).get('products')
+            if not isinstance(be_products,list): raise ValueError('invalid_be_listing_response')
+            compare_market_listings(products,be_products)
         ids = tuple(str(p.get('id')) for p in products)
         if not ids:
+            if page == 1:
+                raise ValueError('empty_first_listing_page')
             end_of_catalogue = True
             break
         if ids in page_ids:
@@ -173,6 +213,7 @@ def run(pages, details, delay, start_page=1):
     records = list(rows.values())
     return {'status': 'research_only', 'database_writes': 0, 'publication_blocked': True,
             'start_page': start_page, 'end_of_catalogue': end_of_catalogue,
+            'verified_markets': ['NL','BE'] if verify_markets else [],
             'summary': {'discovered': len(records), 'valid_prices': len(records),
                         'sealed_candidates': sum(r['sealed_candidate'] for r in records),
                         'confirmed_new': sum(r['condition_status']=='new' and r['format_status']=='vinyl' for r in records), 'detail_checked': detail_count, 'detail_attempts': detail_attempts,
@@ -217,12 +258,13 @@ def main():
     parser.add_argument('--start-page', type=int, default=1)
     parser.add_argument('--output', default='rarevinyl-pilot.json')
     parser.add_argument('--detail-input')
+    parser.add_argument('--verify-markets', action='store_true')
     args = parser.parse_args()
     if args.detail_input:
         with open(args.detail_input, encoding='utf-8') as handle:
             result = run_details(json.load(handle), args.delay)
     else:
-        result = run(args.pages, args.details, args.delay, args.start_page)
+        result = run(args.pages, args.details, args.delay, args.start_page, args.verify_markets)
     with open(args.output, 'w', encoding='utf-8') as handle:
         json.dump(result, handle, ensure_ascii=False, indent=2)
     print(json.dumps(result.get('summary', {'detail_checked':len(result['records']),'errors':len(result['errors'])})))

@@ -7,8 +7,9 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 import psycopg
 from tests.test_rarevinyl_staging import record
-from scripts.workers.rarevinyl_staging import write_raw, checkpoint_page, ingest_capture, pending_details, persist_detail, register_shop
-from scripts.workers.rarevinyl_prices import sync_existing
+from scripts.workers.rarevinyl_staging import write_raw, checkpoint_page, ingest_capture, pending_details, persist_detail, register_shop, restart_completed_cycle
+from scripts.workers.rarevinyl_prices import sync_existing, with_registered_detail
+from scripts.scrapers.usf.core.staging import stage_latest_raw_snapshots
 
 DSN = os.environ.get('RAREVINYL_TEST_DATABASE_URL')
 
@@ -18,6 +19,7 @@ class RareVinylDatabaseTests(unittest.TestCase):
         self.conn = psycopg.connect(DSN, autocommit=True)
         schema = Path('tests/fixtures/velvetdelft/usf-schema.sql').read_text()
         self.conn.execute(schema, prepare=False)
+        self.conn.execute("delete from staged_offers where shop_id='rarevinyl'")
         self.conn.execute("delete from raw_shop_scrapes where shop_id='rarevinyl'")
         self.conn.execute("create table if not exists rarevinyl_source_checkpoint(name text primary key,next_page integer not null,cycle_complete boolean not null default false,last_page_signature text,updated_at timestamptz default now())")
         self.conn.execute("delete from rarevinyl_source_checkpoint")
@@ -53,10 +55,13 @@ class RareVinylDatabaseTests(unittest.TestCase):
         self.assertEqual(self.conn.execute("select count(*) from shop_product_links where shop_id='rarevinyl'").fetchone()[0], 1)
         self.assertEqual(checkpoint_page(self.conn, 2, [], end_of_catalogue=True)['cycle_complete'], True)
         with self.assertRaises(ValueError): checkpoint_page(self.conn, 2, [], end_of_catalogue=True)
+        self.assertEqual(restart_completed_cycle(self.conn)['next_page'], 1)
+        with self.assertRaises(ValueError): restart_completed_cycle(self.conn)
 
     def test_capture_raw_and_page_commit_or_rollback_together(self):
         source = record(observed_at=datetime.now(timezone.utc).isoformat())
         capture = {'status':'research_only','database_writes':0,'publication_blocked':True,
+                   'verified_markets':['NL','BE'],
                    'start_page':1,'end_of_catalogue':False,'records':[source],
                    'summary':{'discovered':1},'errors':[]}
         result = ingest_capture(self.conn, capture)
@@ -66,6 +71,10 @@ class RareVinylDatabaseTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'checkpoint_page_mismatch'):
             ingest_capture(self.conn, capture | {'records':[newer]})
         self.assertEqual(self.conn.execute("select count(*) from raw_shop_scrapes where shop_id='rarevinyl'").fetchone()[0],1)
+        with patch.dict(os.environ, {'DATABASE_URL':DSN}):
+            staged = stage_latest_raw_snapshots(shop_id='rarevinyl',limit=100,write=True)
+            again = stage_latest_raw_snapshots(shop_id='rarevinyl',limit=100,write=True)
+        self.assertEqual((staged.inserted,again.inserted),(1,0))
 
     def test_detail_queue_preserves_identity_and_rejects_changed_listing(self):
         current = datetime.now(timezone.utc).isoformat()
@@ -80,6 +89,11 @@ class RareVinylDatabaseTests(unittest.TestCase):
         self.assertEqual(result['route'],'ean_staging')
         self.assertEqual(len(pending_details(self.conn,10)),0)
         self.assertEqual(self.conn.execute("select count(*) from raw_shop_scrapes where shop_id='rarevinyl'").fetchone()[0],1)
+        fresh = source | {'price':'32.00','condition_status':'unknown'}
+        merged = with_registered_detail(self.conn,[fresh])[0]
+        self.assertEqual(merged['condition_status'],'new')
+        self.assertEqual(merged['price'],'32.00')
+        self.assertEqual(with_registered_detail(self.conn,[fresh | {'variant_id':'99'}])[0]['condition_status'],'unknown')
 
     def test_existing_price_write_is_scoped_and_verified(self):
         self.conn.execute('create table if not exists shops(id uuid primary key default gen_random_uuid(),domain text unique)')

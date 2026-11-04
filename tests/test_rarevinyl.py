@@ -1,6 +1,6 @@
 import unittest
 from unittest.mock import Mock, patch
-from scripts.scrapers.rarevinyl import listing, enrich, valid_gtin, fetch, detail_condition
+from scripts.scrapers.rarevinyl import listing, enrich, valid_gtin, fetch, detail_condition, compare_market_listings
 
 def product(**changes):
     result = {'id': 123, 'handle': 'artist-album-lp', 'title': 'Artist Album - Sealed Vinyl LP',
@@ -47,6 +47,12 @@ class RareVinylTests(unittest.TestCase):
     def test_multiple_variants_and_foreign_handle_rejected(self):
         with self.assertRaises(ValueError): listing(product(handle='../unsafe'))
         with self.assertRaises(ValueError): listing(product(variants=[{}, {}]))
+
+    def test_market_prices_and_variants_must_match(self):
+        compare_market_listings([product()], [product()])
+        other = product(variants=[{'id':77,'price':'21.00','available':True}])
+        with self.assertRaisesRegex(ValueError, 'nl_be_listing_conflict'):
+            compare_market_listings([product()], [other])
 
     @patch('scripts.scrapers.rarevinyl.time.sleep')
     def test_retry_and_429_stop(self, sleep):

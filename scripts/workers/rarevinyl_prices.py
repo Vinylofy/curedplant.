@@ -68,6 +68,24 @@ def sync_existing(rows, *, write=False, writer=None, now=None):
             'rejected':assessed['rejected'], 'database_writes':result['updated'], 'writer':result}
 
 
+def with_registered_detail(conn, rows):
+    """Combine fresh listing prices with prior proof for the same variant."""
+    if len(rows)>100: raise ValueError('maximum batch size is 100')
+    urls = [r.get('url') for r in rows if r.get('url')]
+    saved = conn.execute("""select source_url,source_product_id,payload->'detail'
+      from shop_product_links where shop_id='rarevinyl' and source_url=any(%s)""", (urls,)).fetchall()
+    by_url = {r[0]:(r[1],r[2] or {}) for r in saved}
+    result = []
+    for row in rows:
+        old_id, detail = by_url.get(row.get('url'),(None,{}))
+        if old_id and row.get('source_id') and detail.get('variant_id') and row.get('variant_id') and str(old_id)==str(row['source_id']) and str(detail['variant_id'])==str(row['variant_id']):
+            proof = {k:detail.get(k) for k in ('condition_status','condition_evidence','detail_checked_at')}
+            result.append(row | proof)
+        else:
+            result.append(row)
+    return result
+
+
 def main():
     import argparse
     import json
@@ -78,6 +96,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--capture', required=True, type=Path)
     parser.add_argument('--write', action='store_true')
+    parser.add_argument('--merge-registered-detail', action='store_true')
     args = parser.parse_args()
     capture = json.loads(args.capture.read_text())
     if capture.get('status')!='research_only' or capture.get('database_writes')!=0 or capture.get('publication_blocked') is not True:
@@ -85,9 +104,11 @@ def main():
     rows = capture.get('records')
     if not isinstance(rows,list) or capture.get('errors'):
         raise ValueError('incomplete_source_capture')
-    if args.write:
+    if args.write or args.merge_registered_detail:
         with psycopg.connect(os.environ['DATABASE_URL'],autocommit=True,connect_timeout=20) as conn:
             verify_project(conn,os.environ.get('SUPABASE_URL',''))
+            if args.merge_registered_detail:
+                rows = with_registered_detail(conn,rows)
     print(json.dumps(sync_existing(rows,write=args.write),default=str))
 
 if __name__ == '__main__':

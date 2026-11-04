@@ -1,0 +1,99 @@
+name: 'RareVinyl | Source and EAN pilot | Ubuntu'
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        type: choice
+        default: source
+        options: [setup, source]
+permissions:
+  contents: read
+concurrency:
+  group: rarevinyl-source-write
+  cancel-in-progress: false
+jobs:
+  source:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: python -m pip install 'requests>=2.31,<3' 'psycopg[binary]>=3.2,<4' 'python-dotenv>=1,<2'
+      - run: python -m unittest tests.test_rarevinyl tests.test_rarevinyl_staging tests.test_rarevinyl_prices -v
+      - run: python tests/run_rarevinyl_postgres.py
+      - name: Install source checkpoint and register the UK shop
+        if: inputs.mode == 'setup'
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        run: |
+          set -euo pipefail
+          python -m scripts.workers.rarevinyl_staging --install-checkpoint --write
+          python -m scripts.workers.rarevinyl_staging --register-shop --write
+      - name: Read current source checkpoint
+        if: inputs.mode == 'source'
+        id: checkpoint
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        run: |
+          set -euo pipefail
+          python -m scripts.workers.rarevinyl_staging --checkpoint > checkpoint.json
+          if python -c 'import json,sys; sys.exit(0 if json.load(open("checkpoint.json"))["cycle_complete"] else 1)'; then
+            python -m scripts.workers.rarevinyl_staging --restart-completed --write
+            python -m scripts.workers.rarevinyl_staging --checkpoint > checkpoint.json
+          fi
+          python -c 'import json,os; x=json.load(open("checkpoint.json")); open(os.environ["GITHUB_OUTPUT"],"a").write("page="+str(x["next_page"])+"\n")'
+      - name: Capture one listing page without database credentials
+        if: inputs.mode == 'source'
+        env:
+          SOURCE_PAGE: ${{ steps.checkpoint.outputs.page }}
+        run: python -m scripts.scrapers.rarevinyl --pages 1 --start-page "$SOURCE_PAGE" --details 10 --delay 1.5 --verify-markets --output rarevinyl-capture.json
+      - name: Persist checked source records and page checkpoint
+        if: inputs.mode == 'source'
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        run: |
+          set -euo pipefail
+          python -m scripts.workers.rarevinyl_staging --capture rarevinyl-capture.json --write
+          python -m scripts.workers.rarevinyl_staging --pending-details 50 > rarevinyl-pending.json
+      - name: Check pending detail pages without database credentials
+        if: inputs.mode == 'source'
+        run: python -m scripts.scrapers.rarevinyl --detail-input rarevinyl-pending.json --delay 1.5 --output rarevinyl-details.json
+      - name: Persist independently validated detail records
+        if: inputs.mode == 'source'
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        run: python -m scripts.workers.rarevinyl_staging --detail-capture rarevinyl-details.json --write
+      - name: Stage barcode-backed source records
+        if: inputs.mode == 'source'
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        run: python -m scripts.workers.rarevinyl_staging --stage-raw --write
+      - name: Refresh existing offers only
+        if: inputs.mode == 'source'
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        run: |
+          set -euo pipefail
+          python -m scripts.workers.rarevinyl_prices --capture rarevinyl-capture.json --merge-registered-detail --write
+          python -m scripts.workers.rarevinyl_prices --capture rarevinyl-details.json --write
+      - uses: actions/upload-artifact@v4
+        if: always() && inputs.mode == 'source'
+        with:
+          name: rarevinyl-source-${{ github.run_id }}
+          path: |
+            checkpoint.json
+            rarevinyl-capture.json
+            rarevinyl-details.json
+          retention-days: 7
+          if-no-files-found: warn
