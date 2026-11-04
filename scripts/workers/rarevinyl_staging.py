@@ -211,6 +211,9 @@ def persist_detail(conn, row):
 def verify_project(conn, supabase_url):
     """Refuse production writes unless the configured project matches the DB."""
     import re
+    if not supabase_url:
+        from pathlib import Path
+        supabase_url = (Path(__file__).resolve().parents[2]/'config/rarevinyl-supabase-public-url.txt').read_text().strip()
     expected = re.fullmatch(r'([a-z0-9]{20})\.supabase\.co', urlsplit(supabase_url).hostname or '')
     host = conn.info.host or ''
     direct = re.fullmatch(r'db\.([a-z0-9]{20})\.supabase\.co', host)
