@@ -125,7 +125,14 @@ def select_market(country):
     """Use the shop's normal localization form and verify the rendered market."""
     session = requests.Session()
     session.headers.update({'User-Agent': UA, 'Accept-Language':'nl-NL,nl;q=0.9'})
-    response = session.post(BASE + '/localization', data={'form_type':'localization',
+    # Follow the shop's ordinary regional landing page first. Hosted runners
+    # can be redirected to the US storefront before the visitor chooses a
+    # country; submit the same public localization form on that storefront.
+    landing = session.get(BASE + '/', timeout=25)
+    landing_host = urlsplit(landing.url).hostname
+    if landing.status_code != 200 or landing_host not in ('eu.rarevinyl.com','us.rarevinyl.com','uk.rarevinyl.com'):
+        raise RuntimeError('market_landing_unavailable status=%s final_host=%s' % (landing.status_code, landing_host))
+    response = session.post('https://' + landing_host + '/localization', data={'form_type':'localization',
         'utf8':'✓', '_method':'put', 'country_code':country, 'return_to':'/'}, timeout=25)
     if response.status_code != 200 or urlsplit(response.url).hostname != 'eu.rarevinyl.com':
         observed_country = re.search(r'Shopify\.country\s*=\s*"([A-Z]{2})"',response.text)
