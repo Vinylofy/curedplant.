@@ -52,10 +52,13 @@ def artist_title(value: str) -> tuple[str, str]:
     return parts[0][:200], parts[1][:300]
 
 
-def parse_page(body: str, source_url: str, observed_at: str) -> tuple[list[dict], str | None]:
+def parse_page(body: str, source_url: str, observed_at: str, rejected: list | None = None) -> tuple[list[dict], str | None]:
     soup = BeautifulSoup(body, "html.parser")
     rows: list[dict] = []
-    for tile in soup.select("div.product-tile"):
+    tiles = soup.select("div.product-tile")
+    if not tiles:
+        raise ValueError("catalog_page_has_no_product_tiles")
+    for tile in tiles:
         link = tile.select_one("a.link-overlay[href]")
         heading = tile.select_one("h4.product-tile-header")
         subtype = tile.select_one("p.product-tile-sub-header")
@@ -66,17 +69,25 @@ def parse_page(body: str, source_url: str, observed_at: str) -> tuple[list[dict]
         if "lp" not in subtype.get_text(" ", strip=True).lower() and not re.search(r"\bvinyl\b", heading.get_text(" ", strip=True), re.I):
             continue
         title_raw = heading.get_text(" ", strip=True)
-        artist, title = artist_title(title_raw)
         listing_url = urljoin(CATALOG + "/", link["href"])
         approved_url(listing_url, DOMAIN)
-        availability = "out_of_stock" if re.search(r"uitverkocht|niet op voorraad", stock.get_text(" ", strip=True) if stock else "", re.I) else "in_stock"
+        try:
+            artist, title = artist_title(title_raw)
+            listing_price = price(amount.get_text(" ", strip=True))
+        except ValueError as exc:
+            if rejected is not None:
+                rejected.append({"url": listing_url, "title": title_raw, "reason": str(exc)})
+            continue
+        stock_text = stock.get_text(" ", strip=True) if stock else ""
+        availability = ("out_of_stock" if re.search(r"uitverkocht|niet op voorraad", stock_text, re.I)
+                        else "in_stock" if re.search(r"op voorraad", stock_text, re.I) else "unknown")
         rows.append({
             "source_product_id": tile.get("data-product-code") or str(uuid.uuid5(uuid.NAMESPACE_URL, listing_url)),
             "source_url": listing_url,
             "title_raw": title_raw,
             "artist": artist,
             "title": title,
-            "price": price(amount.get_text(" ", strip=True)),
+            "price": listing_price,
             "currency": "EUR",
             "availability": availability,
             "observed_at": observed_at,
@@ -89,7 +100,7 @@ def parse_page(body: str, source_url: str, observed_at: str) -> tuple[list[dict]
     return rows, next_url
 
 
-def write_rows(conn, rows: list[dict], run_id: str) -> int:
+def write_rows(conn, rows: list[dict], run_id: str, next_url: str | None = None) -> int:
     shop = conn.execute("select id from public.shops where is_active and regexp_replace(domain,'^www\\.','')=%s", (DOMAIN,)).fetchone()
     if not shop:
         # Registration is part of the explicit production setup; it does not
@@ -104,7 +115,7 @@ def write_rows(conn, rows: list[dict], run_id: str) -> int:
     shop_id = shop[0]
     conn.execute("""insert into public.scrape_runs
       (id,shop_id,job_type,status,config) values(%s,%s,'catalog','running',%s)""",
-      (run_id, shop_id, Jsonb({"source": DOMAIN, "route": CATALOG, "artist_title": True, "database_writes": True})))
+      (run_id, shop_id, Jsonb({"source": DOMAIN, "route": CATALOG, "artist_title": True, "database_writes": True, "muziker_checkpoint_v1": True, "next_url": next_url})))
     written = 0
     for row in rows:
         raw_id = uuid.uuid5(uuid.NAMESPACE_URL, f"muziker:{row['source_url']}:{row['observed_at'][:10]}")
@@ -144,32 +155,51 @@ def write_rows(conn, rows: list[dict], run_id: str) -> int:
     return written
 
 
+def read_checkpoint(conn) -> str:
+    row = conn.execute("""select config->>'next_url' from public.scrape_runs
+      where status='completed' and config->>'muziker_checkpoint_v1'='true'
+      order by finished_at desc, id desc limit 1""").fetchone()
+    url = row[0] if row and row[0] else CATALOG
+    approved_url(url, DOMAIN)
+    if urlsplit(url).path.rstrip('/') != urlsplit(CATALOG).path:
+        raise ValueError('invalid_checkpoint_path')
+    return url
+
+
 def run(max_pages: int, write: bool) -> dict:
     observed = now(); run_id = str(uuid.uuid4()); transport = Transport(DOMAIN)
     transport.session.headers["User-Agent"] = UA
-    rows: list[dict] = []; url = CATALOG; seen: set[str] = set(); pages = 0
+    rows: list[dict] = []; rejected: list[dict] = []; seen: set[str] = set(); pages = 0; written = 0
+    conn = None
     try:
+        if write:
+            conn = psycopg.connect(__import__("os").environ["DATABASE_URL"], prepare_threshold=None)
+            url = read_checkpoint(conn)
+            conn.commit()
+        else:
+            url = CATALOG
+        start_url = url
         transport.start(CATALOG)
         while url and pages < max_pages:
             if url in seen:
                 raise RuntimeError("repeated_page")
             seen.add(url)
-            page_rows, next_url = parse_page(transport.get(url), url, observed)
+            page_rows, next_url = parse_page(transport.get(url), url, observed, rejected)
             urls = {r["source_url"] for r in page_rows}
             if urls & {r["source_url"] for r in rows}:
                 raise RuntimeError("repeated_product")
+            # Commit data and checkpoint together after each complete page.
+            if conn:
+                with conn.transaction():
+                    written += write_rows(conn, page_rows, str(uuid.uuid4()), next_url)
             rows.extend(page_rows); pages += 1; url = next_url
-        result = {"shop": DOMAIN, "route": CATALOG, "run_id": run_id, "pages": pages,
-                  "records": len(rows), "database_writes": bool(write), "complete": url is None,
-                  "next_url": url, "ean_records": 0, "artist_title_records": len(rows),
-                  "requests": transport.requests}
-        if write:
-            with psycopg.connect(__import__("os").environ["DATABASE_URL"], prepare_threshold=None) as conn:
-                result["raw_written"] = write_rows(conn, rows, run_id)
-        else:
-            result["raw_written"] = 0
-        return result
+        return {"shop": DOMAIN, "route": CATALOG, "run_id": run_id, "start_url": start_url,
+                "pages": pages, "records": len(rows), "database_writes": bool(write), "complete": url is None,
+                "next_url": url, "ean_records": 0, "artist_title_records": len(rows),
+                "raw_written": written, "rejected": rejected, "requests": transport.requests}
     finally:
+        if conn:
+            conn.close()
         transport.close()
 
 
