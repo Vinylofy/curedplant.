@@ -57,6 +57,39 @@ class MuzikerCatalogTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'invalid_checkpoint_path'):
             read_checkpoint(conn)
 
+    @patch('scripts.workers.muziker_catalog.Transport')
+    def test_overlapping_products_are_skipped_without_losing_other_products(self, transport_cls):
+        first = HTML
+        second = HTML.replace('page=2', 'page=3') + HTML.replace(
+            '/black-sabbath-paranoid-vinyl-lp', '/second-lp').replace('Paranoid', 'Second')
+        third = HTML.replace('/black-sabbath-paranoid-vinyl-lp', '/third-lp').replace('Paranoid', 'Third').replace(
+            '<a class="load-next-products" href="https://www.muziker.nl/vinyl-lps?page=2">next</a>', '')
+        transport_cls.return_value.get.side_effect = [first, second, third]
+        result = run(3, False)
+        self.assertEqual((result['pages'], result['records'], result['duplicate_products_skipped']), (3, 3, 1))
+        self.assertTrue(result['complete'])
+
+    @patch('scripts.workers.muziker_catalog.Transport')
+    def test_identical_consecutive_pages_stop_without_advancing(self, transport_cls):
+        second = HTML.replace('page=2', 'page=3')
+        transport_cls.return_value.get.side_effect = [HTML, second]
+        with self.assertRaisesRegex(RuntimeError, 'repeated_page_content'):
+            run(2, False)
+
+    @patch('scripts.workers.muziker_catalog.write_rows')
+    @patch('scripts.workers.muziker_catalog.psycopg.connect')
+    @patch('scripts.workers.muziker_catalog.Transport')
+    @patch.dict('os.environ', {'DATABASE_URL': 'dummy'})
+    def test_repeated_page_after_resume_is_not_committed(self, transport_cls, connect, write_rows):
+        import hashlib
+        signature = hashlib.sha256('https://www.muziker.nl/black-sabbath-paranoid-vinyl-lp'.encode()).hexdigest()
+        conn = connect.return_value
+        conn.execute.return_value.fetchone.side_effect = [('https://www.muziker.nl/vinyl-lps?page=2',), (signature,)]
+        transport_cls.return_value.get.return_value = HTML.replace('page=2', 'page=3')
+        with self.assertRaisesRegex(RuntimeError, 'repeated_page_content'):
+            run(1, True)
+        write_rows.assert_not_called()
+
     @patch('scripts.workers.muziker_catalog.write_rows')
     @patch('scripts.workers.muziker_catalog.psycopg.connect')
     @patch('scripts.workers.muziker_catalog.Transport')

@@ -100,7 +100,7 @@ def parse_page(body: str, source_url: str, observed_at: str, rejected: list | No
     return rows, next_url
 
 
-def write_rows(conn, rows: list[dict], run_id: str, next_url: str | None = None) -> int:
+def write_rows(conn, rows: list[dict], run_id: str, next_url: str | None = None, page_signature: str | None = None) -> int:
     shop = conn.execute("select id from public.shops where is_active and regexp_replace(domain,'^www\\.','')=%s", (DOMAIN,)).fetchone()
     if not shop:
         # Registration is part of the explicit production setup; it does not
@@ -115,7 +115,7 @@ def write_rows(conn, rows: list[dict], run_id: str, next_url: str | None = None)
     shop_id = shop[0]
     conn.execute("""insert into public.scrape_runs
       (id,shop_id,job_type,status,config) values(%s,%s,'catalog','running',%s)""",
-      (run_id, shop_id, Jsonb({"source": DOMAIN, "route": CATALOG, "artist_title": True, "database_writes": True, "muziker_checkpoint_v1": True, "next_url": next_url})))
+      (run_id, shop_id, Jsonb({"source": DOMAIN, "route": CATALOG, "artist_title": True, "database_writes": True, "muziker_checkpoint_v1": True, "next_url": next_url, "page_signature": page_signature})))
     written = 0
     for row in rows:
         raw_id = uuid.uuid5(uuid.NAMESPACE_URL, f"muziker:{row['source_url']}:{row['observed_at'][:10]}")
@@ -166,15 +166,25 @@ def read_checkpoint(conn) -> str:
     return url
 
 
+def read_previous_signature(conn) -> str | None:
+    row = conn.execute("""select case when config->>'next_url' is not null
+      then config->>'page_signature' end from public.scrape_runs
+      where status='completed' and config->>'muziker_checkpoint_v1'='true'
+      order by finished_at desc, id desc limit 1""").fetchone()
+    return row[0] if row else None
+
+
 def run(max_pages: int, write: bool) -> dict:
     observed = now(); run_id = str(uuid.uuid4()); transport = Transport(DOMAIN)
     transport.session.headers["User-Agent"] = UA
-    rows: list[dict] = []; rejected: list[dict] = []; seen: set[str] = set(); pages = 0; written = 0
+    rows: list[dict] = []; rejected: list[dict] = []; seen: set[str] = set(); seen_products: set[str] = set()
+    pages = 0; written = 0; duplicates = 0; previous_signature = None
     conn = None
     try:
         if write:
             conn = psycopg.connect(__import__("os").environ["DATABASE_URL"], prepare_threshold=None)
             url = read_checkpoint(conn)
+            previous_signature = read_previous_signature(conn)
             conn.commit()
         else:
             url = CATALOG
@@ -186,17 +196,28 @@ def run(max_pages: int, write: bool) -> dict:
             seen.add(url)
             page_rows, next_url = parse_page(transport.get(url), url, observed, rejected)
             urls = {r["source_url"] for r in page_rows}
-            if urls & {r["source_url"] for r in rows}:
-                raise RuntimeError("repeated_product")
-            # Commit data and checkpoint together after each complete page.
+            signature = hashlib.sha256("\n".join(sorted(urls)).encode()).hexdigest() if urls else None
+            if signature and signature == previous_signature:
+                raise RuntimeError("repeated_page_content")
+            if next_url and next_url in seen:
+                raise RuntimeError("repeated_page")
+            unique_rows = []
+            for row in page_rows:
+                if row["source_url"] in seen_products:
+                    duplicates += 1
+                    continue
+                seen_products.add(row["source_url"])
+                unique_rows.append(row)
+            # Persist the complete page and its signature atomically; a crash
+            # cannot move the checkpoint past observations that were not saved.
             if conn:
                 with conn.transaction():
-                    written += write_rows(conn, page_rows, str(uuid.uuid4()), next_url)
-            rows.extend(page_rows); pages += 1; url = next_url
+                    written += write_rows(conn, unique_rows, str(uuid.uuid4()), next_url, signature)
+            rows.extend(unique_rows); pages += 1; url = next_url; previous_signature = signature
         return {"shop": DOMAIN, "route": CATALOG, "run_id": run_id, "start_url": start_url,
                 "pages": pages, "records": len(rows), "database_writes": bool(write), "complete": url is None,
                 "next_url": url, "ean_records": 0, "artist_title_records": len(rows),
-                "raw_written": written, "rejected": rejected, "requests": transport.requests}
+                "raw_written": written, "duplicate_products_skipped": duplicates, "rejected": rejected, "requests": transport.requests}
     finally:
         if conn:
             conn.close()
