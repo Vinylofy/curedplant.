@@ -2,24 +2,24 @@
   "version": 1,
   "shop": "vinylfreaks",
   "cursor": {
-    "page": 12,
+    "page": 13,
     "seed": 0,
-    "signature": "fac4d2f16b96377316b3174394bbc77cf717ec025b9968c364f3fee3fc810c2a"
+    "signature": "90162578dc59e28fd3d09ed45405a8cad3154d6e8843c5b6ba0cc3019aa897d4"
   },
   "budget": {
     "date": "2026-11-04",
-    "reserved": 100
+    "reserved": 0
   },
   "last_result": {
-    "day": "2026-11-03",
-    "attempted": 88,
-    "details_started": 88,
-    "valid_eans": 59,
-    "missing_ean": 29,
+    "day": "2026-11-04",
+    "attempted": 0,
+    "details_started": 0,
+    "valid_eans": 0,
+    "missing_ean": 0,
     "unavailable": 0,
     "excluded_non_vinyl": 0,
     "technical_errors": 0,
-    "status": "green",
-    "outcome": "completed"
+    "status": "red",
+    "outcome": "failed"
   }
 }
