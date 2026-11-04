@@ -2,10 +2,9 @@
   "version": 1,
   "shop": "rockinoutrecords",
   "cursor": {
-    "page": 1,
+    "page": 2,
     "seed": 0,
-    "exhausted": true,
-    "exhausted_on": "2026-10-28"
+    "signature": "5f588600ba0e32d024967462e78d258baec918d2180ea88c5dcac6c1200479fd"
   },
   "budget": {
     "date": "2026-11-04",
