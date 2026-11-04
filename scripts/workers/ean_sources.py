@@ -206,7 +206,10 @@ class EanSource:
         elif shop == "platenzaak":
             source = module("legacy.platenzaak_legacy")
             url = source.COLLECTION_URL + f"?page={page}"
-            parsed = source.parse_listing_page(BeautifulSoup(self.get(url).text, "html.parser"), page)
+            soup = BeautifulSoup(self.get(url).text, "html.parser")
+            parsed = source.parse_listing_page(soup, page)
+            if not parsed and page <= source.discover_last_page(soup):
+                raise ValueError("Platenzaak catalog page has no recognized products; refusing to mark catalogue exhausted")
             rows = [link_row(asdict(row) if is_dataclass(row) else row) for row in parsed]
         elif shop == "platomania":
             source = module("legacy.platomania_legacy")

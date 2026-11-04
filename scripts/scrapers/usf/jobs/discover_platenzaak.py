@@ -74,8 +74,7 @@ def discover_links(max_pages: int | None, delay_seconds: float) -> tuple[list[Di
         print(f"[DISCOVER] page={page} rows={len(rows)}", flush=True)
 
         if not rows:
-            print(f"[DISCOVER] page={page} no rows, stopping safely.", flush=True)
-            break
+            raise ValueError(f"Platenzaak page {page} has no recognized products; refusing incomplete price refresh")
 
         for row in rows:
             source_url = clean(row.get("product_url"))

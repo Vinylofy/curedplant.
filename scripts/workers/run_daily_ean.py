@@ -60,6 +60,12 @@ def execute(shop, limit, write, *, progress=None, queue=None, source_factory=Ean
         selected = [] if source_pilot or shop == "soundshaarlem" else queue.candidates(shop, allocated)
         selected_by_url = {row["source_url"]: row for row in selected}
         cursor = state["cursor"]
+        # The previous Platenzaak layout made page 1 appear empty and falsely
+        # exhausted. Repair this once without resetting the daily budget or queue.
+        if shop == "platenzaak" and not state.get("platenzaak_layout_v2"):
+            if cursor.get("exhausted"):
+                cursor = state["cursor"] = {"page": 1, "seed": 0}
+            state["platenzaak_layout_v2"] = True
         exhausted_on = cursor.get("exhausted_on")
         if cursor.get("exhausted") and exhausted_on and today >= (datetime.fromisoformat(exhausted_on) + timedelta(days=7)).date().isoformat():
             cursor = state["cursor"] = {"page": 1, "seed": 0}

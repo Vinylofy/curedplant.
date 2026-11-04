@@ -242,7 +242,7 @@ def extract_availability(block: BeautifulSoup) -> str:
         return "Uitverkocht"
     if "Pre-Order" in text or "Pre-order" in text:
         return "Pre-Order"
-    if "In winkelmandje" in text:
+    if "In winkelmandje" in text or "In winkelwagen" in text:
         return "In winkelmandje"
     return ""
 
@@ -293,13 +293,21 @@ def extract_artist_and_title(title_link: BeautifulSoup) -> Tuple[str, str]:
 
 
 def parse_listing_block(block: BeautifulSoup, page_number: int) -> Optional[dict]:
-    title_link = block.select_one(".product-block__title-price a.title")
+    title_link = block.select_one(".product-block__title-price a.title, .platenzaak-product-card-title__link")
     if not title_link or not title_link.get("href"):
         return None
 
     product_url = normalize_product_url(to_absolute_url(title_link["href"]))
-    artist, title = extract_artist_and_title(title_link)
-    price = extract_price(block)
+    if "platenzaak-product-card" in (block.get("class") or []):
+        artist_node = block.select_one(".platenzaak-product-card__artist")
+        artist = normalize_space(artist_node.get_text(" ", strip=True)) if artist_node else ""
+        title = normalize_space(title_link.get_text(" ", strip=True))
+        # The visible current price is scoped to this exact product card.
+        price_node = block.select_one(".platenzaak-product-card-price__current")
+        price = safe_float_from_price_text(price_node.get_text(" ", strip=True)) if price_node else ""
+    else:
+        artist, title = extract_artist_and_title(title_link)
+        price = extract_price(block)
     availability = extract_availability(block)
 
     return {
@@ -320,7 +328,7 @@ def parse_listing_page(soup: BeautifulSoup, page_number: int) -> List[dict]:
     items: List[dict] = []
     seen_urls = set()
 
-    for block in soup.select("div.product-block__inner"):
+    for block in soup.select("div.product-block__inner, article.platenzaak-product-card"):
         row = parse_listing_block(block, page_number)
         if not row:
             continue
@@ -416,8 +424,8 @@ def scan_listing(max_pages: Optional[int] = None, delay_seconds: float = 0.25) -
 def extract_detail_table(soup: BeautifulSoup) -> Dict[str, str]:
     details = {field: "" for field in ENRICH_FIELDS if field not in {"product_url", "enriched_at"}}
 
-    for row in soup.select("div.product-detail-accordion table tr"):
-        cells = row.select("td")
+    for row in soup.select("div.product-detail-accordion table tr, tr[data-platenzaak-variant-ean-row]"):
+        cells = row.find_all(["th", "td"], recursive=False)
         if len(cells) < 2:
             continue
         label = normalize_space(cells[0].get_text(" ", strip=True))
