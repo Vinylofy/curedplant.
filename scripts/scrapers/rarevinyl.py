@@ -128,8 +128,12 @@ def select_market(country):
     response = session.post(BASE + '/localization', data={'form_type':'localization',
         'utf8':'✓', '_method':'put', 'country_code':country, 'return_to':'/'}, timeout=25)
     if response.status_code != 200 or urlsplit(response.url).hostname != 'eu.rarevinyl.com':
-        raise RuntimeError('market_localization_failed status=%s final_host=%s' %
-                           (response.status_code, urlsplit(response.url).hostname))
+        observed_country = re.search(r'Shopify\.country\s*=\s*"([A-Z]{2})"',response.text)
+        observed_currency = re.search(r'Shopify\.currency\s*=\s*\{\s*"active"\s*:\s*"([A-Z]{3})"',response.text)
+        raise RuntimeError('market_localization_failed status=%s final_host=%s country=%s currency=%s' %
+                           (response.status_code, urlsplit(response.url).hostname,
+                            observed_country.group(1) if observed_country else 'unknown',
+                            observed_currency.group(1) if observed_currency else 'unknown'))
     if not re.search(r'Shopify\.country\s*=\s*"'+re.escape(country)+'"',response.text):
         raise RuntimeError('market_country_not_confirmed')
     if not re.search(r'Shopify\.currency\s*=\s*\{\s*"active"\s*:\s*"EUR"',response.text):
