@@ -2,9 +2,9 @@
   "version": 1,
   "shop": "platenzaak",
   "cursor": {
-    "page": 30,
+    "page": 31,
     "seed": 0,
-    "signature": "096dd1f6104515f7268cfd97a9dcd7f3254acb9496dfa59d5761b012cabdc14d"
+    "signature": "7d4c941b00ca6ac67380a55b2a879519242b286b9ee48f2828dd8a95efef1430"
   },
   "budget": {
     "date": "2026-11-06",
