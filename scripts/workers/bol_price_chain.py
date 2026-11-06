@@ -132,7 +132,8 @@ def main():
             lambda run_id: gh_api('repos/'+REPO+'/actions/runs/'+str(run_id)+'/jobs')['jobs'])
         output({'safe': failed is None})
         if failed is not None:
-            print('::warning::Previous importer started but its writer outcome was not checkpointed; investigate and explicitly resume.')
+            print('::error::Previous importer started but its writer outcome was not checkpointed; investigate and explicitly resume.')
+            raise SystemExit(1)
         return
     if args.phase == 'gate':
         decision = gate(config, state, managed=managed, automatic=automatic, resume=resume)

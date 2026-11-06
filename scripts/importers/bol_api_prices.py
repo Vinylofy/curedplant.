@@ -37,6 +37,9 @@ def is_vinyl_format(value):
     return text.startswith('vinyl |') and bool(re.search(r'\b(lp|(7|10|12)\s*inch)\b', text))
 
 STATE_PATH = Path('state/bol-api/nl.json')
+# Leave time for the transactional write and independent verification before
+# the Actions job's 45-minute timeout, even when Bol responses slow down.
+MAX_COLLECTION_SECONDS = 18 * 60
 
 
 class Client:
@@ -190,8 +193,10 @@ def load_targets(dsn, limit, cursor=None, sample=False):
     return rows, wrapped, total
 
 
-def run(dsn, limit=20, write=False, sample=False, site_id='', progress=STATE_PATH):
+def run(dsn, limit=20, write=False, sample=False, site_id='', progress=STATE_PATH,
+        max_collection_seconds=MAX_COLLECTION_SECONDS):
     started = datetime.now(timezone.utc)
+    collection_started = time.monotonic()
     plan = {'status': 'blocked', 'country': 'NL', 'database_writes': 0, 'offers': [],
             'errors': [], 'captured_at': started.isoformat(), 'source': 'bol_marketing_api',
             'complete_feed': False, 'scope': 'existing_vinyl_prices', 'sample': sample,
@@ -211,22 +216,28 @@ def run(dsn, limit=20, write=False, sample=False, site_id='', progress=STATE_PAT
         plan['wrapped'] = wrapped
         plan['eligible_catalogue'] = total
         client = Client()
+        processed = []
         for product in products:
+            if processed and time.monotonic() - collection_started >= max_collection_seconds:
+                plan['batch_time_limit_reached'] = True
+                break
             try:
                 ean, gtin = verified_ean(product)
                 response = client.best_offer(api_ean(gtin))
                 plan['checked'] += 1
                 if response is None:
                     skips['no_offer_404'] += 1
-                    continue
-                plan['offers'].append(normalize_offer(product, response, site_id, started, shipping_policy))
+                else:
+                    plan['offers'].append(normalize_offer(product, response, site_id, started, shipping_policy))
             except FeedError as exc:
                 skips[str(exc)] += 1
+            processed.append(product)
         plan['skipped'] = dict(skips)
         plan['token_requests'] = client.token_requests
         validation_skips = sum(n for reason, n in skips.items() if reason not in {
             'no_offer_404', 'condition_not_proven_new', 'invalid_existing_barcode', 'existing_format_not_vinyl', 'api_requires_consumer_ean13'})
-        if products and validation_skips / len(products) > .1:
+        plan['processed'] = len(processed)
+        if processed and validation_skips / len(processed) > .1:
             raise FeedError('widespread_offer_validation_failure')
         # Publication helper enforces market shop/shipping contracts, barcode
         # uniqueness, transactional writes and independent committed verification.
@@ -235,12 +246,12 @@ def run(dsn, limit=20, write=False, sample=False, site_id='', progress=STATE_PAT
             stats = publish(plan, dsn, {'NL': SHOP_ID}, approved=True, existing_only=True)
             plan['database'] = stats
             plan['database_writes'] = stats['updated_offers']
-        if write and not sample and products:
+        if write and not sample and processed:
             # Advance only after the complete batch succeeds. Not-found/unknown
             # items advance too, preventing starvation of later EANs.
             progress.parent.mkdir(parents=True, exist_ok=True)
-            progress.write_text(json.dumps({'country': 'NL', 'cursor': str(products[-1]['id']),
-                'updated_at': datetime.now(timezone.utc).isoformat(), 'batch_size': len(products)}, indent=2) + '\n')
+            progress.write_text(json.dumps({'country': 'NL', 'cursor': str(processed[-1]['id']),
+                'updated_at': datetime.now(timezone.utc).isoformat(), 'batch_size': len(processed)}, indent=2) + '\n')
         plan['status'] = 'success' if products else 'empty_catalogue'
     except ReviewError as exc:
         plan['errors'].append({'stage': exc.stage, 'reason': exc.reason, 'http_status': exc.status})

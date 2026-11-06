@@ -78,6 +78,38 @@ class PriceTests(unittest.TestCase):
         self.assertTrue(calls[0].kwargs['existing_only'])
         self.assertTrue(progressed)
 
+    def test_time_budget_checkpoints_only_completed_prefix(self):
+        products = [dict(self.product, id=f'00000000-0000-0000-0000-{i:012d}') for i in range(1, 4)]
+        client = Mock(token_requests=1)
+        client.best_offer.return_value = None
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'progress.json'
+            with patch.object(api, 'load_targets', return_value=(products, False, 100)), \
+                 patch.object(api, 'Client', return_value=client), \
+                 patch.object(api.time, 'monotonic', side_effect=[0, 2]):
+                result = api.run('dsn', 3, write=True, site_id='123', progress=path, max_collection_seconds=1)
+            state = json.loads(path.read_text())
+        self.assertEqual(result['status'], 'success')
+        self.assertTrue(result['batch_time_limit_reached'])
+        self.assertEqual(result['processed'], 1)
+        self.assertEqual(state['cursor'], products[0]['id'])
+        self.assertEqual(state['batch_size'], 1)
+        self.assertEqual(client.best_offer.call_count, 1)
+
+    def test_time_budget_never_skips_a_failed_api_request(self):
+        products = [self.product, dict(self.product, id='00000000-0000-0000-0000-000000000002')]
+        client = Mock(token_requests=1)
+        client.best_offer.side_effect = [self.offer, ReviewError('best_offer', 'http_error', 429)]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'progress.json'
+            with patch.object(api, 'load_targets', return_value=(products, False, 100)), \
+                 patch.object(api, 'Client', return_value=client), \
+                 patch.object(api, 'publish') as publish:
+                result = api.run('dsn', 2, write=True, site_id='123', progress=path)
+            self.assertFalse(path.exists())
+        self.assertEqual(result['status'], 'blocked')
+        publish.assert_not_called()
+
     def test_not_found_does_not_block_later_batches_or_publish_false_price(self):
         result, calls, progressed = self.run_batch(None, write=True)
         self.assertEqual(result['skipped'], {'no_offer_404': 1})
