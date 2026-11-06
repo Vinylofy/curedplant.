@@ -2,8 +2,10 @@
   "version": 1,
   "shop": "fiftiesstore",
   "cursor": {
-    "page": 60,
-    "seed": 0
+    "page": 61,
+    "seed": 0,
+    "exhausted": true,
+    "exhausted_on": "2026-11-06"
   },
   "budget": {
     "date": "2026-11-06",
