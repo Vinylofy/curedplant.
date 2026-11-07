@@ -12,6 +12,28 @@ gewijzigd. De Marketing API blijft actief; de volledige automatische FTPS-bronwi
 is nog niet vrijgegeven. De oorspronkelijke read-only resultaten staan hieronder,
 gevolgd door het actuele pilotresultaat in §5a.
 
+## Laatste eindcontrole op main
+
+Na merge van PR #8 is de volledige schaduwketen nogmaals handmatig gestart via
+de actieve dispatcher en de bestaande Windows-runner. De bron was inmiddels
+ververst naar `2026-11-07T22:00:56+00:00`: 914.112 regels volledig verwerkt,
+146.015 geschikte NL-aanbiedingen na 100 quarantaines, nul databasewrites,
+nul fouten en 205,266 seconden verwerkingstijd. Van 52.941 actieve bol-aanbiedingen
+liggen er 3.008 buiten de geschikte selectie; 1.618 daarvan zijn op dit meetmoment
+huidig, zichtbaar en API-geschikt. Dit vervangt eerdere actuele tellingen hieronder;
+de eerdere bron- en aanvullende audits blijven afzonderlijke momentopnamen.
+
+[Geslaagde definitieve main-run](https://github.com/Vinylofy/curedplant./actions/runs/42418822913)
+— [blijvende evidence](bol-ftps-final-main-evidence.json).
+Het twee-uurlijkse schema is actief; deze test heeft dezelfde dispatchketen
+handmatig gestart en bewijst nog geen natuurlijke GitHub-crontrigger.
+De bronmomenten rond 20:03 en 22:04 UTC passen bij een twee-uurlijkse verversing;
+een vaste exacte publicatiefase blijft niet gegarandeerd.
+
+**FTPS PRODUCTIEGEREED: NEE.** De Marketing API blijft actief totdat de
+resterende bron-/identiteitsdekking aantoonbaar veilig is overgenomen.
+Er zijn na de goedgekeurde twintig-productenpilot geen extra productiewrites gedaan.
+
 ## Actuele voortzetting: knelpunten onderzocht en technisch afgevangen
 
 De latere volledige Windows-validatie heeft een nieuw snapshot van 913.984 regels
