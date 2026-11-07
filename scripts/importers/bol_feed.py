@@ -359,6 +359,63 @@ def review_matches(plan, dsn, shops=None, *, batch_size=500):
                 price_comparisons=dict(comparisons), match_batch_size=batch_size)
 
 
+class SafeWriterCursor:
+    """Report timeout stage without leaking SQL parameters or driver messages."""
+    def __init__(self, cursor):
+        self.cursor = cursor
+
+    def __getattr__(self, name):
+        return getattr(self.cursor, name)
+
+    def execute(self, statement, params=None):
+        query = str(statement).lower()
+        stage = "writer_statement"
+        if "pg_advisory_xact_lock" in query:
+            stage = "source_lock" if "bol-affiliate-import" in query else "barcode_lock"
+        else:
+            for table in ("raw_shop_scrapes", "price_history", "products", "prices", "shops", "shop_shipping_destinations"):
+                if "public." + table in query:
+                    stage = table + ("_write" if "insert into" in query else "_read")
+                    break
+        try:
+            return self.cursor.execute(statement, params)
+        except psycopg.errors.QueryCanceled:
+            raise FeedError("database_statement_timeout stage=" + stage) from None
+
+
+def writer_diagnostics(dsn):
+    """Read-only operational/schema evidence; no credentials, query text or writes."""
+    with psycopg.connect(dsn, prepare_threshold=None) as conn, conn.cursor() as cur:
+        cur.execute("set transaction read only")
+        cur.execute("show statement_timeout")
+        timeout = cur.fetchone()[0]
+        cur.execute("show lock_timeout")
+        lock_timeout = cur.fetchone()[0]
+        cur.execute("""select locktype,mode,granted,count(*) from pg_locks
+                       where locktype='advisory' group by locktype,mode,granted""")
+        locks = cur.fetchall()
+        cur.execute("""select tablename,indexname,indexdef from pg_indexes
+                       where schemaname='public' and tablename=any(%s)
+                       order by tablename,indexname""", (["products", "raw_shop_scrapes", "prices", "price_history"],))
+        indexes = cur.fetchall()
+        cur.execute("""select relname,n_live_tup,n_dead_tup from pg_stat_user_tables
+                       where schemaname='public' and relname=any(%s)""",
+                    (["products", "raw_shop_scrapes", "prices", "price_history"],))
+        sizes = cur.fetchall()
+        cur.execute("""explain select 1 from public.raw_shop_scrapes where shop_id=%s
+                       and source_product_id=%s and payload->>'bol_import_digest'=%s limit 1""",
+                    ("f08437c2-1d85-47a6-94f9-33a55612d5cc", "9300000332934928", "diagnostic_nonexistent_digest"))
+        replay_plan = [r[0] for r in cur.fetchall()]
+        cur.execute("""explain select id,format_label from public.products
+                       where ean=any(%s) or gtin_normalized=any(%s)""",
+                    (["9101389353587"], ["09101389353587"]))
+        product_plan = [r[0] for r in cur.fetchall()]
+    return {"status": "writer_diagnosed", "database_writes": 0, "errors": [],
+            "statement_timeout": timeout, "lock_timeout": lock_timeout,
+            "advisory_locks": locks, "indexes": indexes, "table_estimates": sizes,
+            "replay_lookup_plan": replay_plan, "product_lookup_plan": product_plan}
+
+
 def publish(plan, dsn, shops, approved=False, existing_only=False):
     """One transaction for all selected markets; never registers/activates shops.
 
@@ -375,6 +432,7 @@ def publish(plan, dsn, shops, approved=False, existing_only=False):
     stats = {"new_products": 0, "updated_offers": 0, "skipped_newer": 0, "verified": 0}
     written = []
     with psycopg.connect(dsn, prepare_threshold=None) as conn, conn.cursor() as cur:
+        cur = SafeWriterCursor(cur)
         # Shared lock across countries prevents two imports splitting NL/BE.
         cur.execute("select pg_advisory_xact_lock(hashtextextended('bol-affiliate-import',0))")
         for country in sorted({o["country"] for o in plan["offers"]}):
@@ -615,6 +673,7 @@ def main(argv=None):
     parser.add_argument("--max-rows", type=int, default=1_000_000)
     parser.add_argument("--source-at", help="Local feed generation timestamp, ISO8601 with timezone")
     parser.add_argument("--output", type=Path, default=Path("output/bol/review.json"))
+    parser.add_argument("--diagnose-writer", action="store_true")
     parser.add_argument("--check-matches", action="store_true")
     parser.add_argument("--inspect-schema", action="store_true")
     parser.add_argument("--expected-feed-sha256", help="Bind an approved pilot to its reviewed source bytes")
@@ -626,6 +685,14 @@ def main(argv=None):
     started = time.monotonic()
     report = {"status": "blocked", "database_writes": 0, "errors": []}
     try:
+        if args.diagnose_writer:
+            if args.write:
+                raise FeedError("writer_diagnostics_cannot_publish")
+            report = writer_diagnostics(os.environ["DATABASE_URL"])
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+            print(json.dumps(report))
+            return 0
         profile = json.loads(args.profile.read_text(encoding="utf-8"))
         if args.validation_suite and args.limit != 0:
             raise FeedError("validation_suite_requires_limit_zero")

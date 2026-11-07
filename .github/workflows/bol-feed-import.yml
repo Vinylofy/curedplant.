@@ -10,7 +10,7 @@ on:
       mode:
         description: "Publication requires separate explicit approval; full import also requires API chain paused"
         type: choice
-        options: [dry_run, pilot_write, full_write]
+        options: [dry_run, diagnose_writer, pilot_write, full_write]
         default: dry_run
       expected_feed_sha256:
         description: "Required for pilot: SHA-256 of the explicitly reviewed feed"
@@ -43,8 +43,8 @@ jobs:
         with:
           script: |
             const mode = process.env.BOL_MODE;
-            if (!['dry_run', 'pilot_write', 'full_write'].includes(mode)) throw new Error('Unknown mode');
-            if (mode !== 'dry_run' && (context.ref !== 'refs/heads/main' || process.env.BOL_APPROVE !== 'true')) {
+            if (!['dry_run', 'diagnose_writer', 'pilot_write', 'full_write'].includes(mode)) throw new Error('Unknown mode');
+            if (!['dry_run', 'diagnose_writer'].includes(mode) && (context.ref !== 'refs/heads/main' || process.env.BOL_APPROVE !== 'true')) {
               throw new Error('Publication requires main and explicit approval');
             }
             if (mode === 'pilot_write' && !/^[0-9a-f]{64}$/.test(process.env.BOL_EXPECTED_SHA256 || '')) {
@@ -151,7 +151,9 @@ jobs:
           command = [sys.executable, '-m', 'scripts.importers.bol_feed',
               '--profile', 'config/bol-feed.live.json', '--markets', 'NL',
               '--max-rows', '5000000', '--limit', '0' if mode == 'full_write' else '20']
-          if mode == 'dry_run':
+          if mode == 'diagnose_writer':
+              command.extend(['--diagnose-writer'])
+          elif mode == 'dry_run':
               command.append('--check-matches')
           else:
               command.extend(['--write', '--approve-publication'])

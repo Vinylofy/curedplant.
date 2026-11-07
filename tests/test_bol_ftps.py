@@ -90,6 +90,18 @@ class BolFtpsTests(unittest.TestCase):
                 download_feed(path, attempts=1)
             self.assertFalse(path.exists())
 
+    def test_writer_timeout_reports_safe_stage_without_driver_text(self):
+        import psycopg
+        from scripts.importers.bol_feed import SafeWriterCursor
+        cursor = Mock()
+        cursor.execute.side_effect = psycopg.errors.QueryCanceled('private-account private-password')
+        wrapped = SafeWriterCursor(cursor)
+        for query, stage in [("select pg_advisory_xact_lock(hashtextextended('bol-affiliate-import',0))", "source_lock"),
+                             ("select 1 from public.raw_shop_scrapes where shop_id=%s", "raw_shop_scrapes_read")]:
+            with self.assertRaises(FeedError) as failure:
+                wrapped.execute(query)
+            self.assertEqual(str(failure.exception), 'database_statement_timeout stage=' + stage)
+
     def test_oversize_transfer_still_aborts_and_removes_partial_file(self):
         ftp = Mock()
         ftp.sendcmd.return_value = '213 20261021120000'
