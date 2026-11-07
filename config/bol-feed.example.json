@@ -4,9 +4,17 @@
   "ean": "ean",
   "product_id": "productId",
   "title": "title",
-  "format": "Properties.Drager",
-  "vinyl_values": ["Vinyl", "LP"],
-  "new_values": ["NEW"],
+  "format": "Format",
+  "vinyl_values": [
+    "LP",
+    "7\" Vinyl",
+    "12\" Vinyl",
+    "10\" Vinyl",
+    "LP + downloadcode"
+  ],
+  "new_values": [
+    "new"
+  ],
   "offers": {
     "NL": {
       "price": "OfferNL.sellingPrice",
@@ -14,7 +22,8 @@
       "condition": "OfferNL.condition",
       "deliverable": "OfferNL.isDeliverable",
       "seller_type": "OfferNL.sellerType",
-      "url": "productUrlNL"
+      "url": "productPageUrlNL",
+      "release_date": "OfferNL.releaseDate"
     },
     "BE": {
       "price": "OfferBE.sellingPrice",
@@ -22,7 +31,13 @@
       "condition": "OfferBE.condition",
       "deliverable": "OfferBE.isDeliverable",
       "seller_type": "OfferBE.sellerType",
-      "url": "productUrlBE"
+      "url": "productPageUrlBE",
+      "release_date": "OfferBE.releaseDate"
     }
-  }
+  },
+  "availability_values": {
+    "Y": "in_stock",
+    "N": "out_of_stock"
+  },
+  "verified_markets": []
 }

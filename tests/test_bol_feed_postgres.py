@@ -87,6 +87,47 @@ class BolPostgresTests(unittest.TestCase):
             for table, count in [("prices", 4), ("price_history", 4), ("raw_shop_scrapes", 4)]:
                 self.assertEqual(conn.execute(sql.SQL("select count(*) from {}").format(sql.Identifier(table))).fetchone()[0], count)
 
+    def test_unchanged_price_on_new_day_has_no_duplicate_history(self):
+        # Six-hour permitted source window straddling midnight.
+        current = datetime(2026, 11, 7, 1, tzinfo=timezone.utc)
+        first = current - timedelta(hours=2)
+        plan = deepcopy(self.plan)
+        plan["captured_at"] = first.isoformat()
+        for offer in plan["offers"]:
+            offer["captured_at"] = first.isoformat()
+        with patch("scripts.importers.bol_feed.datetime") as clock:
+            clock.fromisoformat = datetime.fromisoformat
+            clock.now.return_value = current
+            self.write(plan)
+            plan["captured_at"] = current.isoformat()
+            for offer in plan["offers"]:
+                offer["captured_at"] = current.isoformat()
+            self.write(plan)
+        with psycopg.connect(self.dsn) as conn:
+            self.assertEqual(conn.execute("select count(*) from public.price_history").fetchone()[0], 4)
+
+    def test_batched_read_only_matching_compares_prices_and_detects_conflicts(self):
+        self.write()
+        review_matches(self.plan, self.dsn, self.shops, batch_size=1)
+        self.assertEqual(self.plan["price_comparisons"]["unchanged_price"], 4)
+        self.assertEqual(self.plan["existing_matches"], 2)
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("update public.products set format_label='CD'")
+        review_matches(self.plan, self.dsn, self.shops, batch_size=1)
+        self.assertEqual(len(self.plan["match_conflicts"]), 2)
+        self.assertEqual(self.plan["existing_matches"], 0)
+
+    def test_complete_feed_coverage_reports_missing_existing_shop_offers(self):
+        self.write()
+        plan = deepcopy(self.plan)
+        plan["offers"] = plan["offers"][:2]
+        review_matches(plan, self.dsn, self.shops, batch_size=1)
+        for country in self.shops:
+            coverage = plan["existing_offer_coverage"][country]
+            self.assertEqual(coverage["existing_active_shop_offers"], 2)
+            self.assertEqual(coverage["covered_by_feed"], 1)
+            self.assertEqual(coverage["absent_from_eligible_feed"], 1)
+
     def test_newer_existing_price_and_other_market_are_preserved(self):
         self.write()
         changed = deepcopy(self.plan); changed["offers"] = [changed["offers"][0]]

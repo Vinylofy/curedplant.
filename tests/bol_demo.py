@@ -20,11 +20,11 @@ def generate(path, count=20):
             ean = body + str((-total) % 10)
             row = {"productId": str(1000000000000000 + i), "ean": ean,
                    "title": f"SYNTHETIC TEST RECORD {i + 1} — NOT A BOL PRODUCT",
-                   "Properties.Drager": "LP"}
+                   "Format": "LP"}
             for country, fields in profile["offers"].items():
                 values = {"price": f"{20 + i}.99" if country == "NL" else f"{22 + i}.49",
                           "shipping": "" if i % 2 else "2.95", "condition": "NEW",
-                          "deliverable": "true", "seller_type": "B" if i % 2 else "P",
+                          "release_date": "", "deliverable": "Y", "seller_type": "B" if i % 2 else "P",
                           "url": f"https://www.bol.com/{country.lower()}/nl/p/synthetic-test/{1000000000000000 + i}/"}
                 row.update({header: values[field] for field, header in fields.items()})
             writer.writerow(row)

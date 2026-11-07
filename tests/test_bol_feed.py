@@ -61,7 +61,7 @@ class BolFeedTests(unittest.TestCase):
             self.assertEqual([o["country"] for o in offers], ["BE"])
             self.assertEqual(skipped[0]["reason"], "condition_not_proven_new")
         for value in ["CD", "DVD", "Vinyl stand", "", "LP+CD"]:
-            row = deepcopy(self.rows[0]); row["Properties.Drager"] = value
+            row = deepcopy(self.rows[0]); row["Format"] = value
             with self.assertRaisesRegex(FeedError, "format_not_proven_vinyl"):
                 self.select(row)
 
@@ -89,18 +89,32 @@ class BolFeedTests(unittest.TestCase):
         with self.assertRaisesRegex(FeedError, "invalid_barcode"):
             self.select(row)
 
+    def test_observed_y_n_availability_and_product_link_identity(self):
+        for value, expected in [("Y", "in_stock"), ("N", "out_of_stock"), ("unexpected", "unknown")]:
+            row = deepcopy(self.rows[0]); row["OfferNL.isDeliverable"] = value
+            self.assertEqual(self.select(row)[0][0]["availability"], expected)
+        row = deepcopy(self.rows[0]); row["productId"] = "9999999999999999"
+        offers, rejected = self.select(row)
+        self.assertFalse(offers)
+        self.assertEqual({r["reason"] for r in rejected}, {"product_identity_link_mismatch"})
+
+    def test_future_or_unrecognised_release_date_never_claims_current_stock(self):
+        for value in ["2099-11-20", "unrecognised"]:
+            row = deepcopy(self.rows[0]); row["OfferNL.releaseDate"] = value
+            self.assertEqual(self.select(row)[0][0]["availability"], "unknown")
+
     def test_no_free_personal_or_shipping_prose_as_price(self):
         for value in ["Gratis", "€2.95 shipping", "Na Select 12.99", "0", "NaN", "Infinity", "-1"]:
             with self.assertRaises(FeedError):
                 amount(value)
 
     def test_links_are_encoded_site_scoped_and_country_checked(self):
-        link = affiliate_link(self.rows[0]["productUrlBE"], "BE", "12345")
+        link = affiliate_link(self.rows[0]["productPageUrlBE"], "BE", "12345")
         query = parse_qs(urlsplit(link).query)
         self.assertEqual(query["s"], ["12345"])
         self.assertEqual(query["f"], ["pf"])
-        self.assertEqual(query["url"], [self.rows[0]["productUrlBE"]])
-        for value in [self.rows[0]["productUrlNL"], "https://bol.com.attacker.invalid/be/nl/p/a/123/",
+        self.assertEqual(query["url"], [self.rows[0]["productPageUrlBE"]])
+        for value in [self.rows[0]["productPageUrlNL"], "https://bol.com.attacker.invalid/be/nl/p/a/123/",
                       "https://www.bol.com/be/nl/p/a/123/?token=secret"]:
             with self.assertRaises(FeedError):
                 affiliate_link(value, "BE", "12345")
@@ -132,7 +146,7 @@ class BolFeedTests(unittest.TestCase):
                 if k.startswith("Offer" + country + ".")) + f"</Offer{country}>")
         parts.append("<Properties><Property><key>Drager</key><value>LP</value></Property></Properties>")
         p.write_text('<Products xmlns="urn:bol:test"><Product>' + "".join(parts) + '</Product></Products>')
-        profile = {**PROFILE, "type": "xml"}
+        profile = {**PROFILE, "type": "xml", "format": "Properties.Drager"}
         plan = build_plan(p, profile, ["NL", "BE"], "12345", limit=0)
         self.assertEqual(len(plan["offers"]), 2)
 
@@ -169,6 +183,63 @@ class BolFeedTests(unittest.TestCase):
                            "--inspect-schema", "--output", str(output)])
         self.assertEqual(result, 0); connect.assert_not_called()
         self.assertIn("actualMediumName", json.loads(output.read_text())["headers"])
+
+    def test_full_inspection_reports_observed_vocabulary_and_vinyl_candidates(self):
+        from scripts.importers.bol_feed import inspect_schema
+        report = inspect_schema(self.path, PROFILE)
+        self.assertTrue(report["complete_feed"])
+        self.assertEqual(report["vocabulary"]["Format"], {"LP": 20})
+        self.assertEqual(len(report["vinyl_candidate_samples"]), 20)
+        self.assertFalse(report["live_schema_verified"])
+        bounded = inspect_schema(self.path, PROFILE, max_rows=5)
+        self.assertFalse(bounded["complete_feed"])
+
+    def test_truncated_gzip_pilot_cannot_pass_integrity(self):
+        output = self.path.with_suffix(".json")
+        compressed = self.path.with_suffix(".gz")
+        compressed.write_bytes(gzip.compress(self.path.read_bytes())[:-8])
+        with patch("scripts.importers.bol_feed.psycopg.connect") as connect:
+            result = main(["--feed", str(compressed), "--profile", str(ROOT / "config/bol-feed.example.json"),
+                           "--limit", "1", "--output", str(output)])
+        self.assertEqual(result, 1)
+        connect.assert_not_called()
+
+    def test_checkpoint_only_after_success_and_unchanged_feed_does_not_write(self):
+        profile = self.path.with_suffix(".profile.json")
+        profile.write_text(json.dumps({**PROFILE, "live_schema_verified": True, "verified_markets": ["NL"]}))
+        output = self.path.with_suffix(".report.json")
+        state = self.path.with_suffix(".state.json")
+        command = ["--profile", str(profile), "--limit", "0", "--state", str(state),
+                   "--write", "--approve-publication", "--output", str(output)]
+        def download(path, **kwargs):
+            Path(path).write_bytes(self.path.read_bytes())
+            return self.now
+        with patch.dict("os.environ", {"BOL_SITE_ID": "12345", "DATABASE_URL": "test"}), patch(
+                "scripts.importers.bol_feed.download_feed", side_effect=download), patch(
+                "scripts.importers.bol_feed.publish", side_effect=FeedError("test_failure")):
+            self.assertEqual(main(command), 1)
+        self.assertFalse(state.exists())
+        with patch.dict("os.environ", {"BOL_SITE_ID": "12345", "DATABASE_URL": "test"}), patch(
+                "scripts.importers.bol_feed.download_feed", side_effect=download), patch(
+                "scripts.importers.bol_feed.publish", return_value={"updated_offers": 20}):
+            self.assertEqual(main(command), 0)
+        self.assertTrue(state.exists())
+        with patch.dict("os.environ", {"BOL_SITE_ID": "12345", "DATABASE_URL": "test"}), patch(
+                "scripts.importers.bol_feed.download_feed", return_value=self.now), patch(
+                "scripts.importers.bol_feed.publish") as writer:
+            self.assertEqual(main(command), 0)
+            writer.assert_not_called()
+        self.assertEqual(json.loads(output.read_text())["status"], "unchanged_feed")
+
+    def test_reviewed_pilot_checksum_mismatch_blocks_all_database_access(self):
+        output = self.path.with_suffix(".checksum.json")
+        with patch("scripts.importers.bol_feed.psycopg.connect") as connect, patch.dict(
+                "os.environ", {"BOL_SITE_ID": "12345"}):
+            result = main(["--feed", str(self.path), "--profile", str(ROOT / "config/bol-feed.live.json"),
+                           "--write", "--approve-publication", "--source-at", self.now.isoformat(),
+                           "--expected-feed-sha256", "0" * 64, "--output", str(output)])
+        self.assertEqual(result, 1); connect.assert_not_called()
+        self.assertEqual(json.loads(output.read_text())["errors"], ["reviewed_feed_checksum_mismatch"])
 
     def test_xml_external_entities_are_not_loaded(self):
         p = self.path.with_suffix(".xml")

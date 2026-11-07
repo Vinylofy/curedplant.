@@ -60,6 +60,36 @@ class BolFtpsTests(unittest.TestCase):
                              ['connect', 'auth', 'login', 'prot_p', 'set_pasv'])
             ftp.set_pasv.assert_called_once_with(True)
 
+    def test_recent_successful_checkpoint_skips_retrieval(self):
+        ftp = Mock()
+        now = datetime.now(timezone.utc).replace(microsecond=0)
+        ftp.sendcmd.return_value = '213 ' + now.strftime('%Y%m%d%H%M%S')
+        context = Mock()
+        context.__enter__ = Mock(return_value=ftp)
+        context.__exit__ = Mock(return_value=False)
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {
+                'BOL_FEED_USERNAME': 'account', 'BOL_FEED_PASSWORD': 'password'}), patch(
+                'scripts.importers.bol_feed.ftplib.FTP_TLS', return_value=context):
+            path = Path(directory) / 'feed.gz'
+            self.assertEqual(download_feed(path, unchanged_since=now), now)
+            self.assertFalse(path.exists())
+            ftp.retrbinary.assert_not_called()
+
+    def test_source_changed_during_transfer_cannot_be_published(self):
+        ftp = Mock()
+        ftp.sendcmd.side_effect = ['213 20261107100000', '213 20261107120000']
+        ftp.retrbinary.side_effect = lambda command, receive: receive(b'feed bytes')
+        context = Mock()
+        context.__enter__ = Mock(return_value=ftp)
+        context.__exit__ = Mock(return_value=False)
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {
+                'BOL_FEED_USERNAME': 'account', 'BOL_FEED_PASSWORD': 'password'}), patch(
+                'scripts.importers.bol_feed.ftplib.FTP_TLS', return_value=context):
+            path = Path(directory) / 'feed.gz'
+            with self.assertRaisesRegex(FeedError, 'feed_changed_during_download'):
+                download_feed(path, attempts=1)
+            self.assertFalse(path.exists())
+
     def test_oversize_transfer_still_aborts_and_removes_partial_file(self):
         ftp = Mock()
         ftp.sendcmd.return_value = '213 20261021120000'

@@ -1,232 +1,166 @@
-# bol Affiliate feed import — implementation and approval checklist
+# bol Affiliate Productfeed via FTPS
 
-FTPS feed status: implemented and locally tested; **not live**. The separate
-[Marketing API price updater](bol-marketing-api.md) is live for existing NL vinyl
-products, with verified writes and a bounded schedule. No BE shop was created. This
-document is the central status for this import. The current repository is
-`Vinylofy/curedplant.`; `Vinylofy/Vinylofy` was inspected read-only for the
-database and website contracts.
+The existing importer is `scripts/importers/bol_feed.py`. Live connectivity,
+authentication, download and full schema inspection succeeded on the existing
+self-hosted Windows runner on 7 November 2026. Production publication and the
+Marketing API handover still require the explicitly approved pilot.
+See [the implementation report](bol-ftps-migration-report.md) for measured
+results and the current production-readiness decision.
 
-## Existing architecture reused
+The [Marketing API updater](bol-marketing-api.md) remains the active source.
+Official references: [download instructions](https://api.bol.com/marketing/docs/product-feed/download-product-feed.html),
+[feed overview](https://api.bol.com/marketing/docs/product-feed/index.html) and
+[Entertainment group](https://api.bol.com/marketing/docs/product-feed/product-feed-groups.html).
 
-* `scripts/importers/common.py`: strict GS1 check-digit validation, canonical
-  GTIN-14 identity, safe EAN/UPC variants, `CanonicalRecord`, existing product
-  insertion, price upsert and price history.
-* Existing tables: `products`, `shops`, `prices`, `price_history`,
-  `raw_shop_scrapes`, `shop_shipping_destinations`. No invented table/RPC and
-  no schema migration. SQL contracts were checked against existing importers
-  and the website repository migrations. Production schema access was not
-  available to verify the deployed version.
-* Existing price identity is `(product_id, shop_id)`, not country. A single
-  bol shop would overwrite NL with BE. The dedicated importer requires two
-  explicitly configured bol shop IDs, each with the correct country. It
-  rejects a shop with confirmed visibility in another market. It never calls
-  `ensure_shop()`, which looks up by domain and could merge these market shops.
-* This is a dedicated affiliate CLI rather than registration in the generic
-  `run_import` registry: that writer would bypass the explicit publication
-  approval, market isolation and content-source rules of this import.
+## Observed source contract
 
-Existing products are matched by validated barcode only, without modifying
-their masterdata. New barcode products use the existing insertion helper with
-a neutral `Vinyl <EAN>` placeholder, no artist or cover and the normal
-shop-observed metadata review flag. Bol titles stay in `raw_shop_scrapes`,
-linked by barcode/source-product ID; descriptions and images are not imported.
-Real descriptive masterdata still needs the existing enrichment process.
-This choice keeps bol music content removable without deleting another
-source's canonical titles/covers. The importer never publishes a bol cover.
+The full Entertainment CSV contains 902,918 rows in the inspected snapshot.
+It is UTF-8, pipe-delimited and gzip compressed. The official endpoint is
+`apm-feed.unftp.bol.com:21`: explicit FTPS, verified TLS certificates, passive
+mode and `PROT P` are mandatory. There is no plain FTP or Marketing API fallback.
 
-## Official source findings (checked 18 October 2026)
-
-| Finding | Evidence / limitation |
+| Meaning | Observed field / value |
 | --- | --- |
-| Bulk source | [Entertainment group](https://api.bol.com/marketing/docs/product-feed/product-feed-groups.html): `product-feed_entertainment-v2.csv.gz`; pipe-delimited CSV, XML also available. This includes more than vinyl: explicit format filtering is mandatory. |
-| Market offers | [Overview](https://api.bol.com/marketing/docs/product-feed/index.html): `OfferNL` and `OfferBE`, one selected best offer per product/market, not every marketplace seller. `sellerType=B` means bol, `P` an external partner; individual seller name/ID is not confirmed. |
-| Field evidence | [Official example XSD](https://github.com/devbolcom/bolcom-partnerprogramma-feed-php-example/blob/master/resources/product-1.1.xsd) documents `ean`, `productId`, `title`, `productUrlNL/BE`, `sellingPrice`, `shippingCost`, `condition`, `isDeliverable`, `listPrice`, `sellerType`, and named product properties. It is v1.1 evidence, **not proof of the current v2 account feed headers or value vocabulary**. |
-| Actual feed schema | **UNKNOWN** until authenticated download. `config/bol-feed.example.json` is deliberately marked `live_schema_verified=false`. `Properties.Drager`, `NEW`, `LP`, `Vinyl` are test mappings, not claimed observed current account values. First inspect the feed, then validate/amend the profile. |
-| Download | [Official instructions](https://api.bol.com/marketing/docs/product-feed/download-product-feed.html): explicit FTPS to `apm-feed.unftp.bol.com:21`, passive mode, TLS data connection. Python verifies the certificate; no downgrade to plain FTP. The downloaded file is temporary and removed after use, including exceptions. |
-| Source-IP requirement | [Account access instructions](https://api.bol.com/marketing/docs/product-feed/access-product-feed.html): Account → Productfeed → edit user → add public IPv4. One whitelisted IP by default; allow about one hour after editing. |
-| Refresh | Overview says every two hours, available at 01:30, 05:30, 07:30, …, 23:30; 03:30 skipped. No timezone is specified there: confirm before scheduling. A daily import cannot promise the same freshness as a two-hour feed. |
-| Content | [Terms](https://affiliate.bol.com/nl/algemene-voorwaarden/): article 3.4 explicitly requires `Copyright Muze UK Ltd` or `© Muze UK Ltd` near music content; 3.6 requires keeping displayed price/availability current; 3.9 limits links to registered channels. API terms allow local content storage and require removal on request/termination. No specific universal 24-hour cache limit was established in these pages. |
-| Application scope | Terms mention exclusions including spider/stock-alert sites. Having credentials does not prove approval of Vinylofy's particular registered channel. Confirm the actual approved channel/use; this is not a finding that this comparison website is prohibited. |
-| Marketing API | [Catalog overview](https://api.bol.com/marketing/docs/catalog-api/index.html) is the affiliate API, distinct from Retailer API. The separate manual `bol-api-review.yml` workflow tests Marketing API authentication and inspects ten existing vinyl EANs for NL/BE while FTPS is unreachable. It does not import products, prices or images. |
+| Barcode | `ean`; validated GS1 check digit, matched using existing GTIN variants |
+| Source product | `productId` |
+| Album title / performer | `title` / `Performer`; source evidence only |
+| Medium | `Format`, not the previous speculative `Properties.Drager` |
+| Accepted vinyl | `LP`, `7" Vinyl`, `12" Vinyl`, `10" Vinyl`, `LP + downloadcode` |
+| New condition | `OfferNL.condition` / `OfferBE.condition` = `new` |
+| Consumer price | `OfferNL.sellingPrice` / `OfferBE.sellingPrice`; never `listPrice` |
+| Deliverability | `OfferNL.isDeliverable` / `OfferBE.isDeliverable`: `Y` / `N` |
+| Shipping | Market-specific `shippingCost`; numeric zero is known free, blank is unknown |
+| Product link | `productPageUrlNL` / `productPageUrlBE`, not `productUrlNL/BE` |
+| Seller class | `sellerType`: `B` / `P`; no individual seller identity is claimed |
+| Source time | FTP MDTM, UTC; file modification time, not independently verified generation time |
 
-## Selection and data rules
+`EP (Mini Album)` alone does not establish a vinyl carrier. Mixed CD/DVD/Blu-ray
+bundles remain excluded. Unknown condition, format and availability values do
+not imply NEW, vinyl or in-stock. CD, DVD, cassette and used offers are excluded.
 
-* Require explicit configured format and new-condition values; unknown format,
-  unknown condition, used/CD/DVD/accessory rows are excluded with a reason.
-  Vinyl-primary mixed-media boxsets can be whitelisted by their verified format
-  value. No title-only inference and no separate pressing-match gate.
-* Preserve barcode strings and leading zeros; normalize EAN/UPC to GTIN-14.
-  Existing barcode matches with an explicit CD/DVD/etc. format conflict abort
-  the transaction for manual review. Ambiguous product matches also abort.
-* Use `sellingPrice`, never `listPrice` or shipping as the article price.
-  Unknown shipping remains `null`; known zero is accepted only from a numeric
-  source field. Unsupported shipping prose is a rejected offer, not free.
-* `isDeliverable` true/false maps to in-stock/out-of-stock; absent/unrecognised
-  values remain unknown. This is feed deliverability, not independently
-  measured physical inventory or a delivery-date guarantee.
-* Missing BE offers stay absent. Country-specific prices/links/seller type and
-  shipping are kept independently. Country comes from the offer block and
-  validated destination path, never copied from the other market.
-* Price/shipping/seller/source timestamp evidence is stored in the existing
-  raw payload. There is no verified offer-level shipping or seller column in
-  the current public `prices` contract. Those fields therefore cannot yet be
-  rendered per offer by the unchanged website.
-* Build/validate the whole bounded plan before any DB mutation. A malformed
-  feed is fatal; no partial source plan gets written. All selected markets
-  commit in one transaction. Newer database prices are preserved. Replaying
-  the identical snapshot does not add offers/history/raw evidence.
-* Never deactivate missing offers, even after a complete import. The ordinary
-  market views' existing 48-hour freshness filter continues to apply. A failed
-  or incomplete feed does not deactivate anything. Pilot limits explicitly
-  set `complete_feed=false`; they must not be scheduled as full imports.
-* FTP MDTM records source file time. Local writes require an explicitly supplied
-  aware source timestamp; writes reject future or older-than-six-hour source
-  times. MDTM is file modification time, not independently proven feed
-  generation time. This limitation must be checked on the live feed.
+`config/bol-feed.example.json` keeps `live_schema_verified=false`. A live profile
+may mark only the separately validated markets in `verified_markets`; the CLI
+refuses publication to any other market. The inspection workflow never promotes
+an inspected schema automatically. Future or unrecognised release dates prevent
+`Y` from claiming current stock; explicit `N` remains out-of-stock.
 
-## Windows runner and safe configuration
+## Matching, prices and content
 
-Use the existing Windows machine, **not** `windows-latest`. That machine must
-have a self-hosted runner registered for `curedplant.` or an organisation runner
-that is allowed to serve it. The default labels are `self-hosted`, `Windows`,
-`X64`. A repository-specific Vinylofy runner does not automatically
-serve curedplant. Do not replace its existing runner service: register an
-additional service/work directory if repo-level registration is needed.
+Existing barcode products retain all canonical titles, artists, MusicBrainz
+metadata and covers. New valid barcodes use the existing `_insert_product`
+contract with neutral `Vinyl <EAN>` placeholders and metadata review enabled.
+No bol images or descriptions are imported. The regular enrichment pipeline
+remains responsible for descriptive masterdata and covers.
 
-An existing Windows machine saves buying a new service, but Windows itself
-does not make an ISP's address static. The workflow fails before using bol
-credentials if its observed IPv4 differs from the configured allowed address.
+The price identity remains `(product_id, shop_id)`. NL reuses the existing
+Marketing API bol shop `f08437c2-1d85-47a6-94f9-33a55612d5cc`. No duplicate shop
+is created. BE requires its own explicitly validated shop ID and destinations;
+no BE shop is created or activated by this migration. Confirmed cross-market
+shop exposure is rejected.
 
-GitHub → curedplant. → Settings → Secrets and variables → Actions:
+Conflicting source offers for one GTIN/market are quarantined. Ambiguous existing
+barcodes or existing CD/DVD conflicts abort publication. Product-link country and
+source product ID must agree. Affiliate links encode the approved `BOL_SITE_ID`.
 
-| Type | Name | Value |
-| --- | --- | --- |
-| Secret | `BOL_FEED_USERNAME` | Actual productfeed account username (not Marketing API client ID) |
-| Secret | `BOL_FEED_PASSWORD` | Actual productfeed password |
-| Variable | `BOL_SITE_ID` | Site_ID of the approved website channel; NL and BE may use the same channel ID |
-| Variable | `BOL_FEED_PUBLIC_IPV4` | Public IPv4 **observed on the Windows runner**, also entered at bol |
-| Variable | `BOL_FEED_RUNNER` | Optional custom Windows runner label; default `X64` (standard runner label) |
-| Variable | `BOL_FEED_PROFILE` | Validated profile path; example defaults to `config/bol-feed.example.json` |
+The controlled writer reuses the existing `products`, `prices`, `price_history`
+and `raw_shop_scrapes` contracts. Its shared transaction-level advisory lock is
+also used by the current API writer. All markets commit together. Newer stored
+prices are preserved; repeated identical snapshots produce no writes; unchanged
+price/availability produces no duplicate history even across calendar dates.
+A complete feed is required for a requested full publication. Missing offers
+never delete or deactivate products/prices.
 
-No credentials belong in chat, committed files, command-line arguments or
-public URLs. The review workflow receives **no** `DATABASE_URL`. For an
-approved local write only, use the existing secret environment convention for
-`DATABASE_URL` and `BOL_SHOP_IDS={"NL":"<approved-uuid>","BE":"<approved-uuid>"}`.
-Do not put UUID placeholders in a real import invocation.
+Shipping and seller evidence remain in existing raw payloads. No verified
+per-offer shipping/seller frontend column is invented. The existing website
+continues to consume the existing prices and affiliate URLs. Actual post-pilot
+Supabase/frontend checks remain mandatory.
 
-Current access blocker: this session's GitHub integration returns HTTP 403 for
-both Actions-secret administration and self-hosted-runner administration. It
-can edit/push repository code but cannot register a runner or configure those
-secrets. No feed credentials or actual Site_ID have been supplied. Consequently
-the real public IPv4 and account schema are unconfirmed, and no live feed
-download has occurred. This is a permissions/configuration blocker, not an
-importer test failure.
+## Transfer and automation safeguards
 
-First manual workflow:
+The importer records source time, SHA-256, compressed/uncompressed byte counts,
+processing duration and rejection counts. Full gzip integrity is checked before
+even a bounded pilot. The source MDTM must remain unchanged during transfer.
+Only temporary network/FTP failures are retried, at most three attempts, with
+bounded backoff; credentials, certificate failures and invalid data are not retried.
 
-1. Open **Curedplant | Affiliate | bol | Feed review** in Actions. Use
-   `ip_check_only=true`. Its summary shows the actual Windows public IPv4.
-2. Enter that IP at bol Account → Productfeed → edit user. Set
-   `BOL_FEED_PUBLIC_IPV4` to the same IP and store feed credentials in the two
-   secrets above. Wait for bol to apply the allowlist.
-3. Run with `ip_check_only=false`, `inspect_schema=true`. Review the downloaded
-   feed's actual headers/property values; no database is used.
-4. Adjust the profile to the verified new/vinyl values and field names. Run
-   with `inspect_schema=false`, `limit=20`. Download the review artifact.
-   The review artifact retains one day; the bulk feed is never uploaded.
+Publications reject future sources and sources older than six hours. Full
+production runs can use `--state`: only a successful, complete, committed import
+advances an atomic local checkpoint. An unchanged, still-fresh MDTM then skips
+RETR and database writes. Profile, markets, channel, shop or database changes
+invalidate that checkpoint. Failed or partial runs never advance it.
 
-## Commands and approval boundary
+Both FTPS workflows share concurrency group `bol-feed`, without cancelling an
+in-progress run. Every runner invocation checks public IPv4 against
+`BOL_FEED_PUBLIC_IPV4` before using feed credentials. Existing secrets are reused;
+credentials are never command-line arguments or raw exception logs. Bulk files
+are temporary and removed; only review evidence is uploaded, retained one day.
+Windows reports explicitly use UTF-8.
 
-From repository root, using a Python environment with `requirements.txt`:
+## Review workflow: zero production writes
 
-```sh
-# Actual source inspection. Credentials are already in the environment.
-python -m scripts.importers.bol_feed --profile config/bol-feed.example.json --inspect-schema
+`.github/workflows/bol-feed-review.yml` runs on the existing Windows runner.
 
-# Real bounded dry-run after verifying/amending the profile; zero DB writes.
-python -m scripts.importers.bol_feed --profile config/bol-feed.local.json --markets NL,BE --limit 20
+1. `inspect_schema=true`: inspect headers, bounded vocabulary and up to twenty
+   candidate vinyl records. Reports whether the full source was traversed.
+2. `inspect_schema=false`, `limit=0`, `validation_suite=true`,
+   `check_matches=true`: one download, a 20-product dry-run and a full scan.
+   Database identity/price comparisons use read-only, repeatable-read batches
+   of 500 GTINs. Each requested market has separate reported counts.
 
-# Optional real match counts: read-only SQL, never product/price writes.
-python -m scripts.importers.bol_feed --feed /path/to/actual-feed.csv.gz --profile config/bol-feed.local.json --limit 20 --check-matches
+The review workflow receives `DATABASE_URL` only when match checks are requested
+and schema inspection is off. Review code never calls the writer. The existing
+NL shop ID is used only to compare its current prices. BE prices are not
+compared with the NL shop.
 
-# ONLY AFTER the user has approved the live results, shop setup, and visibility:
-python -m scripts.importers.bol_feed --profile config/bol-feed.local.json --markets NL,BE --limit 20 --write --approve-publication
-```
+## Publication workflow: explicit approval
 
-The final command additionally requires `live_schema_verified=true` in the
-reviewed profile and the two market shop IDs. There is deliberately no write
-button or schedule in the review workflow. Preview and production use the
-same Supabase project, so public prices are public in both environments.
-No invisible production staging mode has been proven; therefore the current
-delivery stops at dry-run and prepares the explicit public-import command.
+`.github/workflows/bol-feed-import.yml` prepares three modes:
 
-Before a public pilot, prepare/review the two shop records with the actual
-deployed constraints. No shop domain values have been invented to circumvent
-domain uniqueness. The existing `ensure_shop(domain)` helper cannot safely
-register two market identities. Exact IDs are supplied to this importer instead.
-Inspect the deployed domain constraint and decide the two market identities
-before registering them. Keep the new shops inactive and destinations
-unconfirmed until publication is approved. No new `Marketplace` enum is
-invented: the current shop-type constraint permits only physical record store,
-online record store or online retailer. Bol includes partner offers, so any
-marketplace badge requires an explicit website classification change.
+- `dry_run`: twenty products, read-only database matching.
+- `pilot_write`: at most twenty products, NL only; requires `main`, the verified
+  live profile, explicit `approve_publication=true` and the SHA-256 of the reviewed
+  snapshot. A changed feed is rejected before any database access.
+- `full_write`: additionally requires the automatic API chain configuration
+  `enabled=false` and no unfinished API workflow runs. Uses the successful-run
+  checkpoint under the Windows service account's `LOCALAPPDATA`.
 
-After the successful public pilot and approval, a separate manual write job
-and scheduled FTPS job can use this same CLI. Proposed full refresh is after
-each available two-hour feed (or a consciously lower cadence), with single
-flight and a Windows IP check. Confirm feed timezone, download volume, actual
-catalog size and runtime before selecting cron times. **No automation has
-been activated.** Bulk scans default to a million-row safety ceiling; `--limit
-0` means all eligible items within that ceiling, not a promise of unlimited
-coverage. Inspect `complete_feed` before considering a full-feed schedule.
+**Do not run the pilot until the user explicitly approves its reviewed results.**
+The pilot is public; there is no invisible production staging mode.
 
-## Website handoff (no website files changed)
+A two-hour polling schedule (`15 */2 * * *`, UTC) is prepared, but its job is
+blocked unless BOTH `BOL_FTPS_AUTOMATION_ENABLED=true` and
+`BOL_FTPS_PRODUCTION_APPROVED=true` are set. Neither variable is enabled by this
+implementation. The official documentation describes two-hour refreshes;
+actual refresh phase/timezone still needs multiple observed MDTM snapshots.
+The schedule polls rather than asserting an exact feed-generation time.
 
-`lib/markets.ts::getEligibleShopIds` and
-`market_product_best_prices_v1` use active shops and confirmed
-`shop_shipping_destinations`. Confirm only NL for the NL shop and BE for the
-BE shop; the shop country alone does not scope visibility. The current
-`prices` rows hold affiliate URLs normally. Article-price ranking stays
-unchanged: shipping and affiliate commission never alter ranking.
+## Controlled handover and recovery
 
-Before launch, register/approve the definitive domain as an affiliate channel
-and select its correct Site_ID. Reconfigure that ID independently of database
-identity; the importer never references preview.vinylofy.com. No data migration
-is needed when the website domain changes, but already stored affiliate URLs
-need refreshing if their channel Site_ID changes.
+After explicit pilot approval, merge/review the code, publish twenty NL products
+and verify the actual committed rows, frontend prices, availability and affiliate
+links. Review real new-product counts and masterdata preservation. Before enabling
+full automation, resolve critical conflicts, measure full-writer throughput and
+transaction duration against the runner timeout, and establish current Marketing API
+coverage parity, including the API's separate preorder classification; `Y` only
+proves feed deliverability and does not establish equivalent preorder semantics.
+FTPS discovery of new EANs alone does not establish that every
+previous API offer is present in the feed.
 
-Website work still needed: clearly label purchase at bol, affiliate disclosure,
-nearby © Muze UK Ltd where bol music content is shown; preserve existing
-content/covers from other sources; decide the marketplace display within the
-existing categories; display offer-specific seller/shipping only after an
-approved existing-or-new storage/display contract. No link is claimed tested
-in a real account: tests validate encoded Site_ID/product/country, not click
-attribution in bol reports or user-preference redirects.
+Only after the verified pilot and the remaining acceptance conditions, set
+`config/bol-price-cycle.json` to `enabled=false`, allow queued/running API jobs to
+finish, run an approved full FTPS publication and validate it. Then approve and
+enable the FTPS schedule. The existing automatic API config is not changed by
+this implementation. API credentials, source code, cursor and price history are
+retained.
 
-## Verified local result
+Recovery: first disable FTPS automation and drain its active run; investigate
+committed evidence, then explicitly restore the existing API chain configuration
+and use its existing controlled resume procedure. Never run two automatic price
+sources concurrently. A rejected/failed download preserves existing prices.
 
-26 targeted tests passed, including 8 actual temporary-PostgreSQL tests:
-market isolation/shared products, replay idempotency, preserved newer prices,
-preserved masterdata, barcode/CD conflicts, visibility guards, no deactivation
-after failed/empty/stale plans; plus CSV/gzip/XML, sale-price authority,
-shipping, affiliate encoding, unknown/new/used/format gates and zero-write
-dry-run. The temporary database is independent of Supabase and removed after
-tests. Actionlint passed with the existing Windows runner-label config.
+## Local checks
 
-Synthetic pilot generator: `python tests/bol_demo.py output/bol-synthetic.csv`.
-It creates 20 explicitly fictitious products with 40 NL/BE offers. This proves
-the processing flow, **not** live feed contents, real matching counts,
-production write compatibility or affiliate account attribution. Real feed
-and database match counts remain unknown until secure access is configured.
-
-## Marketing API connectivity review
-
-See [Bol Marketing API prices](bol-marketing-api.md) for the production updater.
-The separate manual `bol-api-review.yml` receives no database credentials. It
-uses `BOL_API_CLIENT_ID` and `BOL_API_CLIENT_SECRET`, distinct from FTPS credentials.
-It checks ten fixed vinyl EANs for NL/BE, and inspects available NL best offers.
-At most 30 catalogue calls are made, at most one/second. Tokens are reused.
-The reports include whitelisted public product/offer fields and schema paths;
-never access tokens, credentials, full descriptions or images. A successful
-connectivity review alone does not authorize arbitrary product creation.
+Run the targeted bol tests from the repository root. Integration tests require
+a disposable loopback PostgreSQL configured with `BOL_TEST_DATABASE_URL`; they
+create/drop only their own test database. They never connect to Supabase.
+Use actionlint on both FTPS workflows and `git diff --check` before review.
