@@ -57,7 +57,7 @@ Opgeloste technische knelpunten:
 - Volledige publicatie staat bovendien expliciet op slot zolang de versiebeheer-
   policy `mode=shadow`, `publication_allowed=false` is.
 
-Validatie van deze voortzetting: 108 bol-tests, inclusief 21 tijdelijke
+Validatie van deze voortzetting: 109 bol-tests, inclusief 22 tijdelijke
 PostgreSQL-integratietests, en 43 prijscontracttests (de zeven daarin optionele
 PostgreSQL-tests zijn ook afzonderlijk op de eigen tijdelijke server uitgevoerd).
 Actionlint slaagt voor de drie FTPS-workflows. De tijdelijke prestatietest verwerkt
@@ -81,6 +81,41 @@ Blijvende actuele evidence:
 - [Begrensde header-/grootteprobes](https://github.com/Vinylofy/curedplant./actions/runs/42415218461)
 - [Actuele bron- en conflictevidence](bol-ftps-source-evidence.json)
 - [Voorbereide bronvragen en reproduceerbare gevallen](bol-feed-source-investigation.md)
+
+### Automatische schaduwketen daadwerkelijk gecontroleerd
+
+[PR #7](https://github.com/Vinylofy/curedplant./pull/7) is samengevoegd. De
+versiebeheerpolicy staat op `enabled=true`, `mode=shadow`,
+`publication_allowed=false`. De twee-uursplanning gebruikt dezelfde dispatchketen
+als de geslaagde end-to-end test; volledige productiepublicatie staat niet aan.
+
+Een eerste integratierun stopte vóór mutatie door een CLI-specifieke fout in de
+nieuwe vereiste-dekkingscontrole. Die fout is hersteld in `46e3d06` en met een echte
+`python -m` subprocess-test tegen tijdelijke PostgreSQL afgedekt. De daarna
+uitgevoerde main-keten is geslaagd:
+
+- [Dispatcher](https://github.com/Vinylofy/curedplant./actions/runs/42416357145)
+  startte zelfstandig de bestaande Windows-review.
+- [Volledige review](https://github.com/Vinylofy/curedplant./actions/runs/42416364339)
+  verwerkte 913.984 regels, vond 146.011 geschikte aanbiedingen, sloot 100 conflicten
+  uit en schreef nul productiegegevens. Importerduur: 199,515 seconden.
+- De actuele dekkingsmomentopname telt 52.941 actieve shopaanbiedingen, 49.946
+  gedekt en 2.995 buiten de selectie. Binnen de 51.139 huidige zichtbare
+  API-geschikte aanbiedingen ontbreken er 1.600. De API blijft intussen doorwerken;
+  dit verklaart kleine verschillen met de eerder vastgelegde auditcohorten.
+- [Tweede dispatcher](https://github.com/Vinylofy/curedplant./actions/runs/42416771485)
+  en [review](https://github.com/Vinylofy/curedplant./actions/runs/42416778715)
+  bevestigden de onveranderde bron via het afzonderlijke review-checkpoint:
+  `status=unchanged_feed`, nul writes, geen bulkdownload, 0,406 seconde importertijd.
+- Het vorige volledige reviewmoment en de exacte bron-SHA-256 staan in de
+  skip-evidence. Een schaduwcheckpoint kan geen schrijverscheckpoint autoriseren.
+
+De eerste natuurlijke cron-trigger is op dit rapportmoment nog toekomstig;
+handmatige start van dezelfde automatische dispatchketen is wél end-to-end
+bewezen. De volledige productiebronwissel is niet geactiveerd of goedgekeurd als
+voltooid. Bestaande API-credentials, broncode, cursors en historie zijn behouden.
+
+Zie [de blijvende shadow-, checkpoint- en probe-evidence](bol-ftps-shadow-evidence.json).
 
 De onderstaande eerdere resultaten blijven als historische pilot- en
 implementatie-evidence bewaard. De actuele blokkades en tellingen staan hierboven.

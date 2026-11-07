@@ -154,7 +154,10 @@ only the existing full no-write review. Its versioned policy is
 The dispatcher has no database/feed credentials and the review has no write input.
 A completed full review records a separate source/profile/code/mode-bound Windows
 checkpoint. Unchanged sources are skipped without a bulk download. That marker
-cannot authorize publication or replace the full-writer checkpoint.
+cannot authorize publication or replace the full-writer checkpoint. The main
+dispatch chain has been checked end-to-end: a full read-only review succeeded,
+then an unchanged-source run skipped the bulk download in 0.406 seconds. See
+[the recorded evidence](bol-ftps-shadow-evidence.json).
 
 Before any full write the current source must cover every current visible,
 API-eligible bol offer; unresolved gaps block the writer before mutation. The
