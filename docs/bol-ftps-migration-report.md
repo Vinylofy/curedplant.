@@ -27,7 +27,7 @@ de eerdere bron- en aanvullende audits blijven afzonderlijke momentopnamen.
 — [blijvende evidence](bol-ftps-final-main-evidence.json).
 Het twee-uurlijkse schema is actief; deze test heeft dezelfde dispatchketen
 handmatig gestart en bewijst nog geen natuurlijke GitHub-crontrigger.
-De bronmomenten rond 20:03 en 22:04 UTC passen bij een twee-uurlijkse verversing;
+De bronmomenten rond 20:03 en 22:00 UTC passen bij een twee-uurlijkse verversing;
 een vaste exacte publicatiefase blijft niet gegarandeerd.
 
 **FTPS PRODUCTIEGEREED: NEE.** De Marketing API blijft actief totdat de
