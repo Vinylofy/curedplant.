@@ -22,6 +22,7 @@ import re
 import ssl
 import sys
 import tempfile
+import zlib
 import time
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
@@ -813,7 +814,42 @@ def publish(plan, dsn, shops, approved=False, existing_only=False, bulk=False):
     return stats
 
 
-def inspect_feed_inventory():
+def inspect_official_feed_header(feed_name):
+    allowed={'product-feed_'+group+'-v2.csv.gz' for group in
+             ('dutch-books','international-books','educational-books','sound-vision')}
+    if feed_name not in allowed:
+        raise FeedError('unapproved_inventory_probe')
+    user,password=os.environ.get('BOL_FEED_USERNAME'),os.environ.get('BOL_FEED_PASSWORD')
+    if not user or not password:raise FeedError('missing_feed_credentials')
+    class HeaderComplete(Exception):pass
+    header=None;compressed=0;buffer=b'';decoder=zlib.decompressobj(16+zlib.MAX_WBITS)
+    with ftplib.FTP_TLS(context=ssl.create_default_context(),timeout=60) as ftp:
+        ftp.connect(FTP_HOST,21);ftp.auth();ftp.login(user,password);ftp.prot_p();ftp.set_pasv(True)
+        ftp.voidcmd('TYPE I')
+        size=ftp.size(feed_name)
+        modified=ftp.sendcmd('MDTM '+feed_name).split()[-1]
+        if not re.fullmatch(r'[0-9]{14}',modified):raise FeedError('invalid_inventory_mdtm')
+        def receive(block):
+            nonlocal compressed,buffer,header
+            compressed+=len(block)
+            if compressed>131072:raise FeedError('inventory_probe_compressed_limit')
+            buffer+=decoder.decompress(block,65537-len(buffer))
+            if b'\n' in buffer:
+                line=buffer.split(b'\n',1)[0].decode('utf-8-sig').rstrip('\r')
+                header=next(csv.reader([line],delimiter='|',strict=True))
+                raise HeaderComplete()
+            if len(buffer)>65536:raise FeedError('inventory_probe_header_limit')
+        try:
+            ftp.retrbinary('RETR '+feed_name,receive,blocksize=8192)
+        except HeaderComplete:
+            # Intentionally terminate a metadata-only transfer; no partial feed is usable for import.
+            ftp.close()
+        if not header:raise FeedError('inventory_probe_missing_header')
+    return {'filename':feed_name,'compressed_file_bytes':size,'source_mdtm_utc':modified,
+            'probe_compressed_bytes':compressed,'headers':header,'integrity':'header_only_not_full_validation'}
+
+
+def inspect_feed_inventory(inspect_headers=False):
     user,password=os.environ.get('BOL_FEED_USERNAME'),os.environ.get('BOL_FEED_PASSWORD')
     if not user or not password:
         raise FeedError('missing_feed_credentials')
@@ -829,8 +865,15 @@ def inspect_feed_inventory():
     except Exception as exc:
         if isinstance(exc,FeedError):raise
         raise FeedError('feed_inventory_failed stage='+stage+' reason='+type(exc).__name__) from None
+    probes=[]
+    if inspect_headers:
+        for group in ('dutch-books','international-books','educational-books','sound-vision'):
+            name='product-feed_'+group+'-v2.csv.gz'
+            if name not in feeds:continue
+            try:probes.append(inspect_official_feed_header(name))
+            except Exception as exc:probes.append({'filename':name,'error':str(exc) if isinstance(exc,FeedError) else type(exc).__name__})
     return {'status':'feed_inventory_inspected','database_writes':0,'errors':[],
-            'host':FTP_HOST,'port':21,'official_feed_files':feeds}
+            'host':FTP_HOST,'port':21,'official_feed_files':feeds,'supplemental_header_probes':probes}
 
 
 def _download_feed_once(destination, *, max_bytes=2_000_000_000, unchanged_since=None):
@@ -1008,7 +1051,7 @@ def main(argv=None):
         if args.inspect_ftps_inventory:
             if args.write or args.check_matches or args.review_plan:
                 raise FeedError('feed_inventory_cannot_publish_or_query_database')
-            report=inspect_feed_inventory()
+            report=inspect_feed_inventory(inspect_headers=True)
             args.output.parent.mkdir(parents=True,exist_ok=True)
             args.output.write_text(json.dumps(report,indent=2)+'\n',encoding='utf-8')
             print(json.dumps(report))

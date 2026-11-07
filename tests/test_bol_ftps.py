@@ -112,6 +112,21 @@ class BolFtpsTests(unittest.TestCase):
         ftp.prot_p.assert_called_once();ftp.set_pasv.assert_called_once_with(True)
         self.assertNotIn('private-account',str(report))
 
+    def test_supplemental_header_probe_is_bounded_and_never_exports_records(self):
+        import gzip
+        from scripts.importers.bol_feed import inspect_official_feed_header
+        ftp=Mock();ftp.size.return_value=1000000000;ftp.sendcmd.return_value='213 20261107200354'
+        compressed=gzip.compress(b'ean|Format\nprivate-product-title|LP\n')
+        ftp.retrbinary.side_effect=lambda command,receive,**kwargs:receive(compressed)
+        context=Mock();context.__enter__=Mock(return_value=ftp);context.__exit__=Mock(return_value=False)
+        with patch.dict(os.environ,{'BOL_FEED_USERNAME':'account','BOL_FEED_PASSWORD':'password'}),patch(
+                'scripts.importers.bol_feed.ftplib.FTP_TLS',return_value=context):
+            result=inspect_official_feed_header('product-feed_dutch-books-v2.csv.gz')
+        self.assertEqual(result['headers'],['ean','Format'])
+        self.assertLess(result['probe_compressed_bytes'],131072)
+        self.assertNotIn('private-product-title',str(result));ftp.close.assert_called_once()
+        self.assertEqual(result['integrity'],'header_only_not_full_validation')
+
     def test_oversize_transfer_still_aborts_and_removes_partial_file(self):
         ftp = Mock()
         ftp.sendcmd.return_value = '213 20261021120000'
