@@ -36,6 +36,10 @@ on:
         description: "Only test FTPS DNS/TCP/banner on Windows; no login or feed download"
         type: boolean
         default: false
+      inspect_inventory:
+        description: "List official feed filenames using protected FTPS; no feed download or database"
+        type: boolean
+        default: false
       inspect_schema:
         description: "Inspect actual feed headers before validating the field profile"
         type: boolean
@@ -202,13 +206,16 @@ jobs:
           BOL_MARKETS: ${{ inputs.markets }}
           BOL_MAX_ROWS: ${{ inputs.max_rows }}
           BOL_LIMIT: ${{ inputs.limit }}
+          BOL_INSPECT_INVENTORY: ${{ inputs.inspect_inventory }}
           BOL_INSPECT_SCHEMA: ${{ inputs.inspect_schema }}
         run: |
           import os, subprocess, sys
           command = [sys.executable, '-m', 'scripts.importers.bol_feed',
               '--profile', os.environ['BOL_PROFILE'], '--limit', os.environ['BOL_LIMIT'],
               '--markets', os.environ['BOL_MARKETS'], '--max-rows', os.environ['BOL_MAX_ROWS']]
-          if os.environ['BOL_INSPECT_SCHEMA'] == 'true':
+          if os.environ['BOL_INSPECT_INVENTORY'] == 'true':
+              command.append('--inspect-ftps-inventory')
+          elif os.environ['BOL_INSPECT_SCHEMA'] == 'true':
               command.append('--inspect-schema')
           elif os.environ['BOL_CHECK_MATCHES'] == 'true':
               command.append('--check-matches')

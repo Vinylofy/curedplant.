@@ -88,9 +88,11 @@ jobs:
           from pathlib import Path
           with zipfile.ZipFile('work/bol-audit/review.zip') as archive:
               Path('work/bol-audit/review.json').write_bytes(archive.read('review.json'))
-          subprocess.run([sys.executable, '-m', 'scripts.workers.bol_feed_audit',
+          command = [sys.executable, '-m', 'scripts.workers.bol_feed_audit',
               '--review', 'work/bol-audit/review.json', '--api-sample',
-              '20' if os.environ['BOL_AUDIT_API']=='true' else '0'], check=True)
+              '20' if os.environ['BOL_AUDIT_API']=='true' else '0']
+          if os.environ['BOL_AUDIT_API']=='true': command.append('--catalog-facts')
+          subprocess.run(command, check=True)
           PYTHON
       - uses: actions/upload-artifact@v4
         if: always()

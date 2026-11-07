@@ -216,17 +216,17 @@ class BolFeedTests(unittest.TestCase):
             return self.now
         with patch.dict("os.environ", {"BOL_SITE_ID": "12345", "DATABASE_URL": "test"}), patch(
                 "scripts.importers.bol_feed.download_feed", side_effect=download), patch(
-                "scripts.importers.bol_feed.publish", side_effect=FeedError("test_failure")):
+                "scripts.importers.bol_feed.publish_batched", side_effect=FeedError("test_failure")):
             self.assertEqual(main(command), 1)
         self.assertFalse(state.exists())
         with patch.dict("os.environ", {"BOL_SITE_ID": "12345", "DATABASE_URL": "test"}), patch(
                 "scripts.importers.bol_feed.download_feed", side_effect=download), patch(
-                "scripts.importers.bol_feed.publish", return_value={"updated_offers": 20}):
+                "scripts.importers.bol_feed.publish_batched", return_value={"updated_offers": 20}):
             self.assertEqual(main(command), 0)
         self.assertTrue(state.exists())
         with patch.dict("os.environ", {"BOL_SITE_ID": "12345", "DATABASE_URL": "test"}), patch(
                 "scripts.importers.bol_feed.download_feed", return_value=self.now), patch(
-                "scripts.importers.bol_feed.publish") as writer:
+                "scripts.importers.bol_feed.publish_batched") as writer:
             self.assertEqual(main(command), 0)
             writer.assert_not_called()
         self.assertEqual(json.loads(output.read_text())["status"], "unchanged_feed")

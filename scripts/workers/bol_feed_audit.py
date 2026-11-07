@@ -11,11 +11,14 @@ import json
 import os
 from pathlib import Path
 import time
+import re
+import urllib.request
+import urllib.parse
 import psycopg
 from psycopg.rows import dict_row
 from scripts.importers.bol_feed import FeedError
 from scripts.importers.bol_api_prices import Client, SHOP_ID, api_ean, verified_ean, normalize_offer
-from scripts.importers.bol_api_review import ReviewError
+from scripts.importers.bol_api_review import ReviewError, CATALOG_URL, request_json, schema_paths
 from scripts.importers.common import strict_normalize_gtin
 
 
@@ -37,7 +40,33 @@ def classify_existing(product, selected, now):
             'api_eligible': reason is None, 'reason': reason, 'consumer_ean': consumer_ean}
 
 
-def audit_catalogue(plan, dsn, *, api_sample=0, site_id='', client=None, now=None):
+def catalogue_facts(client, ean):
+    url = CATALOG_URL + ean + '?' + urllib.parse.urlencode({'country-code':'NL','include-offer':'false'})
+    request = urllib.request.Request(url,headers={'Authorization':'Bearer '+client.token,
+                                                 'Accept':'application/json','Accept-Language':'nl'})
+    data = request_json(request,'catalogue_identity')
+    facts = []
+    def visit(value,path=''):
+        if len(facts)>=30:
+            return
+        if isinstance(value,dict):
+            labels = [str(value.get(k,'')) for k in ('name','key','label','type')]
+            if any(re.search(r'format|drager|carrier|binding|categor|productgroup',v,re.I) for v in labels):
+                clean = {k:v for k,v in value.items() if k in {'name','key','label','type','value','values','id','categoryId'}
+                         and len(json.dumps(v))<1000}
+                facts.append({'path':path,'value':clean})
+            for key,item in value.items():
+                if re.search(r'category|categorie|productgroup',key,re.I) and len(json.dumps(item))<1000:
+                    facts.append({'path':path+'.'+key,'value':item})
+                if key not in {'description','images','imageUrl','media','title','artist'}:
+                    visit(item,path+'.'+key)
+        elif isinstance(value,list):
+            for i,item in enumerate(value[:100]):visit(item,path+f'[{i}]')
+    visit(data)
+    return {'schema':schema_paths(data),'format_category_facts':facts}
+
+
+def audit_catalogue(plan, dsn, *, api_sample=0, site_id='', client=None, now=None, inspect_catalogue=False):
     if (not plan.get('complete_feed') or plan.get('source') != 'bol_affiliate_productfeed'
             or plan.get('errors') or not 0 <= api_sample <= 50):
         raise FeedError('complete_successful_review_required')
@@ -119,6 +148,13 @@ def audit_catalogue(plan, dsn, *, api_sample=0, site_id='', client=None, now=Non
             result.update(status='api_offer_rejected',reason=str(exc))
         except ReviewError as exc:
             result.update(status='api_check_error',stage=exc.stage,reason=exc.reason,http_status=exc.status)
+        if inspect_catalogue and result.get('status') == 'valid_current_api_offer':
+            time.sleep(max(0,1-(time.monotonic()-previous_call)))
+            previous_call=time.monotonic()
+            try:
+                result['catalogue_facts']=catalogue_facts(client,sample['consumer_ean'])
+            except ReviewError as exc:
+                result['catalogue_error']={'stage':exc.stage,'reason':exc.reason,'http_status':exc.status}
         api_results.append(result)
     return {'status':'catalogue_audited','database_writes':0,'errors':[],
             'source_at':plan['captured_at'],'feed_sha256':plan['feed_sha256'],
@@ -131,13 +167,14 @@ def audit_catalogue(plan, dsn, *, api_sample=0, site_id='', client=None, now=Non
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--review',type=Path,required=True)
+    parser.add_argument('--catalog-facts',action='store_true')
     parser.add_argument('--api-sample',type=int,default=0)
     parser.add_argument('--output',type=Path,default=Path('output/bol/catalogue-audit.json'))
     args=parser.parse_args()
     try:
         result=audit_catalogue(json.loads(args.review.read_text(encoding='utf-8')),
                                os.environ['DATABASE_URL'],api_sample=args.api_sample,
-                               site_id=os.environ.get('BOL_SITE_ID',''))
+                               site_id=os.environ.get('BOL_SITE_ID',''),inspect_catalogue=args.catalog_facts)
     except Exception as exc:
         result={'status':'blocked','database_writes':0,
                 'errors':[str(exc) if isinstance(exc,FeedError) else type(exc).__name__]}

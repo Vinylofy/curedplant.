@@ -750,26 +750,7 @@ def _update_existing_product_from_record(
 
     return product_id
 
-def _insert_product(cur, record: CanonicalRecord) -> str:
-    artist_norm = normalize_text(record.artist).lower()
-    title_norm = normalize_text(record.title).lower()
-    ean_display = normalize_ean(record.ean)
-    gtin_normalized = record.gtin_normalized or normalize_gtin14(record.ean)
-
-    if not ean_display or not gtin_normalized:
-        raise ValueError(f"Cannot upsert product without EAN/GTIN for line {record.source_row_number}")
-
-    search_text = _product_search_text(
-        record.artist,
-        record.title,
-        ean_display,
-        gtin_normalized,
-    )
-
-    canonical_key = _product_canonical_key(record.artist, record.title) or f"{slugify(record.artist)}::{slugify(record.title)}"
-
-    cur.execute(
-        """
+_PRODUCT_INSERT_SQL = """
         insert into public.products (
           ean,
           gtin_normalized,
@@ -790,8 +771,27 @@ def _insert_product(cur, record: CanonicalRecord) -> str:
         )
         values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now(), now())
         returning id
-        """,
-        (
+        """
+
+def _product_insert_parameters(record):
+    artist_norm = normalize_text(record.artist).lower()
+    title_norm = normalize_text(record.title).lower()
+    ean_display = normalize_ean(record.ean)
+    gtin_normalized = record.gtin_normalized or normalize_gtin14(record.ean)
+
+    if not ean_display or not gtin_normalized:
+        raise ValueError(f"Cannot upsert product without EAN/GTIN for line {record.source_row_number}")
+
+    search_text = _product_search_text(
+        record.artist,
+        record.title,
+        ean_display,
+        gtin_normalized,
+    )
+
+    canonical_key = _product_canonical_key(record.artist, record.title) or f"{slugify(record.artist)}::{slugify(record.title)}"
+
+    return (
             ean_display,
             gtin_normalized,
             record.artist,
@@ -806,10 +806,26 @@ def _insert_product(cur, record: CanonicalRecord) -> str:
             SHOP_OBSERVED_METADATA_STATUS,
             SHOP_OBSERVED_METADATA_CONFIDENCE,
             True,
-        ),
-    )
+        )
 
+def _insert_product(cur, record: CanonicalRecord) -> str:
+    cur.execute(_PRODUCT_INSERT_SQL, _product_insert_parameters(record))
     return str(_row_at(cur.fetchone(), 0))
+
+def insert_products(cur, records):
+    """Pipeline the same safe creation contract; preserve input/result order."""
+    records = list(records)
+    if not records:
+        return []
+    cur.executemany(_PRODUCT_INSERT_SQL, [_product_insert_parameters(r) for r in records], returning=True)
+    ids = []
+    while True:
+        ids.append(str(_row_at(cur.fetchone(), 0)))
+        if not cur.nextset():
+            break
+    if len(ids) != len(records):
+        raise ValueError("product_insert_result_count_mismatch")
+    return ids
 
 def upsert_product(cur, record: CanonicalRecord) -> tuple[str, bool]:
     """
@@ -978,30 +994,7 @@ def get_existing_price_state(cur, product_id: str, shop_id: str) -> tuple[float,
     return float(row[0]), str(row[1]), str(row[2]), str(row[3])
 
 
-def upsert_price(
-    cur,
-    product_id: str,
-    shop_id: str,
-    record: CanonicalRecord,
-    imported_at: datetime,
-) -> tuple[bool, bool]:
-    existing = get_existing_price_state(cur, product_id, shop_id)
-    inserted = existing is None
-    changed = False
-
-    if existing is not None:
-        existing_price, existing_currency, existing_product_url, existing_availability = existing
-        changed = any(
-            [
-                float(existing_price) != float(record.price),
-                existing_currency != record.currency,
-                existing_product_url != record.product_url,
-                existing_availability != record.availability,
-            ]
-        )
-
-    cur.execute(
-        """
+_PRICE_INSERT_SQL = """
         insert into public.prices (
             product_id,
             shop_id,
@@ -1029,8 +1022,10 @@ def upsert_price(
             ean_raw = excluded.ean_raw,
             gtin_normalized = excluded.gtin_normalized,
             updated_at = now()
-        """,
-        (
+        """
+
+def _price_insert_parameters(product_id, shop_id, record, imported_at):
+    return (
             product_id,
             shop_id,
             record.price,
@@ -1041,11 +1036,69 @@ def upsert_price(
             imported_at,
             record.ean,
             record.gtin_normalized,
-        ),
-    )
+        )
+
+def upsert_prices(cur, rows):
+    """Batch the existing table contract; caller enforces identity/time/history gates."""
+    rows = list(rows)
+    if rows:
+        cur.executemany(_PRICE_INSERT_SQL, [_price_insert_parameters(*row) for row in rows])
+
+def upsert_price(
+    cur,
+    product_id: str,
+    shop_id: str,
+    record: CanonicalRecord,
+    imported_at: datetime,
+) -> tuple[bool, bool]:
+    existing = get_existing_price_state(cur, product_id, shop_id)
+    inserted = existing is None
+    changed = False
+
+    if existing is not None:
+        existing_price, existing_currency, existing_product_url, existing_availability = existing
+        changed = any(
+            [
+                float(existing_price) != float(record.price),
+                existing_currency != record.currency,
+                existing_product_url != record.product_url,
+                existing_availability != record.availability,
+            ]
+        )
+
+    cur.execute(_PRICE_INSERT_SQL, _price_insert_parameters(product_id, shop_id, record, imported_at))
 
     return inserted, changed
 
+
+_HISTORY_INSERT_SQL = """
+        insert into public.price_history (
+            product_id,
+            shop_id,
+            price,
+            currency,
+            availability,
+            captured_at,
+            created_at
+        )
+        values (%s, %s, %s, %s, %s, %s, now())
+        """
+
+def _history_insert_parameters(product_id, shop_id, record):
+    return (
+            product_id,
+            shop_id,
+            record.price,
+            record.currency,
+            record.availability,
+            record.captured_at,
+        )
+
+def insert_history_rows(cur, rows):
+    """Batch the existing table contract; caller enforces identity/time/history gates."""
+    rows = list(rows)
+    if rows:
+        cur.executemany(_HISTORY_INSERT_SQL, [_history_insert_parameters(*row) for row in rows])
 
 def maybe_insert_history(cur, product_id: str, shop_id: str, record: CanonicalRecord) -> bool:
     cur.execute(
@@ -1068,28 +1121,7 @@ def maybe_insert_history(cur, product_id: str, shop_id: str, record: CanonicalRe
         if same_day and unchanged:
             return False
 
-    cur.execute(
-        """
-        insert into public.price_history (
-            product_id,
-            shop_id,
-            price,
-            currency,
-            availability,
-            captured_at,
-            created_at
-        )
-        values (%s, %s, %s, %s, %s, %s, now())
-        """,
-        (
-            product_id,
-            shop_id,
-            record.price,
-            record.currency,
-            record.availability,
-            record.captured_at,
-        ),
-    )
+    cur.execute(_HISTORY_INSERT_SQL, _history_insert_parameters(product_id, shop_id, record))
     return True
 
 
