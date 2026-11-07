@@ -89,6 +89,15 @@ class BolFeedTests(unittest.TestCase):
         with self.assertRaisesRegex(FeedError, "invalid_barcode"):
             self.select(row)
 
+    def test_observed_y_n_availability_and_product_link_identity(self):
+        for value, expected in [("Y", "in_stock"), ("N", "out_of_stock"), ("unexpected", "unknown")]:
+            row = deepcopy(self.rows[0]); row["OfferNL.isDeliverable"] = value
+            self.assertEqual(self.select(row)[0][0]["availability"], expected)
+        row = deepcopy(self.rows[0]); row["productId"] = "9999999999999999"
+        offers, rejected = self.select(row)
+        self.assertFalse(offers)
+        self.assertEqual({r["reason"] for r in rejected}, {"product_identity_link_mismatch"})
+
     def test_no_free_personal_or_shipping_prose_as_price(self):
         for value in ["Gratis", "€2.95 shipping", "Na Select 12.99", "0", "NaN", "Infinity", "-1"]:
             with self.assertRaises(FeedError):

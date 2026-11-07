@@ -1,0 +1,154 @@
+name: "Curedplant | Affiliate | bol | Approved FTPS import"
+run-name: "bol FTPS NL | ${{ inputs.mode }}"
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Publication requires separate explicit approval; full import also requires API chain paused"
+        type: choice
+        options: [dry_run, pilot_write, full_write]
+        default: dry_run
+      approve_publication:
+        description: "I explicitly approve this public NL database import"
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: bol-feed
+  cancel-in-progress: false
+jobs:
+  import:
+    runs-on: [self-hosted, Windows, "${{ vars.BOL_FEED_RUNNER || 'X64' }}"]
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy RemoteSigned -File {0}
+    steps:
+      - name: Check publication and source-handover conditions before credentials
+        uses: actions/github-script@v8
+        env:
+          BOL_MODE: ${{ inputs.mode }}
+          BOL_APPROVE: ${{ inputs.approve_publication }}
+        with:
+          script: |
+            const mode = process.env.BOL_MODE;
+            if (!['dry_run', 'pilot_write', 'full_write'].includes(mode)) throw new Error('Unknown mode');
+            if (mode !== 'dry_run' && (context.ref !== 'refs/heads/main' || process.env.BOL_APPROVE !== 'true')) {
+              throw new Error('Publication requires main and explicit approval');
+            }
+            if (mode === 'full_write') {
+              const {data} = await github.rest.repos.getContent({
+                owner: context.repo.owner, repo: context.repo.repo,
+                path: 'config/bol-price-cycle.json', ref: 'main'
+              });
+              const config = JSON.parse(Buffer.from(data.content, 'base64').toString('utf8'));
+              if (config.enabled !== false) throw new Error('Full FTPS writes require the automatic API chain paused after the verified pilot');
+              const {data: runs} = await github.rest.actions.listWorkflowRuns({
+                owner: context.repo.owner, repo: context.repo.repo,
+                workflow_id: 'price-bol-api.yml', per_page: 100
+              });
+              if (runs.workflow_runs.some(run => run.status !== 'completed')) {
+                throw new Error('Wait for all existing API workflow runs to finish before full FTPS publication');
+              }
+            }
+      - name: Verify whitelisted public IPv4 before using feed credentials
+        working-directory: ${{ runner.temp }}
+        env:
+          BOL_FEED_PUBLIC_IPV4: ${{ vars.BOL_FEED_PUBLIC_IPV4 }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $actual = (Invoke-RestMethod -Uri 'https://api4.ipify.org' -TimeoutSec 15).ToString().Trim()
+          $address = [System.Net.IPAddress]::Parse($actual)
+          if ($address.AddressFamily -ne [System.Net.Sockets.AddressFamily]::InterNetwork) {
+              throw 'Expected a public IPv4 address'
+          }
+          Write-Output "Runner public IPv4: $actual"
+          Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding UTF8 -Value "bol feed runner public IPv4: $actual"
+          if ($actual -ne $env:BOL_FEED_PUBLIC_IPV4) {
+              throw 'Configure this IP in bol Account > Productfeed and BOL_FEED_PUBLIC_IPV4; no feed login attempted.'
+          }
+      - name: Download exact source commit through GitHub API
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('node:fs/promises');
+            const path = require('node:path');
+            const destination = path.join(process.env.RUNNER_TEMP,
+              `bol-source-${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT}`);
+            await fs.mkdir(destination);
+            const { data } = await github.rest.repos.downloadZipballArchive({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.sha,
+            });
+            await fs.writeFile(path.join(destination, 'source.zip'), Buffer.from(data));
+            core.exportVariable('BOL_ARCHIVE_DIR', destination);
+      - name: Extract source to a Windows-safe path
+        working-directory: ${{ runner.temp }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # Avoid GITHUB_WORKSPACE: repository names ending in a dot are not
+          # ordinary Win32 directory names. Use the immutable commit archive.
+          $destination = $env:BOL_ARCHIVE_DIR
+          $archive = Join-Path $destination 'source.zip'
+          Expand-Archive -LiteralPath $archive -DestinationPath $destination
+          $sourceDirs = @(Get-ChildItem -LiteralPath $destination -Directory)
+          if ($sourceDirs.Count -ne 1) { throw 'Unexpected source archive layout' }
+          Add-Content -LiteralPath $env:GITHUB_ENV -Encoding UTF8 -Value "BOL_SOURCE_DIR=$($sourceDirs[0].FullName)"
+      - name: Set up uv without Python installer scripts
+        uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: '0.12.15'
+          working-directory: ${{ runner.temp }}
+          enable-cache: false
+        env:
+          UV_CACHE_DIR: ${{ runner.temp }}/bol-uv-cache
+      - name: Prepare isolated Python and importer dependencies
+        working-directory: ${{ runner.temp }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:LOCALAPPDATA) { throw 'LOCALAPPDATA is required for the Python environment.' }
+          $env:UV_PYTHON_INSTALL_DIR = Join-Path $env:LOCALAPPDATA 'Vinylofy\bol-feed-python'
+          $venv = Join-Path $env:LOCALAPPDATA 'Vinylofy\bol-feed-venv'
+          $python = Join-Path $venv 'Scripts\python.exe'
+          if (-not (Test-Path -LiteralPath $python)) {
+              uv venv --no-project --seed --managed-python --python 3.12 --link-mode copy $venv
+              if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          # uv checks the retained environment first; satisfied requirements are a no-op.
+          uv pip install --python $python 'psycopg[binary]>=3.2,<4' 'python-dotenv>=1,<2' 'lxml>=5,<6'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Add-Content -LiteralPath $env:GITHUB_PATH -Encoding UTF8 -Value (Join-Path $venv 'Scripts')
+      - name: Run existing controlled importer
+        working-directory: ${{ runner.temp }}
+        shell: python {0}
+        env:
+          BOL_FEED_USERNAME: ${{ secrets.BOL_FEED_USERNAME }}
+          BOL_FEED_PASSWORD: ${{ secrets.BOL_FEED_PASSWORD }}
+          BOL_SITE_ID: ${{ vars.BOL_SITE_ID }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          BOL_SHOP_IDS: '{"NL":"f08437c2-1d85-47a6-94f9-33a55612d5cc"}'
+          BOL_MODE: ${{ inputs.mode }}
+        run: |
+          import os, subprocess, sys
+          from pathlib import Path
+          mode = os.environ['BOL_MODE']
+          command = [sys.executable, '-m', 'scripts.importers.bol_feed',
+              '--profile', 'config/bol-feed.live.json', '--markets', 'NL',
+              '--max-rows', '5000000', '--limit', '0' if mode == 'full_write' else '20']
+          if mode == 'dry_run':
+              command.append('--check-matches')
+          else:
+              command.extend(['--write', '--approve-publication'])
+          if mode == 'full_write':
+              state = Path(os.environ['LOCALAPPDATA']) / 'Vinylofy' / 'bol-feed-state.json'
+              command.extend(['--state', str(state)])
+          subprocess.run(command, cwd=os.environ['BOL_SOURCE_DIR'], check=True)
+      - name: Save import evidence only
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bol-feed-import-${{ github.run_id }}
+          path: ${{ env.BOL_SOURCE_DIR }}/output/bol/review.json
+          retention-days: 1

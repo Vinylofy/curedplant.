@@ -165,6 +165,9 @@ def select_product(row, profile, countries, site_id, captured_at):
             continue
         try:
             price = amount(get("price"))  # sellingPrice is payable; listPrice isn't.
+            if not product_id.isascii() or not product_id.isdigit() or urlsplit(
+                    product_link(get("url"), country)).path.rstrip("/").rsplit("/", 1)[-1] != product_id:
+                raise FeedError("product_identity_link_mismatch")
             link = affiliate_link(get("url"), country, site_id)
             shipping = amount(get("shipping"), zero=True) if get("shipping") else None
         except FeedError as exc:
@@ -225,7 +228,17 @@ def build_plan(path, profile, countries, site_id, *, limit=20, max_rows=1_000_00
     else:
         exhausted = True
     iterator.close()
+    market_summary = {}
+    for country in countries:
+        offers = [o for o in accepted.values() if o["country"] == country]
+        market_summary[country] = {
+            "selected_new_vinyl": len({o["gtin"] for o in offers}), "valid_prices": len(offers),
+            "availability": dict(Counter(o["availability"] for o in offers)),
+            "shipping": dict(Counter(o["shipping_status"] for o in offers)),
+            "seller": dict(Counter(o["seller"] for o in offers)),
+        }
     return {"source": "bol_affiliate_productfeed", "read_products": read,
+            "markets": market_summary,
             "selected_new_vinyl": len({o["gtin"] for o in accepted.values()}),
             "valid_barcodes": len({o["gtin"] for o in accepted.values()}),
             "complete_feed": exhausted, "database_writes": 0,
@@ -311,6 +324,9 @@ def review_matches(plan, dsn, shops=None, *, batch_size=500):
                                         else "changed_price"] += 1
                             if old[1] and old[1] > datetime.fromisoformat(offer["captured_at"]):
                                 comparisons["newer_database_price"] += 1
+    for country, summary in plan.get("markets", {}).items():
+        gtins = {o["gtin"] for o in plan["offers"] if o["country"] == country}
+        summary.update(existing_matches=len(gtins & existing), new_products=len(gtins & new))
     plan.update(existing_matches=len(existing), new_products=len(new),
                 match_status="read_only_checked", match_conflicts=rejected,
                 price_comparisons=dict(comparisons), match_batch_size=batch_size)

@@ -39,7 +39,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: bol-feed-review
+  group: bol-feed
   cancel-in-progress: false
 jobs:
   review:
