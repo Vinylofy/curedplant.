@@ -30,7 +30,7 @@ class AuditTests(unittest.TestCase):
         import json
         from unittest.mock import Mock
         from scripts.workers.bol_feed_audit import catalogue_facts
-        payload={'description':'private-description','images':['private-image'],
+        payload={'gpc':[{'level':'BRICK','name':'Voorbespeelde audio'}],'description':'private-description','images':['private-image'],
                  'attributes':[{'name':'Drager','value':'LP'},{'name':'Artiest','value':'private-artist'}],
                  'categories':[{'id':'1','name':'Muziek'}]}
         with patch('scripts.workers.bol_feed_audit.request_json',return_value=payload):

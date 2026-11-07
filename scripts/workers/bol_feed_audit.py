@@ -46,6 +46,8 @@ def catalogue_facts(client, ean):
                                                  'Accept':'application/json','Accept-Language':'nl'})
     data = request_json(request,'catalogue_identity')
     facts = []
+    if isinstance(data,dict) and 'gpc' in data and len(json.dumps(data['gpc']))<5000:
+        facts.append({'path':'gpc','value':data['gpc']})
     def visit(value,path=''):
         if len(facts)>=30:
             return

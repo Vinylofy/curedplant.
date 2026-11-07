@@ -298,6 +298,27 @@ def find_product(cur, offer):
     return rows[0][0] if rows else None
 
 
+def required_current_offer(row, now=None):
+    """Current UI/API parity scope; retain excluded legacy rows without publishing them."""
+    from scripts.importers.bol_api_prices import verified_ean,api_ean
+    now=now or datetime.now(timezone.utc)
+    if (not row[4] or not -300 <= (now-row[4]).total_seconds() <= 48*3600
+            or row[5] not in {'in_stock','unknown'} or row[6] != 'EUR' or row[7] <= 0):
+        return False
+    try:
+        _,gtin=verified_ean({'ean':row[1],'gtin_normalized':row[2],'format_label':row[3]})
+        api_ean(gtin)
+    except FeedError:
+        return False
+    return True
+
+
+def require_full_coverage(plan, countries):
+    coverage=plan.get('existing_offer_coverage',{})
+    if any(country not in coverage or coverage[country].get('required_current_absent') != 0 for country in countries):
+        raise FeedError('full_import_requires_resolved_current_offer_coverage')
+
+
 def review_matches(plan, dsn, shops=None, *, batch_size=500):
     """Consistent read-only batches; report identity conflicts and price deltas."""
     shops = shops or {}
@@ -368,13 +389,20 @@ def review_matches(plan, dsn, shops=None, *, batch_size=500):
                 for country, shop_id in shops.items():
                     if country not in plan.get("markets", {}):
                         continue
-                    cur.execute("select product_id from public.prices where shop_id=%s and is_active=true", (shop_id,))
-                    active = {str(row[0]) for row in cur.fetchall()}
+                    cur.execute("""select p.id,p.ean,p.gtin_normalized,p.format_label,
+                                   pr.last_seen_at,pr.availability,pr.currency,pr.price
+                                   from public.prices pr join public.products p on p.id=pr.product_id
+                                   where pr.shop_id=%s and pr.is_active=true""", (shop_id,))
+                    active_rows=cur.fetchall()
+                    active = {str(row[0]) for row in active_rows}
+                    required = {str(row[0]) for row in active_rows if required_current_offer(row)}
                     missing = active - matched_by_market[country]
                     coverage[country] = {"existing_active_shop_offers": len(active),
                                          "covered_by_feed": len(active - missing),
                                          "absent_from_eligible_feed": len(missing),
-                                         "absent_product_samples": sorted(missing)[:20]}
+                                         "absent_product_samples": sorted(missing)[:20],
+                                         "required_current_offers":len(required),
+                                         "required_current_absent":len(required-matched_by_market[country])}
     plan["existing_offer_coverage"] = coverage
     for country, summary in plan.get("markets", {}).items():
         gtins = {o["gtin"] for o in plan["offers"] if o["country"] == country}
@@ -968,6 +996,7 @@ def main(argv=None):
     parser.add_argument("--check-matches", action="store_true")
     parser.add_argument("--inspect-schema", action="store_true")
     parser.add_argument("--expected-feed-sha256", help="Bind an approved pilot to its reviewed source bytes")
+    parser.add_argument("--review-state", type=Path, help="Successful complete read-only review checkpoint; never permits publication")
     parser.add_argument("--state", type=Path, help="Successful full-writer checkpoint; skips unchanged remote MDTM")
     parser.add_argument("--validation-suite", action="store_true", help="20-product pilot and full read-only scan from one download")
     parser.add_argument("--write", action="store_true")
@@ -995,6 +1024,8 @@ def main(argv=None):
         profile = json.loads(args.profile.read_text(encoding="utf-8"))
         if args.validation_suite and args.limit != 0:
             raise FeedError("validation_suite_requires_limit_zero")
+        if args.review_state and (args.write or args.feed or args.limit != 0 or args.inspect_schema or args.state):
+            raise FeedError("review_checkpoint_requires_full_remote_read_only_review")
         if args.state and (not args.write or args.limit != 0 or args.feed):
             raise FeedError("state_requires_full_remote_writer")
         if args.validation_suite and (args.write or args.inspect_schema):
@@ -1022,15 +1053,16 @@ def main(argv=None):
         if args.explain_coverage:
             if not args.check_matches or args.inspect_schema or args.limit != 0:
                 raise FeedError("coverage_explanation_requires_full_read_only_match_review")
-            audit_gtins = load_coverage_gtins(os.environ["DATABASE_URL"],
-                json.loads(os.environ.get("BOL_SHOP_IDS", "{}")))
+        checkpoint_path = args.state or args.review_state
         checkpoint_key = hashlib.sha256(json.dumps({
+            "mode":"writer" if args.write else "read_only_review", "check_matches":args.check_matches,
+            "explain_coverage":args.explain_coverage, "importer_sha256":file_digest(Path(__file__)),
             "profile": profile, "markets": args.markets, "site_id": os.environ.get("BOL_SITE_ID"),
             "shops": os.environ.get("BOL_SHOP_IDS"), "database": os.environ.get("DATABASE_URL"),
         }, sort_keys=True).encode()).hexdigest()
         previous_source = None
-        if args.state and args.state.exists():
-            previous = json.loads(args.state.read_text(encoding="utf-8"))
+        if checkpoint_path and checkpoint_path.exists():
+            previous = json.loads(checkpoint_path.read_text(encoding="utf-8"))
             if previous.get("key") == checkpoint_key:
                 previous_source = datetime.fromisoformat(previous["source_at"])
         with tempfile.TemporaryDirectory(prefix="bol-feed-") as directory:
@@ -1040,6 +1072,7 @@ def main(argv=None):
                 source_at = download_feed(path, unchanged_since=previous_source)
                 if previous_source is not None and source_at == previous_source and not path.exists():
                     report.update(status="unchanged_feed", source_at=source_at.isoformat(),
+                                  previous_complete_review_at=previous.get("reviewed_at"),feed_sha256=previous.get("feed_sha256"),
                                   database_writes=0, duration_seconds=round(time.monotonic() - started, 3))
                     args.output.parent.mkdir(parents=True, exist_ok=True)
                     args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
@@ -1047,6 +1080,8 @@ def main(argv=None):
                     return 0
             if args.write and source_at is None:
                 raise FeedError("local_write_requires_proven_source_timestamp")
+            if args.explain_coverage:
+                audit_gtins = load_coverage_gtins(os.environ["DATABASE_URL"],json.loads(os.environ.get("BOL_SHOP_IDS", "{}")))
             integrity = verify_integrity(path)
             if args.inspect_schema:
                 if args.write or args.check_matches:
@@ -1055,6 +1090,8 @@ def main(argv=None):
             else:
                 report = build_plan(path, profile, args.markets.split(","), os.environ.get("BOL_SITE_ID", ""),
                                     limit=args.limit, max_rows=args.max_rows, captured_at=source_at, audit_gtins=audit_gtins)
+            if args.review_state and not report.get("complete_feed"):
+                raise FeedError("review_row_ceiling_reached")
             report["file_validation"] = integrity
             report["valid_prices"] = len(report.get("offers", []))
             report["source_at"] = source_at.isoformat() if source_at else None
@@ -1072,7 +1109,7 @@ def main(argv=None):
                                    json.loads(os.environ.get("BOL_SHOP_IDS", "{}")))
                 report["pilot_20"] = {k: v for k, v in pilot.items() if k != "offers"}
                 report["pilot_20"]["valid_prices"] = len(pilot["offers"])
-            if args.check_matches or (args.write and profile.get("quarantine_identity_conflicts")):
+            if args.check_matches or (args.write and (profile.get("quarantine_identity_conflicts") or args.limit == 0)):
                 review_matches(report, os.environ["DATABASE_URL"],
                                json.loads(os.environ.get("BOL_SHOP_IDS", "{}")))
             if profile.get("quarantine_identity_conflicts") and report.get("match_status") == "read_only_checked":
@@ -1081,6 +1118,8 @@ def main(argv=None):
                 if args.limit == 0 and not report["complete_feed"]:
                     raise FeedError("full_import_row_ceiling_reached")
                 shops = json.loads(os.environ.get("BOL_SHOP_IDS", "{}"))
+                if args.limit == 0:
+                    require_full_coverage(report,{o["country"] for o in report["offers"]})
                 writer = publish_batched if args.limit == 0 else publish
                 result = writer(report, os.environ["DATABASE_URL"], shops, approved=True)
                 report["write_result"] = result
@@ -1089,8 +1128,14 @@ def main(argv=None):
                 if args.state and report["complete_feed"]:
                     args.state.parent.mkdir(parents=True, exist_ok=True)
                     temporary_state = args.state.with_suffix(args.state.suffix + ".tmp")
-                    temporary_state.write_text(json.dumps({"key": checkpoint_key, "source_at": source_at.isoformat()}), encoding="utf-8")
+                    temporary_state.write_text(json.dumps({"key": checkpoint_key, "source_at": source_at.isoformat(),"feed_sha256":report["feed_sha256"]}), encoding="utf-8")
                     temporary_state.replace(args.state)
+            if args.review_state and report.get("complete_feed") and report.get("offers") and not report.get("errors"):
+                args.review_state.parent.mkdir(parents=True,exist_ok=True)
+                temporary_state=args.review_state.with_suffix(args.review_state.suffix+'.tmp')
+                temporary_state.write_text(json.dumps({'key':checkpoint_key,'source_at':source_at.isoformat(),
+                    'reviewed_at':datetime.now(timezone.utc).isoformat(),'feed_sha256':report['feed_sha256']}),encoding='utf-8')
+                temporary_state.replace(args.review_state)
     except Exception as exc:
         # Never echo driver messages, secret paths/URLs or traceback.
         report["status"] = "blocked"

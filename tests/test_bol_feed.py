@@ -205,6 +205,9 @@ class BolFeedTests(unittest.TestCase):
         connect.assert_not_called()
 
     def test_checkpoint_only_after_success_and_unchanged_feed_does_not_write(self):
+        matcher=patch('scripts.importers.bol_feed.review_matches',side_effect=lambda plan,*a,**k:plan.update(
+            match_status='read_only_checked',existing_offer_coverage={'NL':{'required_current_absent':0}}))
+        matcher.start();self.addCleanup(matcher.stop)
         profile = self.path.with_suffix(".profile.json")
         profile.write_text(json.dumps({**PROFILE, "live_schema_verified": True, "verified_markets": ["NL"]}))
         output = self.path.with_suffix(".report.json")
@@ -292,6 +295,36 @@ class BolFeedTests(unittest.TestCase):
         self.assertFalse(any(o['gtin']==gtin for o in plan['offers']))
         self.assertEqual(plan['markets']['NL']['valid_prices'],19)
         self.assertTrue(plan['complete_feed'])
+
+    def test_full_write_refuses_unresolved_current_offer_coverage_before_writes(self):
+        output=self.path.with_suffix('.coverage.json')
+        def missing(plan,*args,**kwargs):
+            plan.update(match_status='read_only_checked',existing_offer_coverage={'NL':{'required_current_absent':1}})
+        with patch.dict('os.environ',{'BOL_SITE_ID':'12345','DATABASE_URL':'test'}),patch(
+                'scripts.importers.bol_feed.review_matches',side_effect=missing),patch(
+                'scripts.importers.bol_feed.publish_batched') as writer:
+            result=main(['--feed',str(self.path),'--profile',str(ROOT/'config/bol-feed.live.json'),
+                         '--limit','0','--source-at',self.now.isoformat(),'--write','--approve-publication','--output',str(output)])
+        self.assertEqual(result,1);writer.assert_not_called()
+        self.assertEqual(json.loads(output.read_text())['errors'],['full_import_requires_resolved_current_offer_coverage'])
+
+    def test_read_only_checkpoint_skips_unchanged_feed_without_permitting_writes(self):
+        output=self.path.with_suffix('.review-output.json');state=self.path.with_suffix('.review-state.json')
+        command=['--profile',str(ROOT/'config/bol-feed.example.json'),'--limit','0','--review-state',str(state),'--output',str(output)]
+        def download(path,**kwargs):
+            Path(path).write_bytes(self.path.read_bytes());return self.now
+        with patch.dict('os.environ',{'BOL_SITE_ID':'12345'}),patch(
+                'scripts.importers.bol_feed.download_feed',side_effect=download),patch(
+                'scripts.importers.bol_feed.psycopg.connect') as connection:
+            self.assertEqual(main(command),0);connection.assert_not_called()
+        self.assertTrue(state.exists())
+        with patch.dict('os.environ',{'BOL_SITE_ID':'12345'}),patch(
+                'scripts.importers.bol_feed.download_feed',return_value=self.now),patch(
+                'scripts.importers.bol_feed.psycopg.connect') as connection:
+            self.assertEqual(main(command),0);connection.assert_not_called()
+        self.assertEqual(json.loads(output.read_text())['status'],'unchanged_feed')
+        with patch('scripts.importers.bol_feed.download_feed') as network:
+            self.assertEqual(main(command+['--write','--approve-publication']),1);network.assert_not_called()
 
     def test_xml_external_entities_are_not_loaded(self):
         p = self.path.with_suffix(".xml")

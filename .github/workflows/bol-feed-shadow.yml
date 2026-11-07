@@ -1,0 +1,42 @@
+name: "Curedplant | Affiliate | bol | Scheduled FTPS shadow"
+run-name: "bol FTPS NL | automatic read-only shadow"
+on:
+  schedule:
+    - cron: "15 */2 * * *"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: bol-feed-shadow-dispatch
+  cancel-in-progress: false
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - name: Dispatch only the existing no-write feed review workflow
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const {data} = await github.rest.repos.getContent({
+              owner: context.repo.owner, repo: context.repo.repo,
+              path: 'config/bol-feed-automation.json', ref: 'main'
+            });
+            const config = JSON.parse(Buffer.from(data.content, 'base64').toString('utf8'));
+            if (config.version !== 1 || config.mode !== 'shadow' || config.market !== 'NL' || config.publication_allowed !== false) {
+              throw new Error('This dispatcher only supports explicitly read-only NL shadow mode');
+            }
+            if (config.enabled !== true) {
+              await core.summary.addRaw('FTPS shadow disabled by repository configuration.').write();
+              return;
+            }
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner, repo: context.repo.repo,
+              workflow_id: 'bol-feed-review.yml', ref: 'main',
+              inputs: {limit:'0',markets:'NL',max_rows:'5000000',inspect_schema:'false',
+                check_matches:'true',explain_coverage:'true',validation_suite:'false'}
+            });
+            await core.summary.addRaw('Full FTPS read-only review dispatched to the existing whitelisted Windows runner. No publication input exists in that workflow.').write();

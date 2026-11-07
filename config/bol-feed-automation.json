@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "enabled": true,
+  "mode": "shadow",
+  "market": "NL",
+  "publication_allowed": false,
+  "reason": "Read-only operational validation. Source coverage parity is not established; the Marketing API must remain active."
+}

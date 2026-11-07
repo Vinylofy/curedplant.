@@ -214,6 +214,14 @@ jobs:
               throw new Error('Pilot requires the reviewed source SHA-256');
             }
             if (mode === 'full_write') {
+              const {data: policyFile} = await github.rest.repos.getContent({
+                owner: context.repo.owner, repo: context.repo.repo,
+                path: 'config/bol-feed-automation.json', ref: 'main'
+              });
+              const policy = JSON.parse(Buffer.from(policyFile.content, 'base64').toString('utf8'));
+              if (policy.version !== 1 || policy.enabled !== true || policy.mode !== 'live' || policy.publication_allowed !== true) {
+                throw new Error('Full publication is locked while repository policy is read-only shadow');
+              }
               const {data} = await github.rest.repos.getContent({
                 owner: context.repo.owner, repo: context.repo.repo,
                 path: 'config/bol-price-cycle.json', ref: 'main'

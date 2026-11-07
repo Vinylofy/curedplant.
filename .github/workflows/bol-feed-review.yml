@@ -210,6 +210,7 @@ jobs:
           BOL_INSPECT_SCHEMA: ${{ inputs.inspect_schema }}
         run: |
           import os, subprocess, sys
+          from pathlib import Path
           command = [sys.executable, '-m', 'scripts.importers.bol_feed',
               '--profile', os.environ['BOL_PROFILE'], '--limit', os.environ['BOL_LIMIT'],
               '--markets', os.environ['BOL_MARKETS'], '--max-rows', os.environ['BOL_MAX_ROWS']]
@@ -221,6 +222,9 @@ jobs:
               command.append('--check-matches')
           if os.environ['BOL_EXPLAIN_COVERAGE'] == 'true':
               command.append('--explain-coverage')
+              if os.environ['BOL_LIMIT']=='0' and os.environ['BOL_INSPECT_SCHEMA']!='true' and os.environ['BOL_INSPECT_INVENTORY']!='true' and os.environ['BOL_VALIDATION_SUITE']!='true':
+                  state = Path(os.environ['LOCALAPPDATA']) / 'Vinylofy' / 'bol-feed-review-state.json'
+                  command.extend(['--review-state', str(state)])
           if os.environ['BOL_VALIDATION_SUITE'] == 'true':
               command.append('--validation-suite')
           subprocess.run(command, cwd=os.environ['BOL_SOURCE_DIR'], check=True)
