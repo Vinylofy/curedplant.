@@ -5,8 +5,16 @@
   "product_id": "productId",
   "title": "title",
   "format": "Format",
-  "vinyl_values": ["Vinyl", "LP"],
-  "new_values": ["NEW"],
+  "vinyl_values": [
+    "LP",
+    "7\" Vinyl",
+    "12\" Vinyl",
+    "10\" Vinyl",
+    "LP + downloadcode"
+  ],
+  "new_values": [
+    "new"
+  ],
   "offers": {
     "NL": {
       "price": "OfferNL.sellingPrice",
@@ -24,5 +32,10 @@
       "seller_type": "OfferBE.sellerType",
       "url": "productPageUrlBE"
     }
-  }
+  },
+  "availability_values": {
+    "Y": "in_stock",
+    "N": "out_of_stock"
+  },
+  "verified_markets": []
 }

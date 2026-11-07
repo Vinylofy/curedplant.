@@ -171,8 +171,9 @@ def select_product(row, profile, countries, site_id, captured_at):
             skipped.append({"ean": ean, "title": title, "country": country, "reason": str(exc)})
             continue
         deliverable = get("deliverable").casefold()
-        availability = {"true": "in_stock", "1": "in_stock", "false": "out_of_stock",
-                        "0": "out_of_stock"}.get(deliverable, "unknown")
+        availability = {k.casefold(): v for k, v in profile.get("availability_values", {
+            "true": "in_stock", "1": "in_stock", "false": "out_of_stock", "0": "out_of_stock"
+        }).items()}.get(deliverable, "unknown")
         offers.append({"ean": ean, "gtin": gtin, "product_id": product_id,
                        "title": title, "country": country, "price": price, "currency": "EUR",
                        "availability": availability,
@@ -581,7 +582,7 @@ def main(argv=None):
     started = time.monotonic()
     report = {"status": "blocked", "database_writes": 0, "errors": []}
     try:
-        profile = json.loads(args.profile.read_text())
+        profile = json.loads(args.profile.read_text(encoding="utf-8"))
         if args.validation_suite and args.limit != 0:
             raise FeedError("validation_suite_requires_limit_zero")
         if args.state and (not args.write or args.limit != 0 or args.feed):
@@ -598,7 +599,7 @@ def main(argv=None):
         }, sort_keys=True).encode()).hexdigest()
         previous_source = None
         if args.state and args.state.exists():
-            previous = json.loads(args.state.read_text())
+            previous = json.loads(args.state.read_text(encoding="utf-8"))
             if previous.get("key") == checkpoint_key:
                 previous_source = datetime.fromisoformat(previous["source_at"])
         with tempfile.TemporaryDirectory(prefix="bol-feed-") as directory:
@@ -610,7 +611,7 @@ def main(argv=None):
                     report.update(status="unchanged_feed", source_at=source_at.isoformat(),
                                   database_writes=0, duration_seconds=round(time.monotonic() - started, 3))
                     args.output.parent.mkdir(parents=True, exist_ok=True)
-                    args.output.write_text(json.dumps(report, indent=2) + "\n")
+                    args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
                     print(json.dumps(report))
                     return 0
             if args.write and source_at is None:
@@ -652,7 +653,7 @@ def main(argv=None):
                 if args.state and report["complete_feed"]:
                     args.state.parent.mkdir(parents=True, exist_ok=True)
                     temporary_state = args.state.with_suffix(args.state.suffix + ".tmp")
-                    temporary_state.write_text(json.dumps({"key": checkpoint_key, "source_at": source_at.isoformat()}))
+                    temporary_state.write_text(json.dumps({"key": checkpoint_key, "source_at": source_at.isoformat()}), encoding="utf-8")
                     temporary_state.replace(args.state)
     except Exception as exc:
         # Never echo driver messages, secret paths/URLs or traceback.
@@ -663,7 +664,7 @@ def main(argv=None):
             report["database_writes"] = None
     report["duration_seconds"] = round(time.monotonic() - started, 3)
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n")
+    args.output.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     print(json.dumps({k: v for k, v in report.items() if k not in {"offers", "skip_samples", "field_samples", "vinyl_candidate_samples", "vocabulary"}}))
     return 1 if report["errors"] or (not report.get("offers") and report["status"] != "schema_inspected") else 0
 
