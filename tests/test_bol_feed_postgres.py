@@ -180,6 +180,38 @@ class BolPostgresTests(unittest.TestCase):
         with psycopg.connect(self.dsn) as conn:
             self.assertEqual(conn.execute("select count(*) from public.prices where is_active").fetchone()[0], 4)
 
+    def test_writer_diagnostics_are_read_only(self):
+        from scripts.importers.bol_feed import writer_diagnostics
+        self.write()
+        report = writer_diagnostics(self.dsn)
+        self.assertEqual(report["status"], "writer_diagnosed")
+        self.assertEqual(report["database_writes"], 0)
+        self.assertTrue(report["product_lookup_plan"])
+        with psycopg.connect(self.dsn) as conn:
+            for table, count in [("products", 2), ("prices", 4), ("price_history", 4), ("raw_shop_scrapes", 4)]:
+                self.assertEqual(conn.execute(sql.SQL("select count(*) from {}").format(sql.Identifier(table))).fetchone()[0], count)
+
+    def test_reviewed_pilot_recovery_uses_existing_writer_and_is_idempotent(self):
+        from scripts.importers.bol_feed import main
+        plan = deepcopy(self.plan)
+        plan["offers"] = [o for o in plan["offers"] if o["country"] == "NL"]
+        plan.update(status="blocked", errors=["QueryCanceled"], complete_feed=False, feed_sha256="a" * 64)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'review.json'; path.write_text(json.dumps(plan))
+            output = Path(directory) / 'result.json'
+            command = ['--profile', str(Path(__file__).parents[1] / 'config/bol-feed.live.json'),
+                       '--review-plan', str(path), '--write', '--approve-publication',
+                       '--expected-feed-sha256', 'a' * 64, '--output', str(output)]
+            with patch.dict(os.environ, {'DATABASE_URL': self.dsn, 'BOL_SITE_ID': '12345',
+                                       'BOL_SHOP_IDS': json.dumps({'NL': self.shops['NL']})}):
+                self.assertEqual(main(command), 0)
+                self.assertEqual(json.loads(output.read_text())["write_result"]["new_products"], 2)
+                self.assertEqual(main(command), 0)
+                self.assertEqual(json.loads(output.read_text())["database_writes"], 0)
+        with psycopg.connect(self.dsn) as conn:
+            self.assertEqual(conn.execute('select count(*) from public.products').fetchone()[0], 2)
+            self.assertEqual(conn.execute('select count(*) from public.price_history').fetchone()[0], 2)
+
     def test_database_failure_rolls_back_products_prices_and_evidence(self):
         with patch("scripts.importers.bol_feed.maybe_insert_history", side_effect=RuntimeError("test failure")):
             with self.assertRaises(RuntimeError):

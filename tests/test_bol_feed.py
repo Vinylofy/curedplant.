@@ -241,6 +241,32 @@ class BolFeedTests(unittest.TestCase):
         self.assertEqual(result, 1); connect.assert_not_called()
         self.assertEqual(json.loads(output.read_text())["errors"], ["reviewed_feed_checksum_mismatch"])
 
+    def test_reviewed_pilot_keeps_checksum_market_link_and_size_guards(self):
+        from scripts.importers.bol_feed import reviewed_pilot
+        plan = build_plan(self.path, PROFILE, ["NL"], "12345", limit=20)
+        plan.update(status="blocked", errors=["QueryCanceled"], feed_sha256="a" * 64)
+        path = self.path.with_suffix(".review.json")
+        path.write_text(json.dumps(plan))
+        checked = reviewed_pilot(path, "a" * 64, "12345")
+        self.assertEqual(len(checked["offers"]), 20)
+        self.assertEqual(checked["errors"], [])
+        for change, reason in [({"feed_sha256": "b" * 64}, "checksum"),
+                               ({"errors": ["invalid_source"]}, "unsupported"),
+                               ({"complete_feed": True}, "unsupported")]:
+            altered = deepcopy(plan); altered.update(change); path.write_text(json.dumps(altered))
+            with self.assertRaisesRegex(FeedError, reason):
+                reviewed_pilot(path, "a" * 64, "12345")
+        for field, value, reason in [("country", "BE", "market"), ("ean", "invalid", "identity"),
+                                     ("product_url", "https://evil.invalid/", "affiliate")]:
+            altered = deepcopy(plan); altered["offers"][0][field] = value
+            path.write_text(json.dumps(altered))
+            with self.assertRaisesRegex(FeedError, reason):
+                reviewed_pilot(path, "a" * 64, "12345")
+        altered = deepcopy(plan); altered["offers"].append(deepcopy(altered["offers"][0]))
+        path.write_text(json.dumps(altered))
+        with self.assertRaisesRegex(FeedError, "twenty"):
+            reviewed_pilot(path, "a" * 64, "12345")
+
     def test_xml_external_entities_are_not_loaded(self):
         p = self.path.with_suffix(".xml")
         p.write_text('<!DOCTYPE root [<!ENTITY secret SYSTEM "file:///etc/passwd">]>'

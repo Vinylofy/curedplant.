@@ -23,7 +23,7 @@ import ssl
 import sys
 import tempfile
 import time
-from urllib.parse import urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
 from lxml import etree
 import psycopg
@@ -383,6 +383,41 @@ class SafeWriterCursor:
             raise FeedError("database_statement_timeout stage=" + stage) from None
 
 
+def reviewed_pilot(path, expected_digest, site_id):
+    """Validate a trusted workflow's cached selection; never expand its scope."""
+    report = json.loads(Path(path).read_text(encoding="utf-8"))
+    if (not re.fullmatch(r"[0-9a-f]{64}", expected_digest or "")
+            or report.get("feed_sha256") != expected_digest):
+        raise FeedError("reviewed_feed_checksum_mismatch")
+    if (report.get("source") != "bol_affiliate_productfeed" or report.get("complete_feed")
+            or report.get("status") not in {"dry_run", "blocked", "written"}
+            or any(error != "QueryCanceled" and not error.startswith("database_statement_timeout stage=")
+                   for error in report.get("errors", []))):
+        raise FeedError("unsupported_reviewed_pilot_report")
+    offers = report.get("offers", [])
+    if not 1 <= len(offers) <= 20 or len({o["gtin"] for o in offers}) != len(offers):
+        raise FeedError("reviewed_pilot_requires_at_most_twenty_unique_products")
+    for offer in offers:
+        if (offer["country"] != "NL" or offer.get("currency") != "EUR"
+                or strict_normalize_gtin(offer["ean"]) != offer["gtin"]
+                or offer["captured_at"] != report["captured_at"]
+                or offer["availability"] not in {"in_stock", "out_of_stock", "unknown"}):
+            raise FeedError("invalid_reviewed_pilot_identity_or_market")
+        amount(offer["price"])
+        if offer.get("shipping") is not None:
+            amount(offer["shipping"], zero=True)
+        query = parse_qs(urlsplit(offer["product_url"]).query, strict_parsing=True)
+        destinations = query.get("url", [])
+        if (len(destinations) != 1
+                or affiliate_link(destinations[0], "NL", site_id) != offer["product_url"]
+                or urlsplit(destinations[0]).path.rstrip("/").rsplit("/", 1)[-1] != offer["product_id"]):
+            raise FeedError("invalid_reviewed_pilot_affiliate_link")
+    report["previous_attempt_errors"] = report.get("errors", [])
+    report.update(errors=[], database_writes=0, status="reviewed_pilot_ready",
+                  reviewed_selection_sha256=file_digest(path))
+    return report
+
+
 def writer_diagnostics(dsn):
     """Read-only operational/schema evidence; no credentials, query text or writes."""
     with psycopg.connect(dsn, prepare_threshold=None) as conn, conn.cursor() as cur:
@@ -683,6 +718,7 @@ def main(argv=None):
     parser.add_argument("--max-rows", type=int, default=1_000_000)
     parser.add_argument("--source-at", help="Local feed generation timestamp, ISO8601 with timezone")
     parser.add_argument("--output", type=Path, default=Path("output/bol/review.json"))
+    parser.add_argument("--review-plan", type=Path, help="Trusted reviewed pilot selection; NL and <=20 products only")
     parser.add_argument("--diagnose-writer", action="store_true")
     parser.add_argument("--check-matches", action="store_true")
     parser.add_argument("--inspect-schema", action="store_true")
@@ -714,6 +750,21 @@ def main(argv=None):
             raise FeedError("approve_publication_and_verified_live_schema_required")
         if args.write and not set(args.markets.split(",")).issubset(profile.get("verified_markets", [])):
             raise FeedError("market_not_live_verified")
+        if args.review_plan:
+            if (not args.write or args.limit != 20 or args.markets != "NL" or args.feed or args.state):
+                raise FeedError("reviewed_plan_requires_approved_bounded_nl_pilot")
+            report = reviewed_pilot(args.review_plan, args.expected_feed_sha256, os.environ.get("BOL_SITE_ID", ""))
+            shops = json.loads(os.environ.get("BOL_SHOP_IDS", "{}"))
+            review_matches(report, os.environ["DATABASE_URL"], shops)
+            if report.get("match_conflicts"):
+                raise FeedError("reviewed_pilot_has_database_conflicts")
+            result = publish(report, os.environ["DATABASE_URL"], shops, approved=True)
+            report.update(write_result=result, database_writes=result["updated_offers"], status="written",
+                          duration_seconds=round(time.monotonic() - started, 3))
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            args.output.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            print(json.dumps({k:v for k,v in report.items() if k not in {"offers", "skip_samples"}}))
+            return 0
         checkpoint_key = hashlib.sha256(json.dumps({
             "profile": profile, "markets": args.markets, "site_id": os.environ.get("BOL_SITE_ID"),
             "shops": os.environ.get("BOL_SHOP_IDS"), "database": os.environ.get("DATABASE_URL"),
