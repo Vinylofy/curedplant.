@@ -170,6 +170,53 @@ class BolFeedTests(unittest.TestCase):
         self.assertEqual(result, 0); connect.assert_not_called()
         self.assertIn("actualMediumName", json.loads(output.read_text())["headers"])
 
+    def test_full_inspection_reports_observed_vocabulary_and_vinyl_candidates(self):
+        from scripts.importers.bol_feed import inspect_schema
+        report = inspect_schema(self.path, PROFILE)
+        self.assertTrue(report["complete_feed"])
+        self.assertEqual(report["vocabulary"]["Format"], {"LP": 20})
+        self.assertEqual(len(report["vinyl_candidate_samples"]), 20)
+        self.assertFalse(report["live_schema_verified"])
+        bounded = inspect_schema(self.path, PROFILE, max_rows=5)
+        self.assertFalse(bounded["complete_feed"])
+
+    def test_truncated_gzip_pilot_cannot_pass_integrity(self):
+        output = self.path.with_suffix(".json")
+        compressed = self.path.with_suffix(".gz")
+        compressed.write_bytes(gzip.compress(self.path.read_bytes())[:-8])
+        with patch("scripts.importers.bol_feed.psycopg.connect") as connect:
+            result = main(["--feed", str(compressed), "--profile", str(ROOT / "config/bol-feed.example.json"),
+                           "--limit", "1", "--output", str(output)])
+        self.assertEqual(result, 1)
+        connect.assert_not_called()
+
+    def test_checkpoint_only_after_success_and_unchanged_feed_does_not_write(self):
+        profile = self.path.with_suffix(".profile.json")
+        profile.write_text(json.dumps({**PROFILE, "live_schema_verified": True, "verified_markets": ["NL"]}))
+        output = self.path.with_suffix(".report.json")
+        state = self.path.with_suffix(".state.json")
+        command = ["--profile", str(profile), "--limit", "0", "--state", str(state),
+                   "--write", "--approve-publication", "--output", str(output)]
+        def download(path, **kwargs):
+            Path(path).write_bytes(self.path.read_bytes())
+            return self.now
+        with patch.dict("os.environ", {"BOL_SITE_ID": "12345", "DATABASE_URL": "test"}), patch(
+                "scripts.importers.bol_feed.download_feed", side_effect=download), patch(
+                "scripts.importers.bol_feed.publish", side_effect=FeedError("test_failure")):
+            self.assertEqual(main(command), 1)
+        self.assertFalse(state.exists())
+        with patch.dict("os.environ", {"BOL_SITE_ID": "12345", "DATABASE_URL": "test"}), patch(
+                "scripts.importers.bol_feed.download_feed", side_effect=download), patch(
+                "scripts.importers.bol_feed.publish", return_value={"updated_offers": 20}):
+            self.assertEqual(main(command), 0)
+        self.assertTrue(state.exists())
+        with patch.dict("os.environ", {"BOL_SITE_ID": "12345", "DATABASE_URL": "test"}), patch(
+                "scripts.importers.bol_feed.download_feed", return_value=self.now), patch(
+                "scripts.importers.bol_feed.publish") as writer:
+            self.assertEqual(main(command), 0)
+            writer.assert_not_called()
+        self.assertEqual(json.loads(output.read_text())["status"], "unchanged_feed")
+
     def test_xml_external_entities_are_not_loaded(self):
         p = self.path.with_suffix(".xml")
         p.write_text('<!DOCTYPE root [<!ENTITY secret SYSTEM "file:///etc/passwd">]>'

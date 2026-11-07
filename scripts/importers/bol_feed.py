@@ -211,6 +211,8 @@ def build_plan(path, profile, countries, site_id, *, limit=20, max_rows=1_000_00
                     del accepted[key]
                     reasons["conflicting_offer_for_barcode_market"] += 1
                     continue
+                if previous:
+                    reasons["identical_duplicate_offer"] += 1
                 accepted[key] = offer
                 products.add(offer["gtin"])
         except FeedError as exc:
@@ -246,20 +248,71 @@ def find_product(cur, offer):
     return rows[0][0] if rows else None
 
 
-def review_matches(plan, dsn):
+def review_matches(plan, dsn, shops=None, *, batch_size=500):
+    """Consistent read-only batches; report identity conflicts and price deltas."""
+    shops = shops or {}
     existing, new, rejected = set(), set(), []
+    comparisons = Counter()
+    grouped = {}
+    for offer in plan["offers"]:
+        grouped.setdefault(offer["gtin"], []).append(offer)
+    keys = sorted(grouped)
     with psycopg.connect(dsn, prepare_threshold=None) as conn:
-        conn.execute("set transaction read only")
+        conn.execute("set transaction isolation level repeatable read read only")
         with conn.cursor() as cur:
-            for offer in plan["offers"]:
-                try:
-                    target = find_product(cur, offer)
-                except FeedError as exc:
-                    rejected.append({"ean": offer["ean"], "country": offer["country"], "reason": str(exc)})
-                    continue
-                (existing if target else new).add(offer["gtin"])
+            for offset in range(0, len(keys), batch_size):
+                batch = keys[offset:offset + batch_size]
+                variants = {g: set().union(*(set(identifier_candidates(o["ean"], g))
+                            for o in grouped[g])) for g in batch}
+                ids = sorted(set().union(*variants.values()))
+                cur.execute("""select id,format_label,ean,gtin_normalized from public.products
+                               where ean=any(%s) or gtin_normalized=any(%s)""", (ids, ids))
+                rows = cur.fetchall()
+                lookup = {}
+                for row in rows:
+                    for value in {row[2], row[3]} - {None}:
+                        lookup.setdefault(value, {})[str(row[0])] = row
+                matched = {}
+                for gtin in batch:
+                    found = {pid: row for v in variants[gtin]
+                             for pid, row in lookup.get(v, {}).items()}
+                    reason = None
+                    if len(found) > 1:
+                        reason = "ambiguous_existing_barcode"
+                    elif found:
+                        row = next(iter(found.values()))
+                        if str(row[1] or "").strip().casefold() in {
+                                "cd", "dvd", "bluray", "blu-ray", "accessories", "poster", "digital"}:
+                            reason = "existing_product_format_conflict"
+                        else:
+                            matched[gtin] = str(row[0]); existing.add(gtin)
+                    else:
+                        new.add(gtin)
+                    if reason:
+                        rejected.append({"gtin": gtin, "reason": reason})
+                prices = {}
+                if matched and shops:
+                    cur.execute("""select product_id,shop_id,price,last_seen_at,availability
+                                   from public.prices where product_id=any(%s::uuid[])
+                                   and shop_id=any(%s::uuid[])""",
+                                (list(matched.values()), list(shops.values())))
+                    prices = {(str(r[0]), str(r[1])): r[2:] for r in cur.fetchall()}
+                for gtin, pid in matched.items():
+                    for offer in grouped[gtin]:
+                        shop = shops.get(offer["country"])
+                        if not shop:
+                            comparisons["market_shop_not_configured"] += 1; continue
+                        old = prices.get((pid, str(shop)))
+                        if old is None:
+                            comparisons["new_shop_offer"] += 1
+                        else:
+                            comparisons["unchanged_price" if old[0] == Decimal(offer["price"])
+                                        else "changed_price"] += 1
+                            if old[1] and old[1] > datetime.fromisoformat(offer["captured_at"]):
+                                comparisons["newer_database_price"] += 1
     plan.update(existing_matches=len(existing), new_products=len(new),
-                match_status="read_only_checked", match_conflicts=rejected)
+                match_status="read_only_checked", match_conflicts=rejected,
+                price_comparisons=dict(comparisons), match_batch_size=batch_size)
 
 
 def publish(plan, dsn, shops, approved=False, existing_only=False):
@@ -333,7 +386,13 @@ def publish(plan, dsn, shops, approved=False, existing_only=False):
             if cur.fetchone():
                 continue
             upsert_price(cur, str(product_id), shop_id, record, captured)
-            maybe_insert_history(cur, str(product_id), shop_id, record)
+            # History records changes, including across calendar-day boundaries.
+            cur.execute("""select price,availability from public.price_history
+                           where product_id=%s and shop_id=%s
+                           order by captured_at desc limit 1""", (product_id, shop_id))
+            latest_history = cur.fetchone()
+            if latest_history != (record.price, record.availability):
+                maybe_insert_history(cur, str(product_id), shop_id, record)
             cur.execute("""insert into public.raw_shop_scrapes
                 (shop_id,source_url,source_product_id,title_raw,ean_raw,price_raw,
                  availability_raw,payload,scraped_at,parse_status)
@@ -361,7 +420,7 @@ def publish(plan, dsn, shops, approved=False, existing_only=False):
     return stats
 
 
-def download_feed(destination, *, max_bytes=2_000_000_000):
+def _download_feed_once(destination, *, max_bytes=2_000_000_000, unchanged_since=None):
     """Explicit FTPS, verified certificates, passive TLS data. No secret URL."""
     user, password = os.environ.get("BOL_FEED_USERNAME"), os.environ.get("BOL_FEED_PASSWORD")
     if not user or not password:
@@ -383,6 +442,11 @@ def download_feed(destination, *, max_bytes=2_000_000_000):
             stage = "feed_timestamp"
             modified = ftp.sendcmd("MDTM " + FEED_NAME).split()[-1]
             source_at = datetime.strptime(modified, "%Y%m%d%H%M%S").replace(tzinfo=timezone.utc)
+            if unchanged_since is not None and source_at == unchanged_since:
+                age = (datetime.now(timezone.utc) - source_at).total_seconds()
+                if not 0 <= age <= 21600:
+                    raise FeedError("stale_or_future_feed")
+                return source_at
             stage = "download"
             with destination.open("wb") as target:
                 def receive(block):
@@ -392,6 +456,9 @@ def download_feed(destination, *, max_bytes=2_000_000_000):
                         raise FeedError("feed_download_size_limit")
                     target.write(block)
                 ftp.retrbinary("RETR " + FEED_NAME, receive)
+            stage = "verify_source_timestamp"
+            if ftp.sendcmd("MDTM " + FEED_NAME).split()[-1] != modified:
+                raise FeedError("feed_changed_during_download")
             stage = "close"
     except Exception as exc:
         destination.unlink(missing_ok=True)
@@ -416,6 +483,34 @@ def download_feed(destination, *, max_bytes=2_000_000_000):
     return source_at
 
 
+def download_feed(destination, *, max_bytes=2_000_000_000, attempts=3, unchanged_since=None):
+    """Retry only transient transfers; never retry credentials/certificate errors."""
+    for attempt in range(attempts):
+        try:
+            return _download_feed_once(destination, max_bytes=max_bytes, unchanged_since=unchanged_since)
+        except FeedError as exc:
+            transient = any(reason in str(exc) for reason in (
+                "reason=timeout", "reason=network_or_local_io", "reason=ftp_temporary_error",
+                "feed_changed_during_download"))
+            if not transient or attempt + 1 >= attempts:
+                raise
+            time.sleep(2 ** attempt)
+
+
+def verify_integrity(path, *, max_uncompressed_bytes=20_000_000_000):
+    """Verify the entire gzip trailer even for a bounded pilot; no DB access."""
+    with open(path, "rb") as probe:
+        compressed = probe.read(2) == b"\x1f\x8b"
+    count = 0
+    with (gzip.open(path, "rb") if compressed else open(path, "rb")) as stream:
+        while block := stream.read(1_048_576):
+            count += len(block)
+            if count > max_uncompressed_bytes:
+                raise FeedError("feed_uncompressed_size_limit")
+    return {"compressed_bytes": Path(path).stat().st_size,
+            "uncompressed_bytes": count, "integrity": "verified_full_read"}
+
+
 def inspect_schema(path, profile, *, max_rows=1_000_000):
     """Scan vocabulary and bounded candidate evidence; never infer a live mapping.
 
@@ -425,6 +520,7 @@ def inspect_schema(path, profile, *, max_rows=1_000_000):
     vocabulary = {}
     samples, candidates = [], []
     read, complete = 0, False
+    csv.field_size_limit(1_000_000)
     with text_feed(path) as stream:
         if profile.get("type", "csv") != "csv":
             raise FeedError("full_schema_inspection_requires_csv")
@@ -470,13 +566,15 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--feed", type=Path, help="Local CSV/XML(.gz); otherwise fetch FTPS")
     parser.add_argument("--profile", type=Path, required=True)
-    parser.add_argument("--markets", default="NL,BE")
+    parser.add_argument("--markets", default="NL")
     parser.add_argument("--limit", type=int, default=20, help="Selected products; 0=full bounded scan")
     parser.add_argument("--max-rows", type=int, default=1_000_000)
     parser.add_argument("--source-at", help="Local feed generation timestamp, ISO8601 with timezone")
     parser.add_argument("--output", type=Path, default=Path("output/bol/review.json"))
     parser.add_argument("--check-matches", action="store_true")
     parser.add_argument("--inspect-schema", action="store_true")
+    parser.add_argument("--state", type=Path, help="Successful full-writer checkpoint; skips unchanged remote MDTM")
+    parser.add_argument("--validation-suite", action="store_true", help="20-product pilot and full read-only scan from one download")
     parser.add_argument("--write", action="store_true")
     parser.add_argument("--approve-publication", action="store_true")
     args = parser.parse_args(argv)
@@ -484,15 +582,40 @@ def main(argv=None):
     report = {"status": "blocked", "database_writes": 0, "errors": []}
     try:
         profile = json.loads(args.profile.read_text())
+        if args.validation_suite and args.limit != 0:
+            raise FeedError("validation_suite_requires_limit_zero")
+        if args.state and (not args.write or args.limit != 0 or args.feed):
+            raise FeedError("state_requires_full_remote_writer")
+        if args.validation_suite and (args.write or args.inspect_schema):
+            raise FeedError("validation_suite_is_read_only_and_not_schema_inspection")
         if args.write and (not args.approve_publication or not profile.get("live_schema_verified")):
             raise FeedError("approve_publication_and_verified_live_schema_required")
+        if args.write and not set(args.markets.split(",")).issubset(profile.get("verified_markets", [])):
+            raise FeedError("market_not_live_verified")
+        checkpoint_key = hashlib.sha256(json.dumps({
+            "profile": profile, "markets": args.markets, "site_id": os.environ.get("BOL_SITE_ID"),
+            "shops": os.environ.get("BOL_SHOP_IDS"), "database": os.environ.get("DATABASE_URL"),
+        }, sort_keys=True).encode()).hexdigest()
+        previous_source = None
+        if args.state and args.state.exists():
+            previous = json.loads(args.state.read_text())
+            if previous.get("key") == checkpoint_key:
+                previous_source = datetime.fromisoformat(previous["source_at"])
         with tempfile.TemporaryDirectory(prefix="bol-feed-") as directory:
             path = args.feed or Path(directory) / FEED_NAME
             source_at = datetime.fromisoformat(args.source_at) if args.source_at else None
             if not args.feed:
-                source_at = download_feed(path)
+                source_at = download_feed(path, unchanged_since=previous_source)
+                if previous_source is not None and source_at == previous_source and not path.exists():
+                    report.update(status="unchanged_feed", source_at=source_at.isoformat(),
+                                  database_writes=0, duration_seconds=round(time.monotonic() - started, 3))
+                    args.output.parent.mkdir(parents=True, exist_ok=True)
+                    args.output.write_text(json.dumps(report, indent=2) + "\n")
+                    print(json.dumps(report))
+                    return 0
             if args.write and source_at is None:
                 raise FeedError("local_write_requires_proven_source_timestamp")
+            integrity = verify_integrity(path)
             if args.inspect_schema:
                 if args.write or args.check_matches:
                     raise FeedError("schema_inspection_cannot_write_or_query_database")
@@ -500,19 +623,37 @@ def main(argv=None):
             else:
                 report = build_plan(path, profile, args.markets.split(","), os.environ.get("BOL_SITE_ID", ""),
                                     limit=args.limit, max_rows=args.max_rows, captured_at=source_at)
+            report["file_validation"] = integrity
+            report["valid_prices"] = len(report.get("offers", []))
             report["source_at"] = source_at.isoformat() if source_at else None
             report["source_timestamp_status"] = "provided_or_ftp_mdtm" if source_at else "unknown_dry_run_only"
             report["feed_sha256"] = file_digest(path)
             if not args.inspect_schema:
                 report["status"] = "dry_run" if report["offers"] else "no_eligible_offers"
+            if args.validation_suite:
+                pilot = build_plan(path, profile, args.markets.split(","), os.environ.get("BOL_SITE_ID", ""),
+                                   limit=20, max_rows=args.max_rows, captured_at=source_at)
+                if args.check_matches:
+                    review_matches(pilot, os.environ["DATABASE_URL"],
+                                   json.loads(os.environ.get("BOL_SHOP_IDS", "{}")))
+                report["pilot_20"] = {k: v for k, v in pilot.items() if k != "offers"}
+                report["pilot_20"]["valid_prices"] = len(pilot["offers"])
             if args.check_matches:
-                review_matches(report, os.environ["DATABASE_URL"])
+                review_matches(report, os.environ["DATABASE_URL"],
+                               json.loads(os.environ.get("BOL_SHOP_IDS", "{}")))
             if args.write:
+                if args.limit == 0 and not report["complete_feed"]:
+                    raise FeedError("full_import_row_ceiling_reached")
                 shops = json.loads(os.environ.get("BOL_SHOP_IDS", "{}"))
                 result = publish(report, os.environ["DATABASE_URL"], shops, approved=True)
                 report["write_result"] = result
                 report["database_writes"] = result["updated_offers"]
                 report["status"] = "written"
+                if args.state and report["complete_feed"]:
+                    args.state.parent.mkdir(parents=True, exist_ok=True)
+                    temporary_state = args.state.with_suffix(args.state.suffix + ".tmp")
+                    temporary_state.write_text(json.dumps({"key": checkpoint_key, "source_at": source_at.isoformat()}))
+                    temporary_state.replace(args.state)
     except Exception as exc:
         # Never echo driver messages, secret paths/URLs or traceback.
         report["status"] = "blocked"

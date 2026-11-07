@@ -8,6 +8,14 @@ on:
         type: string
         default: "20"
         required: true
+      validation_suite:
+        description: "Pilot 20 plus full scan using one download; requires limit=0"
+        type: boolean
+        default: false
+      check_matches:
+        description: "Read-only database identity/price comparison; no publication"
+        type: boolean
+        default: false
       markets:
         description: "Markets to validate independently (NL first)"
         type: string
@@ -173,11 +181,15 @@ jobs:
           uv pip install --python $python 'psycopg[binary]>=3.2,<4' 'python-dotenv>=1,<2' 'lxml>=5,<6'
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Add-Content -LiteralPath $env:GITHUB_PATH -Encoding UTF8 -Value (Join-Path $venv 'Scripts')
-      - name: Review official feed (no database credentials)
+      - name: Review official feed (database comparison is read-only)
         working-directory: ${{ runner.temp }}
         if: ${{ !inputs.ip_check_only && !inputs.connectivity_check_only }}
         shell: python {0}
         env:
+          DATABASE_URL: ${{ inputs.check_matches && !inputs.inspect_schema && secrets.DATABASE_URL || '' }}
+          BOL_SHOP_IDS: '{"NL":"f08437c2-1d85-47a6-94f9-33a55612d5cc"}'
+          BOL_VALIDATION_SUITE: ${{ inputs.validation_suite }}
+          BOL_CHECK_MATCHES: ${{ inputs.check_matches }}
           BOL_FEED_USERNAME: ${{ secrets.BOL_FEED_USERNAME }}
           BOL_FEED_PASSWORD: ${{ secrets.BOL_FEED_PASSWORD }}
           BOL_SITE_ID: ${{ vars.BOL_SITE_ID }}
@@ -193,6 +205,10 @@ jobs:
               '--markets', os.environ['BOL_MARKETS'], '--max-rows', os.environ['BOL_MAX_ROWS']]
           if os.environ['BOL_INSPECT_SCHEMA'] == 'true':
               command.append('--inspect-schema')
+          elif os.environ['BOL_CHECK_MATCHES'] == 'true':
+              command.append('--check-matches')
+          if os.environ['BOL_VALIDATION_SUITE'] == 'true':
+              command.append('--validation-suite')
           subprocess.run(command, cwd=os.environ['BOL_SOURCE_DIR'], check=True)
       - name: Save review evidence only (not the bulk feed)
         if: ${{ always() && !inputs.ip_check_only && !inputs.connectivity_check_only }}
