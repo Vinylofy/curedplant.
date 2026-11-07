@@ -198,19 +198,27 @@ def select_product(row, profile, countries, site_id, captured_at):
 
 
 def build_plan(path, profile, countries, site_id, *, limit=20, max_rows=1_000_000,
-               captured_at=None):
+               captured_at=None, audit_gtins=None):
     if not countries or not set(countries).issubset(MARKETS):
         raise FeedError("unsupported_market")
     if len(set(countries)) != len(countries) or limit < 0 or max_rows < 1:
         raise FeedError("invalid_limits_or_duplicate_markets")
     captured_at = captured_at or datetime.now(timezone.utc)
     accepted, ambiguous, reasons, samples = {}, set(), Counter(), []
+    audited_seen, source_rejections = set(), []
+    audit_gtins = set(audit_gtins or [])
     products, read, exhausted = set(), 0, False
     iterator = iter(rows_from(path, profile))
     for row in iterator:
         read += 1
+        audit_gtin = strict_normalize_gtin(row.get(profile["ean"], ""))
+        if audit_gtin in audit_gtins:
+            audited_seen.add(audit_gtin)
+        rejection = None
         try:
             offers, skips = select_product(row, profile, countries, site_id, captured_at)
+            if audit_gtin in audit_gtins and not any(o["country"] == "NL" for o in offers):
+                rejection = next((v["reason"] for v in skips if v["country"] == "NL"), "no_selected_nl_offer")
             for skip in skips:
                 reasons[skip["reason"]] += 1
                 if len(samples) < 20:
@@ -231,9 +239,21 @@ def build_plan(path, profile, countries, site_id, *, limit=20, max_rows=1_000_00
                 accepted[key] = offer
                 products.add(offer["gtin"])
         except FeedError as exc:
+            rejection = str(exc)
             reasons[str(exc)] += 1
             if len(samples) < 20:
                 samples.append({"row": read, "reason": str(exc)})
+        if audit_gtin in audit_gtins and rejection:
+            fields = profile["offers"].get("NL", {})
+            source_rejections.append({"gtin": audit_gtin, "reason": rejection,
+                "source_product_id": row.get(profile["product_id"]),
+                "format": row.get(profile["format"]),
+                "category_subgroup": row.get("Category.subgroup"),
+                "category_subsubgroup": row.get("Category.subssubgroup"),
+                "condition": row.get(fields.get("condition", "")),
+                "selling_price": row.get(fields.get("price", "")),
+                "deliverable": row.get(fields.get("deliverable", "")),
+                "release_date": row.get(fields.get("release_date", ""))})
         if (limit and len(products) >= limit) or read >= max_rows:
             break
     else:
@@ -250,6 +270,9 @@ def build_plan(path, profile, countries, site_id, *, limit=20, max_rows=1_000_00
         }
     return {"source": "bol_affiliate_productfeed", "read_products": read,
             "markets": market_summary,
+            "coverage_source_rejections": source_rejections,
+            "coverage_source_absent_gtins": sorted(audit_gtins - audited_seen),
+            "coverage_source_targets": len(audit_gtins),
             "selected_new_vinyl": len({o["gtin"] for o in accepted.values()}),
             "valid_barcodes": len({o["gtin"] for o in accepted.values()}),
             "complete_feed": exhausted, "database_writes": 0,
@@ -357,6 +380,41 @@ def review_matches(plan, dsn, shops=None, *, batch_size=500):
     plan.update(existing_matches=len(existing), new_products=len(new),
                 match_status="read_only_checked", match_conflicts=rejected,
                 price_comparisons=dict(comparisons), match_batch_size=batch_size)
+
+
+def load_coverage_gtins(dsn, shops):
+    with psycopg.connect(dsn, prepare_threshold=None) as conn, conn.cursor() as cur:
+        cur.execute("set transaction read only")
+        cur.execute("""select p.ean,p.gtin_normalized from public.products p
+                       join public.prices pr on pr.product_id=p.id
+                       where pr.shop_id=any(%s::uuid[]) and pr.is_active=true""", (list(shops.values()),))
+        return {g for row in cur.fetchall() for value in row
+                if (g := strict_normalize_gtin(value))}
+
+
+def quarantine_identity_conflicts(plan):
+    """Exclude unsafe GTINs from this source; never repair canonical metadata."""
+    conflicts = plan.get("match_conflicts", [])
+    if any(c["reason"] not in {"ambiguous_existing_barcode", "existing_product_format_conflict"}
+           for c in conflicts):
+        raise FeedError("unclassified_database_conflict")
+    if not conflicts:
+        return
+    blocked = {c["gtin"] for c in conflicts}
+    before = len(plan["offers"])
+    plan["offers"] = [o for o in plan["offers"] if o["gtin"] not in blocked]
+    plan["quarantined_identity_conflicts"] = conflicts
+    plan["quarantined_offers"] = before - len(plan["offers"])
+    plan["match_conflicts"] = []
+    plan["selected_new_vinyl"] = len({o["gtin"] for o in plan["offers"]})
+    plan["valid_barcodes"] = plan["selected_new_vinyl"]
+    plan["valid_prices"] = len(plan["offers"])
+    for country, summary in plan.get("markets", {}).items():
+        offers = [o for o in plan["offers"] if o["country"] == country]
+        summary.update(selected_new_vinyl=len({o["gtin"] for o in offers}),valid_prices=len(offers),
+                       availability=dict(Counter(o["availability"] for o in offers)),
+                       shipping=dict(Counter(o["shipping_status"] for o in offers)),
+                       seller=dict(Counter(o["seller"] for o in offers)))
 
 
 class SafeWriterCursor:
@@ -719,6 +777,7 @@ def main(argv=None):
     parser.add_argument("--source-at", help="Local feed generation timestamp, ISO8601 with timezone")
     parser.add_argument("--output", type=Path, default=Path("output/bol/review.json"))
     parser.add_argument("--review-plan", type=Path, help="Trusted reviewed pilot selection; NL and <=20 products only")
+    parser.add_argument("--explain-coverage", action="store_true")
     parser.add_argument("--diagnose-writer", action="store_true")
     parser.add_argument("--check-matches", action="store_true")
     parser.add_argument("--inspect-schema", action="store_true")
@@ -765,6 +824,12 @@ def main(argv=None):
             args.output.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
             print(json.dumps({k:v for k,v in report.items() if k not in {"offers", "skip_samples"}}))
             return 0
+        audit_gtins = None
+        if args.explain_coverage:
+            if not args.check_matches or args.inspect_schema or args.limit != 0:
+                raise FeedError("coverage_explanation_requires_full_read_only_match_review")
+            audit_gtins = load_coverage_gtins(os.environ["DATABASE_URL"],
+                json.loads(os.environ.get("BOL_SHOP_IDS", "{}")))
         checkpoint_key = hashlib.sha256(json.dumps({
             "profile": profile, "markets": args.markets, "site_id": os.environ.get("BOL_SITE_ID"),
             "shops": os.environ.get("BOL_SHOP_IDS"), "database": os.environ.get("DATABASE_URL"),
@@ -795,7 +860,7 @@ def main(argv=None):
                 report = inspect_schema(path, profile, max_rows=args.max_rows)
             else:
                 report = build_plan(path, profile, args.markets.split(","), os.environ.get("BOL_SITE_ID", ""),
-                                    limit=args.limit, max_rows=args.max_rows, captured_at=source_at)
+                                    limit=args.limit, max_rows=args.max_rows, captured_at=source_at, audit_gtins=audit_gtins)
             report["file_validation"] = integrity
             report["valid_prices"] = len(report.get("offers", []))
             report["source_at"] = source_at.isoformat() if source_at else None
@@ -813,9 +878,11 @@ def main(argv=None):
                                    json.loads(os.environ.get("BOL_SHOP_IDS", "{}")))
                 report["pilot_20"] = {k: v for k, v in pilot.items() if k != "offers"}
                 report["pilot_20"]["valid_prices"] = len(pilot["offers"])
-            if args.check_matches:
+            if args.check_matches or (args.write and profile.get("quarantine_identity_conflicts")):
                 review_matches(report, os.environ["DATABASE_URL"],
                                json.loads(os.environ.get("BOL_SHOP_IDS", "{}")))
+            if profile.get("quarantine_identity_conflicts") and report.get("match_status") == "read_only_checked":
+                quarantine_identity_conflicts(report)
             if args.write:
                 if args.limit == 0 and not report["complete_feed"]:
                     raise FeedError("full_import_row_ceiling_reached")
@@ -839,7 +906,7 @@ def main(argv=None):
     report["duration_seconds"] = round(time.monotonic() - started, 3)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    print(json.dumps({k: v for k, v in report.items() if k not in {"offers", "skip_samples", "field_samples", "vinyl_candidate_samples", "vocabulary"}}))
+    print(json.dumps({k: v for k, v in report.items() if k not in {"offers", "skip_samples", "field_samples", "vinyl_candidate_samples", "vocabulary", "coverage_source_rejections", "coverage_source_absent_gtins"}}))
     return 1 if report["errors"] or (not report.get("offers") and report["status"] != "schema_inspected") else 0
 
 

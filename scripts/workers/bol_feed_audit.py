@@ -45,7 +45,7 @@ def audit_catalogue(plan, dsn, *, api_sample=0, site_id='', client=None, now=Non
     selected = {o['gtin'] for o in plan['offers'] if o['country'] == 'NL'}
     counts, missing_reasons = Counter(), Counter()
     missing, conflicts = [], []
-    conflict_gtins = {r['gtin'] for r in plan.get('match_conflicts', [])}
+    conflict_gtins = {r['gtin'] for r in plan.get('match_conflicts', []) + plan.get('quarantined_identity_conflicts', [])}
     with psycopg.connect(dsn, prepare_threshold=None, row_factory=dict_row) as conn:
         conn.execute('set transaction isolation level repeatable read read only')
         with conn.cursor() as cur:
@@ -59,6 +59,11 @@ def audit_catalogue(plan, dsn, *, api_sample=0, site_id='', client=None, now=Non
                          metadata_status,metadata_needs_review from public.products
                          where gtin_normalized=any(%s) order by gtin_normalized''', (sorted(conflict_gtins),))
             conflict_rows = cur.fetchall()
+    source_rejections = {}
+    for row in plan.get('coverage_source_rejections', []):
+        source_rejections.setdefault(row['gtin'], []).append(row)
+    source_absent = set(plan.get('coverage_source_absent_gtins', []))
+    source_reasons = Counter()
     for product in active:
         state = classify_existing(product, selected, now)
         counts['active_shop_offers'] += 1
@@ -76,7 +81,11 @@ def audit_catalogue(plan, dsn, *, api_sample=0, site_id='', client=None, now=Non
                 counts['missing_api_eligible'] += 1
                 if state['frontend_visible']:
                     counts['missing_api_eligible_frontend_visible'] += 1
-            missing.append({'product_id':str(product['id']), 'ean':product['ean'],
+            source_evidence = source_rejections.get(gtin := strict_normalize_gtin(str(product.get('ean') or '')), [])
+            source_reason = (';'.join(sorted({r['reason'] for r in source_evidence})) if source_evidence else
+                             'absent_from_entertainment_feed' if gtin in source_absent else 'not_explained_by_source_snapshot')
+            source_reasons[source_reason] += 1
+            missing.append({'source_reason':source_reason,'source_evidence':source_evidence,'product_id':str(product['id']), 'ean':product['ean'],
                             'gtin':product['gtin_normalized'], 'format':product['format_label'],
                             'last_seen_at':product['last_seen_at'].isoformat() if product['last_seen_at'] else None,
                             'availability':product['availability'], 'price':str(product['price']),
@@ -114,7 +123,7 @@ def audit_catalogue(plan, dsn, *, api_sample=0, site_id='', client=None, now=Non
     return {'status':'catalogue_audited','database_writes':0,'errors':[],
             'source_at':plan['captured_at'],'feed_sha256':plan['feed_sha256'],
             'audited_at':now.isoformat(),'counts':dict(counts),
-            'missing_reasons':dict(missing_reasons),'missing_offers':missing,
+            'missing_reasons':dict(missing_reasons),'source_reasons':dict(source_reasons),'missing_offers':missing,
             'format_conflicts':conflicts,'api_sample':api_results,
             'api_sample_counts':dict(Counter(r['status'] for r in api_results))}
 

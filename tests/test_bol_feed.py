@@ -267,6 +267,32 @@ class BolFeedTests(unittest.TestCase):
         with self.assertRaisesRegex(FeedError, "twenty"):
             reviewed_pilot(path, "a" * 64, "12345")
 
+    def test_full_source_explains_rejected_and_absent_existing_barcodes(self):
+        rows=deepcopy(self.rows)
+        rows[0]['Format']='CD';rows[1]['OfferNL.condition']='used'
+        with self.path.open('w',newline='') as stream:
+            writer=csv.DictWriter(stream,rows[0].keys(),delimiter='|');writer.writeheader();writer.writerows(rows)
+        from scripts.importers.common import strict_normalize_gtin
+        targets={strict_normalize_gtin(r['ean']) for r in rows[:3]}
+        absent=strict_normalize_gtin('4050538793437');targets.add(absent)
+        plan=build_plan(self.path,PROFILE,['NL'],'12345',limit=0,audit_gtins=targets)
+        self.assertEqual({r['reason'] for r in plan['coverage_source_rejections']},
+                         {'format_not_proven_vinyl','condition_not_proven_new'})
+        self.assertEqual(plan['coverage_source_absent_gtins'],[absent])
+        self.assertEqual(plan['coverage_source_targets'],4)
+
+    def test_quarantine_excludes_conflicting_gtin_in_every_market(self):
+        from scripts.importers.bol_feed import quarantine_identity_conflicts
+        plan=build_plan(self.path,PROFILE,['NL','BE'],'12345',limit=0)
+        gtin=plan['offers'][0]['gtin']
+        plan['match_conflicts']=[{'gtin':gtin,'reason':'existing_product_format_conflict'}]
+        quarantine_identity_conflicts(plan)
+        self.assertEqual(plan['selected_new_vinyl'],19)
+        self.assertEqual(plan['quarantined_offers'],2)
+        self.assertFalse(any(o['gtin']==gtin for o in plan['offers']))
+        self.assertEqual(plan['markets']['NL']['valid_prices'],19)
+        self.assertTrue(plan['complete_feed'])
+
     def test_xml_external_entities_are_not_loaded(self):
         p = self.path.with_suffix(".xml")
         p.write_text('<!DOCTYPE root [<!ENTITY secret SYSTEM "file:///etc/passwd">]>'

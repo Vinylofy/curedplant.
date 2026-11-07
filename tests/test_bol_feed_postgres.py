@@ -226,6 +226,21 @@ class BolPostgresTests(unittest.TestCase):
         with psycopg.connect(self.dsn) as conn:
             self.assertEqual(conn.execute('select count(*) from public.price_history').fetchone()[0],4)
 
+    def test_quarantined_format_conflict_preserves_canonical_product_and_old_prices(self):
+        from scripts.importers.bol_feed import quarantine_identity_conflicts
+        self.write()
+        blocked=self.plan['offers'][0]['gtin']
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("update public.products set format_label='CD' where gtin_normalized=%s",(blocked,))
+        plan=deepcopy(self.plan);now=datetime.now(timezone.utc).isoformat();plan['captured_at']=now
+        for offer in plan['offers']:offer.update(price='99.00',captured_at=now)
+        review_matches(plan,self.dsn,self.shops);quarantine_identity_conflicts(plan)
+        stats=self.write(plan)
+        self.assertEqual(stats['updated_offers'],2)
+        with psycopg.connect(self.dsn) as conn:
+            self.assertEqual(conn.execute('select format_label from public.products where gtin_normalized=%s',(blocked,)).fetchone()[0],'CD')
+            self.assertEqual(conn.execute("select count(*) from public.prices pr join public.products p on p.id=pr.product_id where p.gtin_normalized=%s and pr.price=99",(blocked,)).fetchone()[0],0)
+
     def test_database_failure_rolls_back_products_prices_and_evidence(self):
         with patch("scripts.importers.bol_feed.maybe_insert_history", side_effect=RuntimeError("test failure")):
             with self.assertRaises(RuntimeError):
