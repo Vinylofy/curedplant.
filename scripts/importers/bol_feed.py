@@ -199,7 +199,7 @@ def select_product(row, profile, countries, site_id, captured_at):
 
 
 def build_plan(path, profile, countries, site_id, *, limit=20, max_rows=1_000_000,
-               captured_at=None, audit_gtins=None):
+               captured_at=None, audit_gtins=None, target_gtins=None):
     if not countries or not set(countries).issubset(MARKETS):
         raise FeedError("unsupported_market")
     if len(set(countries)) != len(countries) or limit < 0 or max_rows < 1:
@@ -208,12 +208,18 @@ def build_plan(path, profile, countries, site_id, *, limit=20, max_rows=1_000_00
     accepted, ambiguous, reasons, samples = {}, set(), Counter(), []
     audited_seen, source_rejections = set(), []
     audit_gtins = set(audit_gtins or [])
+    target_variants = None if target_gtins is None else {value for gtin in target_gtins
+        for value in identifier_candidates(gtin,gtin)}
     products, read, exhausted = set(), 0, False
     iterator = iter(rows_from(path, profile))
     for row in iterator:
         read += 1
         if read % 100000 == 0:
             print(json.dumps({'stage':'plan_progress','read_products':read,'accepted_offers':len(accepted)}),flush=True)
+        if target_variants is not None and row.get(profile['ean'],'').strip() not in target_variants:
+            reasons['not_target_existing_barcode'] += 1
+            if read >= max_rows:break
+            continue
         audit_gtin = strict_normalize_gtin(row.get(profile["ean"], ""))
         if audit_gtin in audit_gtins:
             audited_seen.add(audit_gtin)
@@ -876,8 +882,10 @@ def inspect_feed_inventory(inspect_headers=False):
             'host':FTP_HOST,'port':21,'official_feed_files':feeds,'supplemental_header_probes':probes}
 
 
-def _download_feed_once(destination, *, max_bytes=2_000_000_000, unchanged_since=None):
+def _download_feed_once(destination, *, max_bytes=2_000_000_000, unchanged_since=None, feed_name=FEED_NAME):
     """Explicit FTPS, verified certificates, passive TLS data. No secret URL."""
+    if feed_name not in {FEED_NAME,'product-feed_dutch-books-v2.csv.gz','product-feed_sound-vision-v2.csv.gz'}:
+        raise FeedError('unapproved_feed_filename')
     user, password = os.environ.get("BOL_FEED_USERNAME"), os.environ.get("BOL_FEED_PASSWORD")
     if not user or not password:
         raise FeedError("missing_feed_credentials")
@@ -896,7 +904,7 @@ def _download_feed_once(destination, *, max_bytes=2_000_000_000, unchanged_since
             stage = "passive_mode"
             ftp.set_pasv(True)
             stage = "feed_timestamp"
-            modified = ftp.sendcmd("MDTM " + FEED_NAME).split()[-1]
+            modified = ftp.sendcmd("MDTM " + feed_name).split()[-1]
             source_at = datetime.strptime(modified, "%Y%m%d%H%M%S").replace(tzinfo=timezone.utc)
             if unchanged_since is not None and source_at == unchanged_since:
                 age = (datetime.now(timezone.utc) - source_at).total_seconds()
@@ -916,9 +924,9 @@ def _download_feed_once(destination, *, max_bytes=2_000_000_000, unchanged_since
                     if size >= next_progress:
                         print(json.dumps({'stage':'download_progress','downloaded_bytes':size}),flush=True)
                         next_progress += 64 * 1024 * 1024
-                ftp.retrbinary("RETR " + FEED_NAME, receive)
+                ftp.retrbinary("RETR " + feed_name, receive)
             stage = "verify_source_timestamp"
-            if ftp.sendcmd("MDTM " + FEED_NAME).split()[-1] != modified:
+            if ftp.sendcmd("MDTM " + feed_name).split()[-1] != modified:
                 raise FeedError("feed_changed_during_download")
             stage = "close"
     except Exception as exc:
@@ -944,11 +952,11 @@ def _download_feed_once(destination, *, max_bytes=2_000_000_000, unchanged_since
     return source_at
 
 
-def download_feed(destination, *, max_bytes=2_000_000_000, attempts=3, unchanged_since=None):
+def download_feed(destination, *, max_bytes=2_000_000_000, attempts=3, unchanged_since=None, feed_name=FEED_NAME):
     """Retry only transient transfers; never retry credentials/certificate errors."""
     for attempt in range(attempts):
         try:
-            return _download_feed_once(destination, max_bytes=max_bytes, unchanged_since=unchanged_since)
+            return _download_feed_once(destination, max_bytes=max_bytes, unchanged_since=unchanged_since,feed_name=feed_name)
         except FeedError as exc:
             transient = any(reason in str(exc) for reason in (
                 "reason=timeout", "reason=network_or_local_io", "reason=ftp_temporary_error",
@@ -1023,6 +1031,56 @@ def inspect_schema(path, profile, *, max_rows=1_000_000):
             "offers": [], "live_schema_verified": False}
 
 
+def supplemental_review(reference_path,profile,dsn,shops,site_id,max_rows=5000000):
+    """One-off read-only search of known existing GTINs; no discovery outside Entertainment."""
+    reference=json.loads(Path(reference_path).read_text(encoding='utf-8'))
+    if (reference.get('source')!='bol_affiliate_productfeed' or not reference.get('complete_feed')
+            or reference.get('errors')):
+        raise FeedError('complete_primary_source_reference_required')
+    existing=load_coverage_gtins(dsn,shops)
+    primary={o['gtin'] for o in reference['offers'] if o['country']=='NL'}
+    targets=existing-primary
+    file_reviews=[];accepted={};ambiguous=set();skipped=Counter()
+    with tempfile.TemporaryDirectory(prefix='bol-supplemental-review-') as directory:
+        for name in ('product-feed_dutch-books-v2.csv.gz','product-feed_sound-vision-v2.csv.gz'):
+            path=Path(directory)/name
+            print(json.dumps({'stage':'supplemental_source_start','filename':name,'target_existing_gtins':len(targets)}),flush=True)
+            captured=download_feed(path,feed_name=name)
+            integrity=verify_integrity(path)
+            plan=build_plan(path,profile,['NL'],site_id,limit=0,max_rows=max_rows,
+                            captured_at=captured,audit_gtins=targets,target_gtins=targets)
+            if not plan['complete_feed']:
+                raise FeedError('supplemental_source_row_ceiling_reached')
+            file_reviews.append({k:plan[k] for k in ('read_products','complete_feed','coverage_source_rejections',
+                'coverage_source_absent_gtins','skipped','selected_new_vinyl')})
+            file_reviews[-1].update(filename=name,source_at=captured.isoformat(),feed_sha256=file_digest(path),file_validation=integrity)
+            skipped.update(plan['skipped'])
+            for offer in plan['offers']:
+                key=(offer['gtin'],offer['country'])
+                if key in ambiguous:continue
+                prior=accepted.get(key)
+                if prior and any(prior[field]!=offer[field] for field in ('product_id','price','availability','shipping','product_url')):
+                    accepted.pop(key,None);ambiguous.add(key);continue
+                accepted[key]=offer
+            path.unlink()
+    offers=list(accepted.values())
+    result={'source':'bol_affiliate_supplemental_read_only_review','status':'supplemental_audited',
+            'database_writes':0,'errors':[],'offers':offers,'complete_feed':False,
+            'complete_supplemental_files':True,'primary_source_at':reference['source_at'],
+            'primary_feed_sha256':reference['feed_sha256'],'target_existing_gtins':len(targets),
+            'read_products':sum(r['read_products'] for r in file_reviews),'file_reviews':file_reviews,
+            'captured_at':min((r['source_at'] for r in file_reviews)),
+            'markets':{'NL':{'selected_new_vinyl':len({o['gtin'] for o in offers}),'valid_prices':len(offers)}},
+            'skipped':dict(skipped),'ambiguous_source_gtins':len(ambiguous)}
+    review_matches(result,dsn,shops)
+    quarantine_identity_conflicts(result)
+    result['resolved_existing_gtins']=len({o['gtin'] for o in result['offers']})
+    result['remaining_target_gtins']=sorted(targets-{o['gtin'] for o in result['offers']})
+    if result['new_products']:
+        raise FeedError('supplemental_target_must_already_exist')
+    return result
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--feed", type=Path, help="Local CSV/XML(.gz); otherwise fetch FTPS")
@@ -1033,6 +1091,7 @@ def main(argv=None):
     parser.add_argument("--source-at", help="Local feed generation timestamp, ISO8601 with timezone")
     parser.add_argument("--output", type=Path, default=Path("output/bol/review.json"))
     parser.add_argument("--review-plan", type=Path, help="Trusted reviewed pilot selection; NL and <=20 products only")
+    parser.add_argument("--supplemental-reference",type=Path,help="Read-only existing-EAN audit of two fixed official supplemental groups")
     parser.add_argument("--inspect-ftps-inventory", action="store_true")
     parser.add_argument("--explain-coverage", action="store_true")
     parser.add_argument("--diagnose-writer", action="store_true")
@@ -1065,6 +1124,16 @@ def main(argv=None):
             print(json.dumps(report))
             return 0
         profile = json.loads(args.profile.read_text(encoding="utf-8"))
+        if args.supplemental_reference:
+            if args.write or args.markets!='NL' or not args.check_matches or args.state or args.review_state:
+                raise FeedError('supplemental_audit_is_strictly_read_only_nl')
+            report=supplemental_review(args.supplemental_reference,profile,os.environ['DATABASE_URL'],
+                json.loads(os.environ.get('BOL_SHOP_IDS','{}')),os.environ.get('BOL_SITE_ID',''),max_rows=args.max_rows)
+            report['duration_seconds']=round(time.monotonic()-started,3)
+            args.output.parent.mkdir(parents=True,exist_ok=True)
+            args.output.write_text(json.dumps(report,indent=2,ensure_ascii=False)+'\n',encoding='utf-8')
+            print(json.dumps({k:v for k,v in report.items() if k not in {'offers','file_reviews','remaining_target_gtins'}}))
+            return 0
         if args.validation_suite and args.limit != 0:
             raise FeedError("validation_suite_requires_limit_zero")
         if args.review_state and (args.write or args.feed or args.limit != 0 or args.inspect_schema or args.state):

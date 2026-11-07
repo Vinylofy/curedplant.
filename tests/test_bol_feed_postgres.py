@@ -330,6 +330,28 @@ class BolPostgresTests(unittest.TestCase):
             self.assertEqual(report['existing_offer_coverage']['NL']['required_current_offers'],1)
             self.assertEqual(report['quarantined_offers'],2)
 
+    def test_supplemental_review_selects_only_missing_existing_products_without_writes(self):
+        from scripts.importers.bol_feed import supplemental_review
+        self.write()
+        reference=deepcopy(self.plan);reference.update(source_at=reference['captured_at'],feed_sha256='test')
+        first=reference['offers'][0]['gtin'];reference['offers']=[o for o in reference['offers'] if o['gtin']==first]
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'primary.json';path.write_text(json.dumps(reference))
+            def download(destination,**kwargs):
+                demo.generate(destination,count=2)
+                return datetime.now(timezone.utc)
+            with patch('scripts.importers.bol_feed.download_feed',side_effect=download):
+                report=supplemental_review(path,PROFILE,self.dsn,{'NL':self.shops['NL']},'12345')
+        self.assertEqual(report['database_writes'],0)
+        self.assertEqual(report['target_existing_gtins'],1)
+        self.assertEqual(report['resolved_existing_gtins'],1)
+        self.assertEqual(report['remaining_target_gtins'],[])
+        self.assertEqual(report['new_products'],0)
+        self.assertTrue(report['complete_supplemental_files'])
+        with psycopg.connect(self.dsn) as conn:
+            self.assertEqual(conn.execute('select count(*) from public.products').fetchone()[0],2)
+            self.assertEqual(conn.execute('select count(*) from public.price_history').fetchone()[0],4)
+
     def test_database_failure_rolls_back_products_prices_and_evidence(self):
         with patch("scripts.importers.bol_feed.maybe_insert_history", side_effect=RuntimeError("test failure")):
             with self.assertRaises(RuntimeError):

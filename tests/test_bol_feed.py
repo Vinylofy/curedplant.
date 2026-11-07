@@ -326,6 +326,21 @@ class BolFeedTests(unittest.TestCase):
         with patch('scripts.importers.bol_feed.download_feed') as network:
             self.assertEqual(main(command+['--write','--approve-publication']),1);network.assert_not_called()
 
+    def test_targeted_source_scan_never_discovers_other_products(self):
+        target=self.select(self.rows[2])[0][0]['gtin']
+        plan=build_plan(self.path,PROFILE,['NL'],'12345',limit=0,target_gtins={target})
+        self.assertTrue(plan['complete_feed'])
+        self.assertEqual({o['gtin'] for o in plan['offers']},{target})
+        self.assertEqual(plan['skipped']['not_target_existing_barcode'],19)
+
+    def test_supplemental_mode_cannot_be_used_as_a_publication_path(self):
+        output=self.path.with_suffix('.supplemental.json')
+        with patch('scripts.importers.bol_feed.psycopg.connect') as conn,patch(
+                'scripts.importers.bol_feed.download_feed') as network:
+            result=main(['--profile',str(ROOT/'config/bol-feed.live.json'),'--supplemental-reference',str(self.path),
+                         '--check-matches','--write','--approve-publication','--output',str(output)])
+        self.assertEqual(result,1);conn.assert_not_called();network.assert_not_called()
+
     def test_xml_external_entities_are_not_loaded(self):
         p = self.path.with_suffix(".xml")
         p.write_text('<!DOCTYPE root [<!ENTITY secret SYSTEM "file:///etc/passwd">]>'

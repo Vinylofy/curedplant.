@@ -10,7 +10,7 @@ on:
       mode:
         description: "Publication requires separate explicit approval; full import also requires API chain paused"
         type: choice
-        options: [dry_run, diagnose_writer, audit_catalogue, pilot_review_write, pilot_write, full_write]
+        options: [dry_run, diagnose_writer, audit_catalogue, audit_supplemental, pilot_review_write, pilot_write, full_write]
         default: dry_run
       audit_review_run_id:
         description: "Read-only audit: completed full feed-review workflow run"
@@ -206,8 +206,8 @@ jobs:
         with:
           script: |
             const mode = process.env.BOL_MODE;
-            if (!['dry_run', 'diagnose_writer', 'pilot_write', 'full_write'].includes(mode)) throw new Error('Unknown mode');
-            if (!['dry_run', 'diagnose_writer'].includes(mode) && (context.ref !== 'refs/heads/main' || process.env.BOL_APPROVE !== 'true')) {
+            if (!['dry_run', 'diagnose_writer', 'audit_supplemental', 'pilot_write', 'full_write'].includes(mode)) throw new Error('Unknown mode');
+            if (!['dry_run', 'diagnose_writer', 'audit_supplemental'].includes(mode) && (context.ref !== 'refs/heads/main' || process.env.BOL_APPROVE !== 'true')) {
               throw new Error('Publication requires main and explicit approval');
             }
             if (mode === 'pilot_write' && !/^[0-9a-f]{64}$/.test(process.env.BOL_EXPECTED_SHA256 || '')) {
@@ -304,6 +304,24 @@ jobs:
           uv pip install --python $python 'psycopg[binary]>=3.2,<4' 'python-dotenv>=1,<2' 'lxml>=5,<6'
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Add-Content -LiteralPath $env:GITHUB_PATH -Encoding UTF8 -Value (Join-Path $venv 'Scripts')
+      - name: Download trusted complete primary review for read-only supplemental search
+        if: ${{ inputs.mode == 'audit_supplemental' }}
+        uses: actions/github-script@v8
+        env:
+          BOL_REFERENCE_RUN: ${{ inputs.audit_review_run_id }}
+        with:
+          script: |
+            if (!/^[0-9]+$/.test(process.env.BOL_REFERENCE_RUN || '')) throw new Error('Primary review run required');
+            const run_id=Number(process.env.BOL_REFERENCE_RUN);
+            const {data:run}=await github.rest.actions.getWorkflowRun({owner:context.repo.owner,repo:context.repo.repo,run_id});
+            if (run.conclusion!=='success' || run.path!=='.github/workflows/bol-feed-review.yml') throw new Error('Successful primary review required');
+            const {data}=await github.rest.actions.listWorkflowRunArtifacts({owner:context.repo.owner,repo:context.repo.repo,run_id});
+            const artifact=data.artifacts.find(a=>a.name===`bol-feed-review-${run_id}` && !a.expired);
+            if (!artifact) throw new Error('Primary review artifact unavailable');
+            const archive=await github.rest.actions.downloadArtifact({owner:context.repo.owner,repo:context.repo.repo,artifact_id:artifact.id,archive_format:'zip'});
+            const fs=require('node:fs/promises'),path=require('node:path');
+            const directory=path.join(process.env.BOL_SOURCE_DIR,'work','supplemental');
+            await fs.mkdir(directory,{recursive:true});await fs.writeFile(path.join(directory,'reference.zip'),Buffer.from(archive.data));
       - name: Run existing controlled importer
         working-directory: ${{ runner.temp }}
         shell: python {0}
@@ -322,7 +340,13 @@ jobs:
           command = [sys.executable, '-m', 'scripts.importers.bol_feed',
               '--profile', 'config/bol-feed.live.json', '--markets', 'NL',
               '--max-rows', '5000000', '--limit', '0' if mode == 'full_write' else '20']
-          if mode == 'diagnose_writer':
+          if mode == 'audit_supplemental':
+              import zipfile
+              source = Path(os.environ['BOL_SOURCE_DIR'])
+              with zipfile.ZipFile(source / 'work/supplemental/reference.zip') as archive:
+                  (source / 'work/supplemental/reference.json').write_bytes(archive.read('review.json'))
+              command.extend(['--check-matches','--supplemental-reference','work/supplemental/reference.json'])
+          elif mode == 'diagnose_writer':
               command.extend(['--diagnose-writer'])
           elif mode == 'dry_run':
               command.append('--check-matches')
