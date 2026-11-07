@@ -22,6 +22,7 @@ import re
 import ssl
 import sys
 import tempfile
+import time
 from urllib.parse import urlencode, urlsplit, urlunsplit
 
 from lxml import etree
@@ -415,30 +416,53 @@ def download_feed(destination, *, max_bytes=2_000_000_000):
     return source_at
 
 
-def inspect_schema(path, profile):
-    """Inspect headers/format vocabularies without exporting bulk content."""
-    if profile.get("type", "csv") == "csv":
-        with text_feed(path) as stream:
-            reader = csv.DictReader(stream, delimiter="|", strict=True)
-            headers = reader.fieldnames or []
-            samples = []
-            for _, row in zip(range(20), reader):
-                samples.append({k: v for k, v in row.items() if k and re.search(
-                    r"format|drager|condition|sellerType|category|gpc", k, re.I)})
-    else:
-        iterator = rows_from(path, profile)
-        samples = []
-        headers = set()
-        for _, row in zip(range(20), iterator):
-            headers.update(row)
-            samples.append({k: v for k, v in row.items() if re.search(
-                r"format|drager|condition|sellerType|category|gpc", k, re.I)})
-        iterator.close()
-        headers = sorted(headers)
-    if not headers:
-        raise FeedError("empty_feed_schema")
+def inspect_schema(path, profile, *, max_rows=1_000_000):
+    """Scan vocabulary and bounded candidate evidence; never infer a live mapping.
+
+    Candidate detection is diagnostic only. It cannot approve or publish offers.
+    Full traversal checks gzip CRC, unlike a twenty-row schema preview.
+    """
+    vocabulary = {}
+    samples, candidates = [], []
+    read, complete = 0, False
+    with text_feed(path) as stream:
+        if profile.get("type", "csv") != "csv":
+            raise FeedError("full_schema_inspection_requires_csv")
+        reader = csv.DictReader(stream, delimiter="|", strict=True)
+        headers = reader.fieldnames or []
+        if not headers or len(headers) != len(set(headers)):
+            raise FeedError("missing_or_duplicate_feed_headers")
+        diagnostic = [k for k in headers if re.search(
+            r"format|drager|condition|sellerType|category|gpc|isDeliverable", k, re.I)]
+        for row in reader:
+            read += 1
+            if None in row or any(v is None for v in row.values()):
+                raise FeedError("malformed_feed_row")
+            for k in diagnostic:
+                counts = vocabulary.setdefault(k, Counter())
+                value = row[k]
+                # Bound diagnostics even if a source unexpectedly changes type.
+                if value in counts or len(counts) < 200:
+                    counts[value] += 1
+                else:
+                    counts["__other_values__"] += 1
+            if len(samples) < 20:
+                samples.append({k: row[k] for k in diagnostic})
+            if len(candidates) < 20 and any(re.search(
+                    r"vinyl|\blp\b", row[k], re.I) for k in diagnostic
+                    if re.search(r"format|drager|subgroup", k, re.I)):
+                safe = {"ean", "productId", "title", "Performer", "Author", "Format",
+                        "AppearanceName", "BindingCode", "productPageUrlNL", "productPageUrlBE"}
+                safe.update(k for k in headers if k.startswith(("OfferNL.", "OfferBE.")))
+                candidates.append({k: row[k] for k in headers if k in safe})
+            if read >= max_rows:
+                break
+        else:
+            complete = True
     return {"status": "schema_inspected", "database_writes": 0, "errors": [],
-            "headers": headers, "field_samples": samples,
+            "headers": headers, "field_samples": samples, "vocabulary": vocabulary,
+            "vinyl_candidate_samples": candidates, "read_products": read,
+            "complete_feed": complete, "gzip_integrity": "verified_full_read" if complete else "not_fully_checked",
             "offers": [], "live_schema_verified": False}
 
 
@@ -456,6 +480,7 @@ def main(argv=None):
     parser.add_argument("--write", action="store_true")
     parser.add_argument("--approve-publication", action="store_true")
     args = parser.parse_args(argv)
+    started = time.monotonic()
     report = {"status": "blocked", "database_writes": 0, "errors": []}
     try:
         profile = json.loads(args.profile.read_text())
@@ -471,10 +496,11 @@ def main(argv=None):
             if args.inspect_schema:
                 if args.write or args.check_matches:
                     raise FeedError("schema_inspection_cannot_write_or_query_database")
-                report = inspect_schema(path, profile)
+                report = inspect_schema(path, profile, max_rows=args.max_rows)
             else:
                 report = build_plan(path, profile, args.markets.split(","), os.environ.get("BOL_SITE_ID", ""),
                                     limit=args.limit, max_rows=args.max_rows, captured_at=source_at)
+            report["source_at"] = source_at.isoformat() if source_at else None
             report["source_timestamp_status"] = "provided_or_ftp_mdtm" if source_at else "unknown_dry_run_only"
             report["feed_sha256"] = file_digest(path)
             if not args.inspect_schema:
@@ -494,9 +520,10 @@ def main(argv=None):
         if args.write:
             # Commit can be ambiguous on connection loss; never assert zero.
             report["database_writes"] = None
+    report["duration_seconds"] = round(time.monotonic() - started, 3)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n")
-    print(json.dumps({k: v for k, v in report.items() if k not in {"offers", "skip_samples"}}))
+    print(json.dumps({k: v for k, v in report.items() if k not in {"offers", "skip_samples", "field_samples", "vinyl_candidate_samples", "vocabulary"}}))
     return 1 if report["errors"] or (not report.get("offers") and report["status"] != "schema_inspected") else 0
 
 

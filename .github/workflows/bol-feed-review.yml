@@ -8,6 +8,14 @@ on:
         type: string
         default: "20"
         required: true
+      markets:
+        description: "Markets to validate independently (NL first)"
+        type: string
+        default: "NL"
+      max_rows:
+        description: "Safety ceiling; complete_feed must be true for full validation"
+        type: string
+        default: "5000000"
       ip_check_only:
         description: "Only display this Windows runner's public IPv4; no feed login"
         type: boolean
@@ -174,12 +182,15 @@ jobs:
           BOL_FEED_PASSWORD: ${{ secrets.BOL_FEED_PASSWORD }}
           BOL_SITE_ID: ${{ vars.BOL_SITE_ID }}
           BOL_PROFILE: ${{ vars.BOL_FEED_PROFILE || 'config/bol-feed.example.json' }}
+          BOL_MARKETS: ${{ inputs.markets }}
+          BOL_MAX_ROWS: ${{ inputs.max_rows }}
           BOL_LIMIT: ${{ inputs.limit }}
           BOL_INSPECT_SCHEMA: ${{ inputs.inspect_schema }}
         run: |
           import os, subprocess, sys
           command = [sys.executable, '-m', 'scripts.importers.bol_feed',
-              '--profile', os.environ['BOL_PROFILE'], '--limit', os.environ['BOL_LIMIT']]
+              '--profile', os.environ['BOL_PROFILE'], '--limit', os.environ['BOL_LIMIT'],
+              '--markets', os.environ['BOL_MARKETS'], '--max-rows', os.environ['BOL_MAX_ROWS']]
           if os.environ['BOL_INSPECT_SCHEMA'] == 'true':
               command.append('--inspect-schema')
           subprocess.run(command, cwd=os.environ['BOL_SOURCE_DIR'], check=True)

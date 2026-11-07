@@ -4,7 +4,7 @@
   "ean": "ean",
   "product_id": "productId",
   "title": "title",
-  "format": "Properties.Drager",
+  "format": "Format",
   "vinyl_values": ["Vinyl", "LP"],
   "new_values": ["NEW"],
   "offers": {
@@ -14,7 +14,7 @@
       "condition": "OfferNL.condition",
       "deliverable": "OfferNL.isDeliverable",
       "seller_type": "OfferNL.sellerType",
-      "url": "productUrlNL"
+      "url": "productPageUrlNL"
     },
     "BE": {
       "price": "OfferBE.sellingPrice",
@@ -22,7 +22,7 @@
       "condition": "OfferBE.condition",
       "deliverable": "OfferBE.isDeliverable",
       "seller_type": "OfferBE.sellerType",
-      "url": "productUrlBE"
+      "url": "productPageUrlBE"
     }
   }
 }

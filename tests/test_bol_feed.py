@@ -61,7 +61,7 @@ class BolFeedTests(unittest.TestCase):
             self.assertEqual([o["country"] for o in offers], ["BE"])
             self.assertEqual(skipped[0]["reason"], "condition_not_proven_new")
         for value in ["CD", "DVD", "Vinyl stand", "", "LP+CD"]:
-            row = deepcopy(self.rows[0]); row["Properties.Drager"] = value
+            row = deepcopy(self.rows[0]); row["Format"] = value
             with self.assertRaisesRegex(FeedError, "format_not_proven_vinyl"):
                 self.select(row)
 
@@ -95,12 +95,12 @@ class BolFeedTests(unittest.TestCase):
                 amount(value)
 
     def test_links_are_encoded_site_scoped_and_country_checked(self):
-        link = affiliate_link(self.rows[0]["productUrlBE"], "BE", "12345")
+        link = affiliate_link(self.rows[0]["productPageUrlBE"], "BE", "12345")
         query = parse_qs(urlsplit(link).query)
         self.assertEqual(query["s"], ["12345"])
         self.assertEqual(query["f"], ["pf"])
-        self.assertEqual(query["url"], [self.rows[0]["productUrlBE"]])
-        for value in [self.rows[0]["productUrlNL"], "https://bol.com.attacker.invalid/be/nl/p/a/123/",
+        self.assertEqual(query["url"], [self.rows[0]["productPageUrlBE"]])
+        for value in [self.rows[0]["productPageUrlNL"], "https://bol.com.attacker.invalid/be/nl/p/a/123/",
                       "https://www.bol.com/be/nl/p/a/123/?token=secret"]:
             with self.assertRaises(FeedError):
                 affiliate_link(value, "BE", "12345")
@@ -132,7 +132,7 @@ class BolFeedTests(unittest.TestCase):
                 if k.startswith("Offer" + country + ".")) + f"</Offer{country}>")
         parts.append("<Properties><Property><key>Drager</key><value>LP</value></Property></Properties>")
         p.write_text('<Products xmlns="urn:bol:test"><Product>' + "".join(parts) + '</Product></Products>')
-        profile = {**PROFILE, "type": "xml"}
+        profile = {**PROFILE, "type": "xml", "format": "Properties.Drager"}
         plan = build_plan(p, profile, ["NL", "BE"], "12345", limit=0)
         self.assertEqual(len(plan["offers"]), 2)
 
