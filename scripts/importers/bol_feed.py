@@ -402,6 +402,16 @@ def writer_diagnostics(dsn):
                        where schemaname='public' and relname=any(%s)""",
                     (["products", "raw_shop_scrapes", "prices", "price_history"],))
         sizes = cur.fetchall()
+        cur.execute("""select c.relname,t.tgname,p.proname
+                       from pg_trigger t join pg_class c on c.oid=t.tgrelid
+                       join pg_namespace n on n.oid=c.relnamespace join pg_proc p on p.oid=t.tgfoid
+                       where n.nspname='public' and not t.tgisinternal
+                       and c.relname=any(%s) order by c.relname,t.tgname""",
+                    (["products", "raw_shop_scrapes", "prices", "price_history"],))
+        triggers = cur.fetchall()
+        cur.execute("""select state,wait_event_type,wait_event,count(*) from pg_stat_activity
+                       where datname=current_database() group by state,wait_event_type,wait_event""")
+        activity = cur.fetchall()
         cur.execute("""explain select 1 from public.raw_shop_scrapes where shop_id=%s
                        and source_product_id=%s and payload->>'bol_import_digest'=%s limit 1""",
                     ("f08437c2-1d85-47a6-94f9-33a55612d5cc", "9300000332934928", "diagnostic_nonexistent_digest"))
@@ -412,7 +422,7 @@ def writer_diagnostics(dsn):
         product_plan = [r[0] for r in cur.fetchall()]
     return {"status": "writer_diagnosed", "database_writes": 0, "errors": [],
             "statement_timeout": timeout, "lock_timeout": lock_timeout,
-            "advisory_locks": locks, "indexes": indexes, "table_estimates": sizes,
+            "advisory_locks": locks, "indexes": indexes, "table_estimates": sizes, "triggers": triggers, "activity": activity,
             "replay_lookup_plan": replay_plan, "product_lookup_plan": product_plan}
 
 
