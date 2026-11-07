@@ -1,0 +1,1873 @@
+{
+  "source_review_run": "https://github.com/Vinylofy/curedplant./actions/runs/42412781246",
+  "catalogue_audit_run": "https://github.com/Vinylofy/curedplant./actions/runs/42414643425",
+  "inventory_probe_run": "https://github.com/Vinylofy/curedplant./actions/runs/42415218461",
+  "feed_sha256": "84f38d02c353b60909161d78e9d17437c94034f05c0afbfccc9895ba73dcb66a",
+  "source_at": "2026-11-07T20:03:54+00:00",
+  "read_products": 913984,
+  "complete_feed": true,
+  "file_validation": {
+    "compressed_bytes": 342896951,
+    "uncompressed_bytes": 1233323599,
+    "integrity": "verified_full_read"
+  },
+  "eligible_after_quarantine": 146011,
+  "planned_existing_matches": 59499,
+  "planned_new_products": 86512,
+  "quarantined_offers": 100,
+  "quarantined_identity_conflicts": [
+    {
+      "gtin": "00050087590352",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "00090771562210",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "00093624849858",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "00093624869375",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "00093624881810",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "00093624893868",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "00093624920830",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "00097037080969",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "00098787136418",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "00098787317305",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "00190295209414",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "00191400062122",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "00191400090712",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "00194171219115",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "00194397856316",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "00194399086513",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "00196587375010",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "00196922461736",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "00600197018613",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "00602438820405",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "00602445574735",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "00602475667025",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "00602507381332",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "00602508309656",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "00602508760327",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "00602567891635",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "00603497837571",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "00603497841325",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "00617308114331",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "00634457144224",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "00634457558618",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "00634457790018",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "00659696429611",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "00659696539310",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "00689176893472",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "00694685736196",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "00730003304460",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "00789577791312",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "00792671668701",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "00793888925915",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "00810540039046",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "00826257038319",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "00843563191965",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "00850019164350",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "00850079591295",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "00884388889880",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "00887828052318",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "00887828052820",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "00887834007319",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "00888072556270",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "00888837900010",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "00889853626212",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "01971901543752",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "03521383499368",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "03596973672964",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "03596974559561",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "03760248837321",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "03760248838915",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "03760347748399",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "03760420424776",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "03770001243139",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "04015698090741",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "04016368910185",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "04024572603045",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "04024572641436",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "04029759169635",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "04038952010927",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "04050538868838",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "04059251152897",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "04250444185306",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "04250506811846",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "04251896105881",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "04260126061712",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "04260435271499",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "05014797901834",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "05026328005188",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "05037128147213",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "05051083217309",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "05054197733093",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "05055036215602",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "05056340103364",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "05056556162094",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "05056614704716",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "05060525439612",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "05060767443781",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "05060921977404",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "05061017253310",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "05063176038579",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "05063176060914",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "05063176070913",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "05397102140112",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "05400863030537",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "07071750200166",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "07320470155455",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "07350142980276",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "08016670151388",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "08435008876685",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "08717662575020",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "08719262038912",
+      "reason": "existing_product_format_conflict"
+    },
+    {
+      "gtin": "08720648971020",
+      "reason": "existing_product_format_conflict"
+    }
+  ],
+  "audit_at": "2026-11-07T21:11:22.900899+00:00",
+  "counts": {
+    "active_shop_offers": 52938,
+    "covered": 49944,
+    "frontend_visible": 51131,
+    "api_eligible": 52931,
+    "missing": 2994,
+    "missing_api_eligible": 2992,
+    "missing_frontend_visible": 1598,
+    "missing_api_eligible_frontend_visible": 1598
+  },
+  "source_reasons": {
+    "absent_from_entertainment_feed": 2378,
+    "format_not_proven_vinyl": 553,
+    "no_market_offer": 36,
+    "condition_not_proven_new": 26,
+    "not_explained_by_source_snapshot": 1
+  },
+  "missing_reasons": {
+    "api_eligible_not_in_selected_feed": 2992,
+    "existing_format_not_vinyl": 2
+  },
+  "api_sample_counts": {
+    "valid_current_api_offer": 20
+  },
+  "api_samples": [
+    {
+      "product_id": "00271bf5-31f3-44cd-8baf-ed74719a2af0",
+      "ean": "8719262030756",
+      "frontend_visible": true,
+      "status": "valid_current_api_offer",
+      "price": "34.99",
+      "availability": "in_stock",
+      "source_product_id": "9300000150287079",
+      "catalogue_facts": {
+        "schema": [
+          {
+            "field": "bolProductId",
+            "type": "str"
+          },
+          {
+            "field": "description",
+            "type": "str"
+          },
+          {
+            "field": "ean",
+            "type": "str"
+          },
+          {
+            "field": "gpc",
+            "type": "list"
+          },
+          {
+            "field": "gpc[].level",
+            "type": "str"
+          },
+          {
+            "field": "gpc[].name",
+            "type": "str"
+          },
+          {
+            "field": "title",
+            "type": "str"
+          },
+          {
+            "field": "url",
+            "type": "str"
+          }
+        ],
+        "format_category_facts": [
+          {
+            "path": "gpc",
+            "value": [
+              {
+                "level": "SEGMENT",
+                "name": "Textual/Printed/Reference Materials"
+              },
+              {
+                "level": "CHUNK",
+                "name": "Boek"
+              }
+            ]
+          }
+        ]
+      },
+      "source_reason": "absent_from_entertainment_feed",
+      "source_evidence": [],
+      "existing_format": "LP",
+      "existing_metadata_source": "unknown"
+    },
+    {
+      "product_id": "002ef63d-1f7f-492d-a0ab-dc11ac9d38c7",
+      "ean": "5052442011927",
+      "frontend_visible": true,
+      "status": "valid_current_api_offer",
+      "price": "12.64",
+      "availability": "unknown",
+      "source_product_id": "9200000096679908",
+      "catalogue_facts": {
+        "schema": [
+          {
+            "field": "bolProductId",
+            "type": "str"
+          },
+          {
+            "field": "description",
+            "type": "str"
+          },
+          {
+            "field": "ean",
+            "type": "str"
+          },
+          {
+            "field": "gpc",
+            "type": "list"
+          },
+          {
+            "field": "gpc[].level",
+            "type": "str"
+          },
+          {
+            "field": "gpc[].name",
+            "type": "str"
+          },
+          {
+            "field": "title",
+            "type": "str"
+          },
+          {
+            "field": "url",
+            "type": "str"
+          }
+        ],
+        "format_category_facts": [
+          {
+            "path": "gpc",
+            "value": [
+              {
+                "level": "SEGMENT",
+                "name": "Textual/Printed/Reference Materials"
+              },
+              {
+                "level": "CHUNK",
+                "name": "Boek"
+              }
+            ]
+          }
+        ]
+      },
+      "source_reason": "absent_from_entertainment_feed",
+      "source_evidence": [],
+      "existing_format": "LP",
+      "existing_metadata_source": "shop_observed"
+    },
+    {
+      "product_id": "005b3e24-0be6-4f2f-b846-6bdf00c4a278",
+      "ean": "0610371804826",
+      "frontend_visible": true,
+      "status": "valid_current_api_offer",
+      "price": "31.73",
+      "availability": "in_stock",
+      "source_product_id": "9300000142794052",
+      "catalogue_facts": {
+        "schema": [
+          {
+            "field": "bolProductId",
+            "type": "str"
+          },
+          {
+            "field": "description",
+            "type": "str"
+          },
+          {
+            "field": "ean",
+            "type": "str"
+          },
+          {
+            "field": "gpc",
+            "type": "list"
+          },
+          {
+            "field": "gpc[].level",
+            "type": "str"
+          },
+          {
+            "field": "gpc[].name",
+            "type": "str"
+          },
+          {
+            "field": "title",
+            "type": "str"
+          },
+          {
+            "field": "url",
+            "type": "str"
+          }
+        ],
+        "format_category_facts": [
+          {
+            "path": "gpc",
+            "value": [
+              {
+                "level": "SEGMENT",
+                "name": "Textual/Printed/Reference Materials"
+              },
+              {
+                "level": "CHUNK",
+                "name": "Boek"
+              }
+            ]
+          }
+        ]
+      },
+      "source_reason": "absent_from_entertainment_feed",
+      "source_evidence": [],
+      "existing_format": "LP",
+      "existing_metadata_source": "unknown"
+    },
+    {
+      "product_id": "00726e99-7ae2-42a0-b773-e4f093f77381",
+      "ean": "6430080232024",
+      "frontend_visible": true,
+      "status": "valid_current_api_offer",
+      "price": "24.21",
+      "availability": "unknown",
+      "source_product_id": "9300000127440886",
+      "catalogue_facts": {
+        "schema": [
+          {
+            "field": "bolProductId",
+            "type": "str"
+          },
+          {
+            "field": "description",
+            "type": "str"
+          },
+          {
+            "field": "ean",
+            "type": "str"
+          },
+          {
+            "field": "gpc",
+            "type": "list"
+          },
+          {
+            "field": "gpc[].level",
+            "type": "str"
+          },
+          {
+            "field": "gpc[].name",
+            "type": "str"
+          },
+          {
+            "field": "title",
+            "type": "str"
+          },
+          {
+            "field": "url",
+            "type": "str"
+          }
+        ],
+        "format_category_facts": [
+          {
+            "path": "gpc",
+            "value": [
+              {
+                "level": "SEGMENT",
+                "name": "Audio Visual/Photography"
+              },
+              {
+                "level": "CHUNK",
+                "name": "Muziek"
+              }
+            ]
+          }
+        ]
+      },
+      "source_reason": "format_not_proven_vinyl",
+      "source_evidence": [
+        {
+          "gtin": "06430080232024",
+          "reason": "format_not_proven_vinyl",
+          "source_product_id": "9300000127440886",
+          "format": "",
+          "category_subgroup": "Onbekend Music",
+          "category_subsubgroup": "Onbekend Music",
+          "condition": "new",
+          "selling_price": "24.21",
+          "deliverable": "Y",
+          "release_date": ""
+        }
+      ],
+      "existing_format": "LP",
+      "existing_metadata_source": "shop_observed"
+    },
+    {
+      "product_id": "00a0edb2-5356-485d-993b-e94d0ff1b1d0",
+      "ean": "5050580771680",
+      "frontend_visible": true,
+      "status": "valid_current_api_offer",
+      "price": "15.42",
+      "availability": "unknown",
+      "source_product_id": "9300000085655127",
+      "catalogue_facts": {
+        "schema": [
+          {
+            "field": "bolProductId",
+            "type": "str"
+          },
+          {
+            "field": "description",
+            "type": "str"
+          },
+          {
+            "field": "ean",
+            "type": "str"
+          },
+          {
+            "field": "gpc",
+            "type": "list"
+          },
+          {
+            "field": "gpc[].level",
+            "type": "str"
+          },
+          {
+            "field": "gpc[].name",
+            "type": "str"
+          },
+          {
+            "field": "title",
+            "type": "str"
+          },
+          {
+            "field": "url",
+            "type": "str"
+          }
+        ],
+        "format_category_facts": [
+          {
+            "path": "gpc",
+            "value": [
+              {
+                "level": "SEGMENT",
+                "name": "Audio Visual/Photography"
+              },
+              {
+                "level": "CHUNK",
+                "name": "Muziek"
+              }
+            ]
+          }
+        ]
+      },
+      "source_reason": "format_not_proven_vinyl",
+      "source_evidence": [
+        {
+          "gtin": "05050580771680",
+          "reason": "format_not_proven_vinyl",
+          "source_product_id": "9300000085655127",
+          "format": "Muziekcassette",
+          "category_subgroup": "Onbekend Music",
+          "category_subsubgroup": "Onbekend Music",
+          "condition": "new",
+          "selling_price": "15.42",
+          "deliverable": "Y",
+          "release_date": ""
+        }
+      ],
+      "existing_format": "LP",
+      "existing_metadata_source": "unknown"
+    },
+    {
+      "product_id": "00b640d0-93aa-4fcf-ad36-16e86ab792ca",
+      "ean": "5036436130924",
+      "frontend_visible": true,
+      "status": "valid_current_api_offer",
+      "price": "37.07",
+      "availability": "in_stock",
+      "source_product_id": "9300000125015232",
+      "catalogue_facts": {
+        "schema": [
+          {
+            "field": "bolProductId",
+            "type": "str"
+          },
+          {
+            "field": "description",
+            "type": "str"
+          },
+          {
+            "field": "ean",
+            "type": "str"
+          },
+          {
+            "field": "gpc",
+            "type": "list"
+          },
+          {
+            "field": "gpc[].level",
+            "type": "str"
+          },
+          {
+            "field": "gpc[].name",
+            "type": "str"
+          },
+          {
+            "field": "title",
+            "type": "str"
+          },
+          {
+            "field": "url",
+            "type": "str"
+          }
+        ],
+        "format_category_facts": [
+          {
+            "path": "gpc",
+            "value": [
+              {
+                "level": "SEGMENT",
+                "name": "Audio Visual/Photography"
+              },
+              {
+                "level": "CHUNK",
+                "name": "Muziek"
+              }
+            ]
+          }
+        ]
+      },
+      "source_reason": "format_not_proven_vinyl",
+      "source_evidence": [
+        {
+          "gtin": "05036436130924",
+          "reason": "format_not_proven_vinyl",
+          "source_product_id": "9300000125015232",
+          "format": "LP + CD",
+          "category_subgroup": "LP",
+          "category_subsubgroup": "LP",
+          "condition": "new",
+          "selling_price": "37.07",
+          "deliverable": "Y",
+          "release_date": ""
+        }
+      ],
+      "existing_format": "2LP",
+      "existing_metadata_source": "shop_observed"
+    },
+    {
+      "product_id": "0102b69f-a986-4c18-bd4e-0cacbbc98fe5",
+      "ean": "4015698008944",
+      "frontend_visible": true,
+      "status": "valid_current_api_offer",
+      "price": "33.76",
+      "availability": "unknown",
+      "source_product_id": "9200000072934247",
+      "catalogue_facts": {
+        "schema": [
+          {
+            "field": "bolProductId",
+            "type": "str"
+          },
+          {
+            "field": "description",
+            "type": "str"
+          },
+          {
+            "field": "ean",
+            "type": "str"
+          },
+          {
+            "field": "gpc",
+            "type": "list"
+          },
+          {
+            "field": "gpc[].level",
+            "type": "str"
+          },
+          {
+            "field": "gpc[].name",
+            "type": "str"
+          },
+          {
+            "field": "title",
+            "type": "str"
+          },
+          {
+            "field": "url",
+            "type": "str"
+          }
+        ],
+        "format_category_facts": [
+          {
+            "path": "gpc",
+            "value": [
+              {
+                "level": "SEGMENT",
+                "name": "Audio Visual/Photography"
+              },
+              {
+                "level": "CHUNK",
+                "name": "Muziek"
+              }
+            ]
+          }
+        ]
+      },
+      "source_reason": "format_not_proven_vinyl",
+      "source_evidence": [
+        {
+          "gtin": "04015698008944",
+          "reason": "format_not_proven_vinyl",
+          "source_product_id": "9200000072934247",
+          "format": "LP + CD",
+          "category_subgroup": "LP",
+          "category_subsubgroup": "LP",
+          "condition": "new",
+          "selling_price": "33.76",
+          "deliverable": "Y",
+          "release_date": ""
+        }
+      ],
+      "existing_format": "LP",
+      "existing_metadata_source": "shop_observed"
+    },
+    {
+      "product_id": "0156e0eb-f646-4f63-8f23-31d2ee0417ee",
+      "ean": "0093624857570",
+      "frontend_visible": true,
+      "status": "valid_current_api_offer",
+      "price": "48.97",
+      "availability": "in_stock",
+      "source_product_id": "9300000187592415",
+      "catalogue_facts": {
+        "schema": [
+          {
+            "field": "bolProductId",
+            "type": "str"
+          },
+          {
+            "field": "description",
+            "type": "str"
+          },
+          {
+            "field": "ean",
+            "type": "str"
+          },
+          {
+            "field": "gpc",
+            "type": "list"
+          },
+          {
+            "field": "gpc[].level",
+            "type": "str"
+          },
+          {
+            "field": "gpc[].name",
+            "type": "str"
+          },
+          {
+            "field": "title",
+            "type": "str"
+          },
+          {
+            "field": "url",
+            "type": "str"
+          }
+        ],
+        "format_category_facts": [
+          {
+            "path": "gpc",
+            "value": [
+              {
+                "level": "SEGMENT",
+                "name": "Audio Visual/Photography"
+              },
+              {
+                "level": "CHUNK",
+                "name": "Muziek"
+              }
+            ]
+          }
+        ]
+      },
+      "source_reason": "format_not_proven_vinyl",
+      "source_evidence": [
+        {
+          "gtin": "00093624857570",
+          "reason": "format_not_proven_vinyl",
+          "source_product_id": "9300000187592415",
+          "format": "",
+          "category_subgroup": "Onbekend Music",
+          "category_subsubgroup": "Onbekend Music",
+          "condition": "new",
+          "selling_price": "48.97",
+          "deliverable": "Y",
+          "release_date": ""
+        }
+      ],
+      "existing_format": "2LP",
+      "existing_metadata_source": "shop_observed"
+    },
+    {
+      "product_id": "01760a62-d26c-4d0f-8c02-e71af66b240a",
+      "ean": "5060281610645",
+      "frontend_visible": true,
+      "status": "valid_current_api_offer",
+      "price": "37.43",
+      "availability": "in_stock",
+      "source_product_id": "1000004011731272",
+      "catalogue_facts": {
+        "schema": [
+          {
+            "field": "bolProductId",
+            "type": "str"
+          },
+          {
+            "field": "description",
+            "type": "str"
+          },
+          {
+            "field": "ean",
+            "type": "str"
+          },
+          {
+            "field": "gpc",
+            "type": "list"
+          },
+          {
+            "field": "gpc[].level",
+            "type": "str"
+          },
+          {
+            "field": "gpc[].name",
+            "type": "str"
+          },
+          {
+            "field": "title",
+            "type": "str"
+          },
+          {
+            "field": "url",
+            "type": "str"
+          }
+        ],
+        "format_category_facts": [
+          {
+            "path": "gpc",
+            "value": [
+              {
+                "level": "SEGMENT",
+                "name": "Audio Visual/Photography"
+              },
+              {
+                "level": "CHUNK",
+                "name": "Muziek"
+              }
+            ]
+          }
+        ]
+      },
+      "source_reason": "absent_from_entertainment_feed",
+      "source_evidence": [],
+      "existing_format": "2XLP",
+      "existing_metadata_source": "unknown"
+    },
+    {
+      "product_id": "0176847c-2d99-4f8c-8e56-d78006063355",
+      "ean": "0196588768019",
+      "frontend_visible": true,
+      "status": "valid_current_api_offer",
+      "price": "33.01",
+      "availability": "unknown",
+      "source_product_id": "9300000195159018",
+      "catalogue_facts": {
+        "schema": [
+          {
+            "field": "bolProductId",
+            "type": "str"
+          },
+          {
+            "field": "description",
+            "type": "str"
+          },
+          {
+            "field": "ean",
+            "type": "str"
+          },
+          {
+            "field": "gpc",
+            "type": "list"
+          },
+          {
+            "field": "gpc[].level",
+            "type": "str"
+          },
+          {
+            "field": "gpc[].name",
+            "type": "str"
+          },
+          {
+            "field": "title",
+            "type": "str"
+          },
+          {
+            "field": "url",
+            "type": "str"
+          }
+        ],
+        "format_category_facts": [
+          {
+            "path": "gpc",
+            "value": [
+              {
+                "level": "SEGMENT",
+                "name": "Textual/Printed/Reference Materials"
+              },
+              {
+                "level": "CHUNK",
+                "name": "Boek"
+              }
+            ]
+          }
+        ]
+      },
+      "source_reason": "absent_from_entertainment_feed",
+      "source_evidence": [],
+      "existing_format": "Vinyl",
+      "existing_metadata_source": "shop_observed"
+    },
+    {
+      "product_id": "01f742b3-c964-4d8e-93db-be908f1b958a",
+      "ean": "0610371804444",
+      "frontend_visible": true,
+      "status": "valid_current_api_offer",
+      "price": "31.73",
+      "availability": "in_stock",
+      "source_product_id": "9300000139726581",
+      "catalogue_facts": {
+        "schema": [
+          {
+            "field": "bolProductId",
+            "type": "str"
+          },
+          {
+            "field": "description",
+            "type": "str"
+          },
+          {
+            "field": "ean",
+            "type": "str"
+          },
+          {
+            "field": "gpc",
+            "type": "list"
+          },
+          {
+            "field": "gpc[].level",
+            "type": "str"
+          },
+          {
+            "field": "gpc[].name",
+            "type": "str"
+          },
+          {
+            "field": "title",
+            "type": "str"
+          },
+          {
+            "field": "url",
+            "type": "str"
+          }
+        ],
+        "format_category_facts": [
+          {
+            "path": "gpc",
+            "value": [
+              {
+                "level": "SEGMENT",
+                "name": "Textual/Printed/Reference Materials"
+              },
+              {
+                "level": "CHUNK",
+                "name": "Boek"
+              }
+            ]
+          }
+        ]
+      },
+      "source_reason": "absent_from_entertainment_feed",
+      "source_evidence": [],
+      "existing_format": "LP",
+      "existing_metadata_source": "unknown"
+    },
+    {
+      "product_id": "020ee13c-9ad4-4736-9f50-bb72e2720a6a",
+      "ean": "5036436136827",
+      "frontend_visible": true,
+      "status": "valid_current_api_offer",
+      "price": "28.99",
+      "availability": "unknown",
+      "source_product_id": "9300000140949379",
+      "catalogue_facts": {
+        "schema": [
+          {
+            "field": "bolProductId",
+            "type": "str"
+          },
+          {
+            "field": "description",
+            "type": "str"
+          },
+          {
+            "field": "ean",
+            "type": "str"
+          },
+          {
+            "field": "gpc",
+            "type": "list"
+          },
+          {
+            "field": "gpc[].level",
+            "type": "str"
+          },
+          {
+            "field": "gpc[].name",
+            "type": "str"
+          },
+          {
+            "field": "title",
+            "type": "str"
+          },
+          {
+            "field": "url",
+            "type": "str"
+          }
+        ],
+        "format_category_facts": [
+          {
+            "path": "gpc",
+            "value": [
+              {
+                "level": "SEGMENT",
+                "name": "Audio Visual/Photography"
+              },
+              {
+                "level": "CHUNK",
+                "name": "Muziek"
+              }
+            ]
+          }
+        ]
+      },
+      "source_reason": "format_not_proven_vinyl",
+      "source_evidence": [
+        {
+          "gtin": "05036436136827",
+          "reason": "format_not_proven_vinyl",
+          "source_product_id": "9300000140949379",
+          "format": "LP + CD",
+          "category_subgroup": "LP",
+          "category_subsubgroup": "LP",
+          "condition": "new",
+          "selling_price": "28.99",
+          "deliverable": "Y",
+          "release_date": "2023-02-24"
+        }
+      ],
+      "existing_format": "LP",
+      "existing_metadata_source": "shop_observed"
+    },
+    {
+      "product_id": "028b10fd-623b-4648-a4cb-1114c4fcaf0b",
+      "ean": "5053760002550",
+      "frontend_visible": true,
+      "status": "valid_current_api_offer",
+      "price": "43.40",
+      "availability": "unknown",
+      "source_product_id": "9200000026754017",
+      "catalogue_facts": {
+        "schema": [
+          {
+            "field": "bolProductId",
+            "type": "str"
+          },
+          {
+            "field": "description",
+            "type": "str"
+          },
+          {
+            "field": "ean",
+            "type": "str"
+          },
+          {
+            "field": "gpc",
+            "type": "list"
+          },
+          {
+            "field": "gpc[].level",
+            "type": "str"
+          },
+          {
+            "field": "gpc[].name",
+            "type": "str"
+          },
+          {
+            "field": "title",
+            "type": "str"
+          },
+          {
+            "field": "url",
+            "type": "str"
+          }
+        ],
+        "format_category_facts": [
+          {
+            "path": "gpc",
+            "value": [
+              {
+                "level": "SEGMENT",
+                "name": "Audio Visual/Photography"
+              },
+              {
+                "level": "CHUNK",
+                "name": "Muziek"
+              }
+            ]
+          }
+        ]
+      },
+      "source_reason": "format_not_proven_vinyl",
+      "source_evidence": [
+        {
+          "gtin": "05053760002550",
+          "reason": "format_not_proven_vinyl",
+          "source_product_id": "9200000026754017",
+          "format": "LP + CD",
+          "category_subgroup": "LP",
+          "category_subsubgroup": "LP",
+          "condition": "new",
+          "selling_price": "43.40",
+          "deliverable": "Y",
+          "release_date": ""
+        }
+      ],
+      "existing_format": "LP",
+      "existing_metadata_source": "unknown"
+    },
+    {
+      "product_id": "0298ca6e-5fdd-4ae7-b71d-ec989384bac1",
+      "ean": "4028466922045",
+      "frontend_visible": true,
+      "status": "valid_current_api_offer",
+      "price": "26.98",
+      "availability": "in_stock",
+      "source_product_id": "9300000067700064",
+      "catalogue_facts": {
+        "schema": [
+          {
+            "field": "bolProductId",
+            "type": "str"
+          },
+          {
+            "field": "description",
+            "type": "str"
+          },
+          {
+            "field": "ean",
+            "type": "str"
+          },
+          {
+            "field": "gpc",
+            "type": "list"
+          },
+          {
+            "field": "gpc[].level",
+            "type": "str"
+          },
+          {
+            "field": "gpc[].name",
+            "type": "str"
+          },
+          {
+            "field": "title",
+            "type": "str"
+          },
+          {
+            "field": "url",
+            "type": "str"
+          }
+        ],
+        "format_category_facts": [
+          {
+            "path": "gpc",
+            "value": [
+              {
+                "level": "SEGMENT",
+                "name": "Textual/Printed/Reference Materials"
+              },
+              {
+                "level": "CHUNK",
+                "name": "Boek"
+              }
+            ]
+          }
+        ]
+      },
+      "source_reason": "absent_from_entertainment_feed",
+      "source_evidence": [],
+      "existing_format": "LP",
+      "existing_metadata_source": "unknown"
+    },
+    {
+      "product_id": "02a95f46-7072-460b-b8f6-77398d82a3b9",
+      "ean": "4065629733711",
+      "frontend_visible": true,
+      "status": "valid_current_api_offer",
+      "price": "32.12",
+      "availability": "unknown",
+      "source_product_id": "9300000193761254",
+      "catalogue_facts": {
+        "schema": [
+          {
+            "field": "bolProductId",
+            "type": "str"
+          },
+          {
+            "field": "description",
+            "type": "str"
+          },
+          {
+            "field": "ean",
+            "type": "str"
+          },
+          {
+            "field": "gpc",
+            "type": "list"
+          },
+          {
+            "field": "gpc[].level",
+            "type": "str"
+          },
+          {
+            "field": "gpc[].name",
+            "type": "str"
+          },
+          {
+            "field": "title",
+            "type": "str"
+          },
+          {
+            "field": "url",
+            "type": "str"
+          }
+        ],
+        "format_category_facts": [
+          {
+            "path": "gpc",
+            "value": [
+              {
+                "level": "SEGMENT",
+                "name": "Textual/Printed/Reference Materials"
+              },
+              {
+                "level": "CHUNK",
+                "name": "Boek"
+              }
+            ]
+          }
+        ]
+      },
+      "source_reason": "absent_from_entertainment_feed",
+      "source_evidence": [],
+      "existing_format": "2LP",
+      "existing_metadata_source": "unknown"
+    },
+    {
+      "product_id": "02b43e99-e34b-4996-b9d7-1354d750afc2",
+      "ean": "0801056818812",
+      "frontend_visible": true,
+      "status": "valid_current_api_offer",
+      "price": "38.72",
+      "availability": "unknown",
+      "source_product_id": "9300000179550546",
+      "catalogue_facts": {
+        "schema": [
+          {
+            "field": "bolProductId",
+            "type": "str"
+          },
+          {
+            "field": "description",
+            "type": "str"
+          },
+          {
+            "field": "ean",
+            "type": "str"
+          },
+          {
+            "field": "gpc",
+            "type": "list"
+          },
+          {
+            "field": "gpc[].level",
+            "type": "str"
+          },
+          {
+            "field": "gpc[].name",
+            "type": "str"
+          },
+          {
+            "field": "title",
+            "type": "str"
+          },
+          {
+            "field": "url",
+            "type": "str"
+          }
+        ],
+        "format_category_facts": [
+          {
+            "path": "gpc",
+            "value": [
+              {
+                "level": "SEGMENT",
+                "name": "Audio Visual/Photography"
+              },
+              {
+                "level": "CHUNK",
+                "name": "Element voor Platenspeler"
+              }
+            ]
+          }
+        ]
+      },
+      "source_reason": "absent_from_entertainment_feed",
+      "source_evidence": [],
+      "existing_format": "LP",
+      "existing_metadata_source": "unknown"
+    },
+    {
+      "product_id": "02c3696e-b09b-4241-8a4f-6c33db1a10ac",
+      "ean": "0194399834312",
+      "frontend_visible": true,
+      "status": "valid_current_api_offer",
+      "price": "34.99",
+      "availability": "in_stock",
+      "source_product_id": "9300000073921748",
+      "catalogue_facts": {
+        "schema": [
+          {
+            "field": "bolProductId",
+            "type": "str"
+          },
+          {
+            "field": "description",
+            "type": "str"
+          },
+          {
+            "field": "ean",
+            "type": "str"
+          },
+          {
+            "field": "gpc",
+            "type": "list"
+          },
+          {
+            "field": "gpc[].level",
+            "type": "str"
+          },
+          {
+            "field": "gpc[].name",
+            "type": "str"
+          },
+          {
+            "field": "title",
+            "type": "str"
+          },
+          {
+            "field": "url",
+            "type": "str"
+          }
+        ],
+        "format_category_facts": [
+          {
+            "path": "gpc",
+            "value": [
+              {
+                "level": "SEGMENT",
+                "name": "Audio Visual/Photography"
+              },
+              {
+                "level": "CHUNK",
+                "name": "Muziek"
+              }
+            ]
+          }
+        ]
+      },
+      "source_reason": "format_not_proven_vinyl",
+      "source_evidence": [
+        {
+          "gtin": "00194399834312",
+          "reason": "format_not_proven_vinyl",
+          "source_product_id": "9300000073921748",
+          "format": "LP + CD",
+          "category_subgroup": "LP",
+          "category_subsubgroup": "LP",
+          "condition": "new",
+          "selling_price": "34.99",
+          "deliverable": "Y",
+          "release_date": ""
+        }
+      ],
+      "existing_format": "2XLP",
+      "existing_metadata_source": "unknown"
+    },
+    {
+      "product_id": "02de4b32-332a-4e3b-ad45-e24d15e17b9a",
+      "ean": "0634438446804",
+      "frontend_visible": true,
+      "status": "valid_current_api_offer",
+      "price": "30.20",
+      "availability": "in_stock",
+      "source_product_id": "9300000144656827",
+      "catalogue_facts": {
+        "schema": [
+          {
+            "field": "bolProductId",
+            "type": "str"
+          },
+          {
+            "field": "description",
+            "type": "str"
+          },
+          {
+            "field": "ean",
+            "type": "str"
+          },
+          {
+            "field": "gpc",
+            "type": "list"
+          },
+          {
+            "field": "gpc[].level",
+            "type": "str"
+          },
+          {
+            "field": "gpc[].name",
+            "type": "str"
+          },
+          {
+            "field": "title",
+            "type": "str"
+          },
+          {
+            "field": "url",
+            "type": "str"
+          }
+        ],
+        "format_category_facts": [
+          {
+            "path": "gpc",
+            "value": [
+              {
+                "level": "SEGMENT",
+                "name": "Textual/Printed/Reference Materials"
+              },
+              {
+                "level": "CHUNK",
+                "name": "Boek"
+              }
+            ]
+          }
+        ]
+      },
+      "source_reason": "absent_from_entertainment_feed",
+      "source_evidence": [],
+      "existing_format": "LP",
+      "existing_metadata_source": "shop_observed"
+    },
+    {
+      "product_id": "03272f60-9b18-4343-9944-d522ad13d984",
+      "ean": "0610371804284",
+      "frontend_visible": true,
+      "status": "valid_current_api_offer",
+      "price": "28.09",
+      "availability": "unknown",
+      "source_product_id": "9300000135293082",
+      "catalogue_facts": {
+        "schema": [
+          {
+            "field": "bolProductId",
+            "type": "str"
+          },
+          {
+            "field": "description",
+            "type": "str"
+          },
+          {
+            "field": "ean",
+            "type": "str"
+          },
+          {
+            "field": "gpc",
+            "type": "list"
+          },
+          {
+            "field": "gpc[].level",
+            "type": "str"
+          },
+          {
+            "field": "gpc[].name",
+            "type": "str"
+          },
+          {
+            "field": "title",
+            "type": "str"
+          },
+          {
+            "field": "url",
+            "type": "str"
+          }
+        ],
+        "format_category_facts": [
+          {
+            "path": "gpc",
+            "value": [
+              {
+                "level": "SEGMENT",
+                "name": "Audio Visual/Photography"
+              },
+              {
+                "level": "CHUNK",
+                "name": "Muziek"
+              }
+            ]
+          }
+        ]
+      },
+      "source_reason": "format_not_proven_vinyl",
+      "source_evidence": [
+        {
+          "gtin": "00610371804284",
+          "reason": "format_not_proven_vinyl",
+          "source_product_id": "9300000135293082",
+          "format": "CD",
+          "category_subgroup": "CD",
+          "category_subsubgroup": "CD",
+          "condition": "new",
+          "selling_price": "28.09",
+          "deliverable": "Y",
+          "release_date": "2023-03-10"
+        }
+      ],
+      "existing_format": "LP",
+      "existing_metadata_source": "unknown"
+    },
+    {
+      "product_id": "037fad68-4ce2-474e-ad1a-4e01ed004195",
+      "ean": "5060708610906",
+      "frontend_visible": true,
+      "status": "valid_current_api_offer",
+      "price": "45.19",
+      "availability": "unknown",
+      "source_product_id": "9300000100636633",
+      "catalogue_facts": {
+        "schema": [
+          {
+            "field": "bolProductId",
+            "type": "str"
+          },
+          {
+            "field": "description",
+            "type": "str"
+          },
+          {
+            "field": "ean",
+            "type": "str"
+          },
+          {
+            "field": "gpc",
+            "type": "list"
+          },
+          {
+            "field": "gpc[].level",
+            "type": "str"
+          },
+          {
+            "field": "gpc[].name",
+            "type": "str"
+          },
+          {
+            "field": "title",
+            "type": "str"
+          },
+          {
+            "field": "url",
+            "type": "str"
+          }
+        ],
+        "format_category_facts": [
+          {
+            "path": "gpc",
+            "value": [
+              {
+                "level": "SEGMENT",
+                "name": "Audio Visual/Photography"
+              },
+              {
+                "level": "CHUNK",
+                "name": "Muziek"
+              }
+            ]
+          }
+        ]
+      },
+      "source_reason": "format_not_proven_vinyl",
+      "source_evidence": [
+        {
+          "gtin": "05060708610906",
+          "reason": "format_not_proven_vinyl",
+          "source_product_id": "9300000100636633",
+          "format": "CD",
+          "category_subgroup": "CD",
+          "category_subsubgroup": "CD",
+          "condition": "new",
+          "selling_price": "45.19",
+          "deliverable": "Y",
+          "release_date": ""
+        }
+      ],
+      "existing_format": "LP",
+      "existing_metadata_source": "shop_observed"
+    }
+  ],
+  "database_writes_this_validation": 0,
+  "quarantine_metadata_counts": {
+    "musicbrainz": 94,
+    "unknown": 3,
+    "shop_observed": 3
+  },
+  "rejected_format_counts": {
+    "LP + CD": 148,
+    "": 225,
+    "CD": 171,
+    "LP + CD + DVD": 3,
+    "Blu-ray": 1,
+    "EP (Mini Album)": 1,
+    "LP + CD + Blu-ray": 2,
+    "Muziekcassette": 2
+  }
+}
