@@ -231,6 +231,16 @@ class BolFeedTests(unittest.TestCase):
             writer.assert_not_called()
         self.assertEqual(json.loads(output.read_text())["status"], "unchanged_feed")
 
+    def test_reviewed_pilot_checksum_mismatch_blocks_all_database_access(self):
+        output = self.path.with_suffix(".checksum.json")
+        with patch("scripts.importers.bol_feed.psycopg.connect") as connect, patch.dict(
+                "os.environ", {"BOL_SITE_ID": "12345"}):
+            result = main(["--feed", str(self.path), "--profile", str(ROOT / "config/bol-feed.live.json"),
+                           "--write", "--approve-publication", "--source-at", self.now.isoformat(),
+                           "--expected-feed-sha256", "0" * 64, "--output", str(output)])
+        self.assertEqual(result, 1); connect.assert_not_called()
+        self.assertEqual(json.loads(output.read_text())["errors"], ["reviewed_feed_checksum_mismatch"])
+
     def test_xml_external_entities_are_not_loaded(self):
         p = self.path.with_suffix(".xml")
         p.write_text('<!DOCTYPE root [<!ENTITY secret SYSTEM "file:///etc/passwd">]>'

@@ -617,6 +617,7 @@ def main(argv=None):
     parser.add_argument("--output", type=Path, default=Path("output/bol/review.json"))
     parser.add_argument("--check-matches", action="store_true")
     parser.add_argument("--inspect-schema", action="store_true")
+    parser.add_argument("--expected-feed-sha256", help="Bind an approved pilot to its reviewed source bytes")
     parser.add_argument("--state", type=Path, help="Successful full-writer checkpoint; skips unchanged remote MDTM")
     parser.add_argument("--validation-suite", action="store_true", help="20-product pilot and full read-only scan from one download")
     parser.add_argument("--write", action="store_true")
@@ -672,6 +673,8 @@ def main(argv=None):
             report["source_at"] = source_at.isoformat() if source_at else None
             report["source_timestamp_status"] = "provided_or_ftp_mdtm" if source_at else "unknown_dry_run_only"
             report["feed_sha256"] = file_digest(path)
+            if args.expected_feed_sha256 and report["feed_sha256"] != args.expected_feed_sha256:
+                raise FeedError("reviewed_feed_checksum_mismatch")
             if not args.inspect_schema:
                 report["status"] = "dry_run" if report["offers"] else "no_eligible_offers"
             if args.validation_suite:

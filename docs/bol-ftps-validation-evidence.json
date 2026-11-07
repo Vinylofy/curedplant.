@@ -1,0 +1,1227 @@
+{
+  "schema_inspection": {
+    "status": "schema_inspected",
+    "database_writes": 0,
+    "errors": [],
+    "headers": [
+      "productId",
+      "ean",
+      "title",
+      "productPageUrlNL",
+      "productPageUrlBE",
+      "imageUrl",
+      "mpn",
+      "brand",
+      "familyName",
+      "subtitle",
+      "OfferNL.sellingPrice",
+      "OfferNL.shippingCost",
+      "OfferNL.condition",
+      "OfferNL.isDeliverable",
+      "OfferNL.releaseDate",
+      "OfferNL.listPrice",
+      "OfferNL.ultimateOrderTime",
+      "OfferNL.maximalDeliveryDays",
+      "OfferNL.fulfillmentLabel",
+      "OfferNL.sellerType",
+      "OfferBE.sellingPrice",
+      "OfferBE.shippingCost",
+      "OfferBE.condition",
+      "OfferBE.isDeliverable",
+      "OfferBE.releaseDate",
+      "OfferBE.listPrice",
+      "OfferBE.ultimateOrderTime",
+      "OfferBE.maximalDeliveryDays",
+      "OfferBE.fulfillmentLabel",
+      "OfferBE.sellerType",
+      "Gpc.segmentName",
+      "Gpc.familyName",
+      "Gpc.className",
+      "Gpc.brickName",
+      "Gpc.chunkName",
+      "Category.unit",
+      "Category.category",
+      "Category.productgroup",
+      "Category.subgroup",
+      "Category.subssubgroup",
+      "description",
+      "AppearanceName",
+      "Format",
+      "BindingCode",
+      "CoAuthor",
+      "Colour",
+      "DeliveryMethod",
+      "Gender",
+      "KindOfGame",
+      "Language",
+      "Material",
+      "Model",
+      "Actor",
+      "Author",
+      "Performer",
+      "Publisher",
+      "SecondaryActor",
+      "SecondaryPerformer",
+      "ShoeSize",
+      "SizeClothing",
+      "SuitableForTypeOfSeason",
+      "ThirdActor",
+      "ThirdPerformer",
+      "FlemishTitle",
+      "Subscription",
+      "Edition",
+      "TypeOfIndicator"
+    ],
+    "read_products": 902918,
+    "complete_feed": true,
+    "gzip_integrity": "verified_full_read",
+    "live_schema_verified": false,
+    "source_at": "2026-11-07T10:01:47+00:00",
+    "source_timestamp_status": "provided_or_ftp_mdtm",
+    "feed_sha256": "1e5bed487fbc25766d1a57832f24764d960b9c5766f8e7a5f7003da938654971",
+    "duration_seconds": 203.656
+  },
+  "vocabulary": {
+    "OfferNL.condition": {
+      "new": 817790,
+      "": 10452,
+      "used": 74676
+    },
+    "OfferNL.isDeliverable": {
+      "Y": 888735,
+      "N": 3731,
+      "": 10452
+    },
+    "OfferNL.sellerType": {
+      "P": 832717,
+      "B": 59749,
+      "": 10452
+    },
+    "OfferBE.condition": {
+      "new": 761248,
+      "used": 83466,
+      "": 58204
+    },
+    "OfferBE.isDeliverable": {
+      "Y": 840934,
+      "N": 3780,
+      "": 58204
+    },
+    "OfferBE.sellerType": {
+      "P": 724616,
+      "B": 120098,
+      "": 58204
+    },
+    "Format": {
+      "LP": 130523,
+      "7\" Vinyl": 7180,
+      "12\" Vinyl": 14855,
+      "10\" Vinyl": 1817,
+      "EP (Mini Album)": 835,
+      "LP + CD": 653,
+      "": 75534,
+      "Blu-ray": 22812,
+      "DVD": 136205,
+      "Muziekcassette": 1948,
+      "CDROM": 137,
+      "CD": 489840,
+      "Superaudio CD": 4584,
+      "LP + CD + DVD": 19,
+      "LP + downloadcode": 216,
+      "CD (Single)": 10158,
+      "4K + Blu-ray": 1325,
+      "4K": 1367,
+      "Blu-ray + DVD": 46,
+      "CD + DVD": 1628,
+      "3D Blu-ray": 613,
+      "VHS": 182,
+      "CD + Blu-ray": 264,
+      "DVD + CD": 81,
+      "HD DVD": 37,
+      "UMD": 50,
+      "LP + CD + Blu-ray": 9
+    }
+  },
+  "nl_validation": {
+    "source": "bol_affiliate_productfeed",
+    "read_products": 902918,
+    "selected_new_vinyl": 144422,
+    "valid_barcodes": 144422,
+    "complete_feed": true,
+    "database_writes": 0,
+    "existing_matches": 59370,
+    "new_products": 84953,
+    "match_status": "read_only_checked",
+    "skipped": {
+      "format_not_proven_vinyl": 747968,
+      "missing_or_invalid_barcode": 364,
+      "condition_not_proven_new": 7626,
+      "no_market_offer": 2535,
+      "invalid_amount": 3
+    },
+    "captured_at": "2026-11-07T10:01:47+00:00",
+    "errors": [],
+    "music_content_attribution": "© Muze UK Ltd",
+    "file_validation": {
+      "compressed_bytes": 338029424,
+      "uncompressed_bytes": 1214971950,
+      "integrity": "verified_full_read"
+    },
+    "valid_prices": 144422,
+    "source_at": "2026-11-07T10:01:47+00:00",
+    "source_timestamp_status": "provided_or_ftp_mdtm",
+    "feed_sha256": "1e5bed487fbc25766d1a57832f24764d960b9c5766f8e7a5f7003da938654971",
+    "status": "dry_run",
+    "pilot_20": {
+      "source": "bol_affiliate_productfeed",
+      "read_products": 20,
+      "selected_new_vinyl": 20,
+      "valid_barcodes": 20,
+      "complete_feed": false,
+      "database_writes": 0,
+      "existing_matches": 8,
+      "new_products": 12,
+      "match_status": "read_only_checked",
+      "skipped": {},
+      "skip_samples": [],
+      "captured_at": "2026-11-07T10:01:47+00:00",
+      "errors": [],
+      "music_content_attribution": "© Muze UK Ltd",
+      "match_conflicts": [],
+      "price_comparisons": {
+        "unchanged_price": 4,
+        "changed_price": 3,
+        "new_shop_offer": 1
+      },
+      "match_batch_size": 500,
+      "valid_prices": 20
+    },
+    "match_conflicts": [
+      {
+        "gtin": "00050087590352",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00090771562210",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00093624849858",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00093624869375",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00093624881810",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00093624893868",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00093624920830",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00097037080969",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00098787136418",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00098787317305",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00190295209414",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00191400062122",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00191400090712",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00194171219115",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00194397856316",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00194399086513",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00196587375010",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00196922461736",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00600197018613",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00602438820405",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00602445574735",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00602475667025",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00602507381332",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00602508309656",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00602508760327",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00602567891635",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00603497837571",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00603497841325",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00617308114331",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00634457144224",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00634457790018",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00659696429611",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00659696539310",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00689176893472",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00694685736196",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00730003304460",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00789577791312",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00792671668701",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00793888925915",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00810540039046",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00826257038319",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00843563191965",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00850019164350",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00850079591295",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00884388889880",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00887828052318",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00887828052820",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00888072556270",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00888837900010",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00889853626212",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "01971901543752",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "03521383499368",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "03596973672964",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "03596974559561",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "03760248837321",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "03760248838915",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "03760347748399",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "03760420424776",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "03770001243139",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "04015698090741",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "04016368910185",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "04024572603045",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "04024572641436",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "04029759169635",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "04038952010927",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "04050538868838",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "04059251152897",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "04250444185306",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "04250506811846",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "04251896100602",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "04251896105881",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "04260126061712",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "04260435271499",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "05014797901834",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "05026328005188",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "05037128147213",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "05051083217309",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "05054197733093",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "05055036215602",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "05056340103364",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "05056556162094",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "05056614704716",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "05060525439612",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "05060767443781",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "05060921977404",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "05061017253310",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "05063176038579",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "05063176060914",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "05063176070913",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "05397102140112",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "05400863030537",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "07071750200166",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "07320470155455",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "07350142980276",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "08016670151388",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "08435008876685",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "08717662575020",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "08719262038912",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "08720648971020",
+        "reason": "existing_product_format_conflict"
+      }
+    ],
+    "price_comparisons": {
+      "unchanged_price": 30863,
+      "new_shop_offer": 9674,
+      "changed_price": 18833
+    },
+    "match_batch_size": 500,
+    "duration_seconds": 190.125
+  },
+  "final_market_validation": {
+    "source": "bol_affiliate_productfeed",
+    "read_products": 902918,
+    "markets": {
+      "NL": {
+        "selected_new_vinyl": 144422,
+        "valid_prices": 144422,
+        "availability": {
+          "in_stock": 142364,
+          "out_of_stock": 2058
+        },
+        "shipping": {
+          "known": 144422
+        },
+        "seller": {
+          "external_partner": 131056,
+          "bol": 13366
+        },
+        "existing_matches": 59370,
+        "new_products": 84953
+      },
+      "BE": {
+        "selected_new_vinyl": 135810,
+        "valid_prices": 135810,
+        "availability": {
+          "in_stock": 133727,
+          "out_of_stock": 2083
+        },
+        "shipping": {
+          "known": 135810
+        },
+        "seller": {
+          "external_partner": 113488,
+          "bol": 22322
+        },
+        "existing_matches": 56754,
+        "new_products": 78961
+      }
+    },
+    "selected_new_vinyl": 144882,
+    "valid_barcodes": 144882,
+    "complete_feed": true,
+    "database_writes": 0,
+    "existing_matches": 59439,
+    "new_products": 85344,
+    "match_status": "read_only_checked",
+    "skipped": {
+      "format_not_proven_vinyl": 747968,
+      "missing_or_invalid_barcode": 364,
+      "condition_not_proven_new": 17031,
+      "no_market_offer": 11901,
+      "invalid_amount": 8
+    },
+    "captured_at": "2026-11-07T10:01:47+00:00",
+    "errors": [],
+    "music_content_attribution": "© Muze UK Ltd",
+    "file_validation": {
+      "compressed_bytes": 338029424,
+      "uncompressed_bytes": 1214971950,
+      "integrity": "verified_full_read"
+    },
+    "valid_prices": 280232,
+    "source_at": "2026-11-07T10:01:47+00:00",
+    "source_timestamp_status": "provided_or_ftp_mdtm",
+    "feed_sha256": "1e5bed487fbc25766d1a57832f24764d960b9c5766f8e7a5f7003da938654971",
+    "status": "dry_run",
+    "pilot_20": {
+      "source": "bol_affiliate_productfeed",
+      "read_products": 20,
+      "markets": {
+        "NL": {
+          "selected_new_vinyl": 20,
+          "valid_prices": 20,
+          "availability": {
+            "in_stock": 19,
+            "out_of_stock": 1
+          },
+          "shipping": {
+            "known": 20
+          },
+          "seller": {
+            "external_partner": 14,
+            "bol": 6
+          },
+          "existing_matches": 8,
+          "new_products": 12
+        },
+        "BE": {
+          "selected_new_vinyl": 20,
+          "valid_prices": 20,
+          "availability": {
+            "in_stock": 19,
+            "out_of_stock": 1
+          },
+          "shipping": {
+            "known": 20
+          },
+          "seller": {
+            "external_partner": 12,
+            "bol": 8
+          },
+          "existing_matches": 8,
+          "new_products": 12
+        }
+      },
+      "selected_new_vinyl": 20,
+      "valid_barcodes": 20,
+      "complete_feed": false,
+      "database_writes": 0,
+      "existing_matches": 8,
+      "new_products": 12,
+      "match_status": "read_only_checked",
+      "skipped": {},
+      "skip_samples": [],
+      "captured_at": "2026-11-07T10:01:47+00:00",
+      "errors": [],
+      "music_content_attribution": "© Muze UK Ltd",
+      "existing_offer_coverage": {},
+      "match_conflicts": [],
+      "price_comparisons": {
+        "unchanged_price": 4,
+        "market_shop_not_configured": 8,
+        "changed_price": 3,
+        "new_shop_offer": 1
+      },
+      "match_batch_size": 500,
+      "valid_prices": 40
+    },
+    "existing_offer_coverage": {
+      "NL": {
+        "existing_active_shop_offers": 52718,
+        "covered_by_feed": 49696,
+        "absent_from_eligible_feed": 3022,
+        "absent_product_samples": [
+          "000f2658-6a90-4cb1-9a0c-625c6df7e782",
+          "00271bf5-31f3-44cd-8baf-ed74719a2af0",
+          "002ef63d-1f7f-492d-a0ab-dc11ac9d38c7",
+          "0036e563-124f-4ea4-b038-30af504cf732",
+          "00371303-5258-4001-8225-fbcf5066cd20",
+          "0041c828-a9f1-4908-bb2e-b46c0feca1c7",
+          "005b3e24-0be6-4f2f-b846-6bdf00c4a278",
+          "00726e99-7ae2-42a0-b773-e4f093f77381",
+          "009c01cd-5971-4c97-afd1-7385c6b9d641",
+          "00a0edb2-5356-485d-993b-e94d0ff1b1d0",
+          "00b640d0-93aa-4fcf-ad36-16e86ab792ca",
+          "00e26f16-2295-4ee5-84d7-646ff8d496d6",
+          "0102b69f-a986-4c18-bd4e-0cacbbc98fe5",
+          "010adbb2-fab6-4d0c-85f8-5617868e7707",
+          "011a2cda-1004-41f6-8d91-ac85046ac552",
+          "013493a6-624e-4f9c-8dbb-59b3290c3a3c",
+          "0156e0eb-f646-4f63-8f23-31d2ee0417ee",
+          "01760a62-d26c-4d0f-8c02-e71af66b240a",
+          "0176847c-2d99-4f8c-8e56-d78006063355",
+          "01c527ad-70a7-4109-b0d0-d256a87d8bb3"
+        ]
+      }
+    },
+    "match_conflicts": [
+      {
+        "gtin": "00050087590352",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00090771562210",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00093624849858",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00093624869375",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00093624881810",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00093624893868",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00093624920830",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00097037080969",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00098787136418",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00098787317305",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00190295209414",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00191400062122",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00191400090712",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00194171219115",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00194397856316",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00194399086513",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00196587375010",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00196922461736",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00600197018613",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00602438820405",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00602445574735",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00602475667025",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00602507381332",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00602508309656",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00602508760327",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00602567891635",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00603497837571",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00603497841325",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00617308114331",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00634457144224",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00634457790018",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00659696429611",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00659696539310",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00689176893472",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00694685736196",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00730003304460",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00789577791312",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00792671668701",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00793888925915",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00810540039046",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00826257038319",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00843563191965",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00850019164350",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00850079591295",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00884388889880",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00887828052318",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00887828052820",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00888072556270",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00888837900010",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "00889853626212",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "01971901543752",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "03521383499368",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "03596973672964",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "03596974559561",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "03760248837321",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "03760248838915",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "03760347748399",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "03760420424776",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "03770001243139",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "04015698090741",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "04016368910185",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "04024572603045",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "04024572641436",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "04029759169635",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "04038952010927",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "04050538868838",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "04059251152897",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "04250444185306",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "04250506811846",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "04251896100602",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "04251896105881",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "04260126061712",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "04260435271499",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "05014797901834",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "05026328005188",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "05037128147213",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "05051083217309",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "05054197733093",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "05055036215602",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "05056340103364",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "05056556162094",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "05056614704716",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "05060525439612",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "05060767443781",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "05060921977404",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "05061017253310",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "05063176038579",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "05063176060914",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "05063176070913",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "05397102140112",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "05400863030537",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "07071750200166",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "07320470155455",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "07350142980276",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "08016670151388",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "08435008876685",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "08717662575020",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "08719262038912",
+        "reason": "existing_product_format_conflict"
+      },
+      {
+        "gtin": "08720648971020",
+        "reason": "existing_product_format_conflict"
+      }
+    ],
+    "price_comparisons": {
+      "unchanged_price": 30863,
+      "market_shop_not_configured": 56754,
+      "new_shop_offer": 9674,
+      "changed_price": 18833
+    },
+    "match_batch_size": 500,
+    "duration_seconds": 329.625
+  },
+  "live_sample_release_date_regression": {
+    "source": "bol_affiliate_productfeed",
+    "read_products": 20,
+    "markets": {
+      "NL": {
+        "selected_new_vinyl": 20,
+        "valid_prices": 20,
+        "availability": {
+          "in_stock": 19,
+          "out_of_stock": 1
+        },
+        "shipping": {
+          "known": 20
+        },
+        "seller": {
+          "external_partner": 14,
+          "bol": 6
+        }
+      },
+      "BE": {
+        "selected_new_vinyl": 20,
+        "valid_prices": 20,
+        "availability": {
+          "in_stock": 19,
+          "out_of_stock": 1
+        },
+        "shipping": {
+          "known": 20
+        },
+        "seller": {
+          "external_partner": 12,
+          "bol": 8
+        }
+      }
+    },
+    "selected_new_vinyl": 20,
+    "valid_barcodes": 20,
+    "complete_feed": false,
+    "database_writes": 0,
+    "existing_matches": null,
+    "new_products": null,
+    "match_status": "not_checked_no_database",
+    "skipped": {},
+    "captured_at": "2026-11-07T10:01:47+00:00",
+    "errors": [],
+    "music_content_attribution": "© Muze UK Ltd",
+    "file_validation": {
+      "compressed_bytes": 7499,
+      "uncompressed_bytes": 7499,
+      "integrity": "verified_full_read"
+    },
+    "valid_prices": 40,
+    "source_at": "2026-11-07T10:01:47+00:00",
+    "source_timestamp_status": "provided_or_ftp_mdtm",
+    "feed_sha256": "c0765ce2b59c50f0329147f21fd09aaab114f36471cc78b85aafa8d2382697b2",
+    "status": "dry_run",
+    "duration_seconds": 0.004
+  }
+}
