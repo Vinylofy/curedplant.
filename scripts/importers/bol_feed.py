@@ -178,7 +178,7 @@ def select_product(row, profile, countries, site_id, captured_at):
             "true": "in_stock", "1": "in_stock", "false": "out_of_stock", "0": "out_of_stock"
         }).items()}.get(deliverable, "unknown")
         release_date = get("release_date")
-        if release_date:
+        if release_date and availability == "in_stock":
             try:
                 released = datetime.strptime(release_date, "%Y-%m-%d").date()
             except ValueError:
