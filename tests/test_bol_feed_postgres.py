@@ -212,6 +212,107 @@ class BolPostgresTests(unittest.TestCase):
             self.assertEqual(conn.execute('select count(*) from public.products').fetchone()[0], 2)
             self.assertEqual(conn.execute('select count(*) from public.price_history').fetchone()[0], 2)
 
+    def test_catalogue_audit_classifies_missing_prices_without_writes(self):
+        from scripts.workers.bol_feed_audit import audit_catalogue
+        self.write()
+        plan=deepcopy(self.plan);plan['feed_sha256']='test-snapshot'
+        plan['offers']=plan['offers'][:2]
+        with patch('scripts.workers.bol_feed_audit.SHOP_ID',self.shops['NL']):
+            report=audit_catalogue(plan,self.dsn)
+        self.assertEqual(report['database_writes'],0)
+        self.assertEqual(report['counts']['active_shop_offers'],2)
+        self.assertEqual(report['counts']['missing_api_eligible_frontend_visible'],1)
+        self.assertEqual(report['api_sample'],[])
+        with psycopg.connect(self.dsn) as conn:
+            self.assertEqual(conn.execute('select count(*) from public.price_history').fetchone()[0],4)
+
+    def test_quarantined_format_conflict_preserves_canonical_product_and_old_prices(self):
+        from scripts.importers.bol_feed import quarantine_identity_conflicts
+        self.write()
+        blocked=self.plan['offers'][0]['gtin']
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("update public.products set format_label='CD' where gtin_normalized=%s",(blocked,))
+        plan=deepcopy(self.plan);now=datetime.now(timezone.utc).isoformat();plan['captured_at']=now
+        for offer in plan['offers']:offer.update(price='99.00',captured_at=now)
+        review_matches(plan,self.dsn,self.shops);quarantine_identity_conflicts(plan)
+        stats=self.write(plan)
+        self.assertEqual(stats['updated_offers'],2)
+        with psycopg.connect(self.dsn) as conn:
+            self.assertEqual(conn.execute('select format_label from public.products where gtin_normalized=%s',(blocked,)).fetchone()[0],'CD')
+            self.assertEqual(conn.execute("select count(*) from public.prices pr join public.products p on p.id=pr.product_id where p.gtin_normalized=%s and pr.price=99",(blocked,)).fetchone()[0],0)
+
+    def test_bulk_writer_uses_same_creation_history_and_replay_contracts(self):
+        from scripts.importers.bol_feed import publish_batched
+        result=publish_batched(self.plan,self.dsn,self.shops,approved=True,batch_products=1)
+        self.assertEqual((result['new_products'],result['updated_offers'],result['committed_batches']),(2,4,2))
+        again=publish_batched(self.plan,self.dsn,self.shops,approved=True,batch_products=1)
+        self.assertEqual(again['updated_offers'],0)
+        with psycopg.connect(self.dsn) as conn:
+            self.assertEqual(conn.execute('select count(*) from public.price_history').fetchone()[0],4)
+            self.assertEqual(conn.execute('select count(*) from public.products where metadata_needs_review').fetchone()[0],2)
+
+    def test_bulk_writer_preserves_newer_prices_and_rolls_back_failed_batch(self):
+        self.write()
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("update public.prices set price=88,last_seen_at=%s",(datetime.now(timezone.utc)+timedelta(hours=1),))
+        result=publish(self.plan,self.dsn,self.shops,approved=True,bulk=True)
+        self.assertEqual(result['skipped_newer'],4)
+        fresh=deepcopy(self.plan);fresh['captured_at']=datetime.now(timezone.utc).isoformat()
+        for offer in fresh['offers']:offer.update(price='99.00',captured_at=fresh['captured_at'])
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("update public.prices set last_seen_at=now()-interval '1 hour'")
+        with patch('scripts.importers.bol_feed.insert_history_rows',side_effect=RuntimeError('batch failure')):
+            with self.assertRaises(RuntimeError):publish(fresh,self.dsn,self.shops,approved=True,bulk=True)
+        with psycopg.connect(self.dsn) as conn:
+            self.assertEqual(conn.execute('select count(*) from public.prices where price=88').fetchone()[0],4)
+
+    def test_bulk_writer_does_not_change_existing_masterdata(self):
+        self.write()
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("update public.products set title='Canonical',artist='MusicBrainz',cover_url='owned.webp'")
+        newer=deepcopy(self.plan);newer['captured_at']=datetime.now(timezone.utc).isoformat()
+        for offer in newer['offers']:offer.update(captured_at=newer['captured_at'],price='55.00')
+        result=publish(newer,self.dsn,self.shops,approved=True,bulk=True)
+        self.assertEqual(result['updated_offers'],4)
+        with psycopg.connect(self.dsn) as conn:
+            self.assertEqual(conn.execute('select distinct title,artist,cover_url from public.products').fetchall(),[('Canonical','MusicBrainz','owned.webp')])
+
+    def test_bulk_writer_bounds_round_trips_for_two_hundred_products(self):
+        from scripts.importers.bol_feed import SafeWriterCursor
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'large.csv';demo.generate(path,count=200)
+            plan=build_plan(path,PROFILE,['NL','BE'],'12345',limit=0)
+        original=SafeWriterCursor.execute;calls=[]
+        def observed(cursor,statement,params=None):
+            calls.append(1);return original(cursor,statement,params)
+        with patch.object(SafeWriterCursor,'execute',observed):
+            result=publish(plan,self.dsn,self.shops,approved=True,bulk=True)
+        self.assertEqual((result['new_products'],result['updated_offers']),(200,400))
+        self.assertLess(len(calls),30)
+
+    def test_bulk_writer_fails_before_mutation_when_other_bol_writer_holds_lock(self):
+        with psycopg.connect(self.dsn) as locker:
+            locker.execute("select pg_advisory_xact_lock(hashtextextended('bol-affiliate-import',0))")
+            with self.assertRaisesRegex(FeedError,'bol_price_writer_busy'):
+                publish(self.plan,self.dsn,self.shops,approved=True,bulk=True)
+        with psycopg.connect(self.dsn) as conn:
+            self.assertEqual(conn.execute('select count(*) from public.products').fetchone()[0],0)
+
+    def test_failed_later_batch_keeps_progress_without_false_full_success(self):
+        from scripts.importers.bol_feed import publish_batched
+        original=publish;calls=[]
+        def second_fails(*args,**kwargs):
+            calls.append(1)
+            if len(calls)==2:raise FeedError('injected_second_batch_failure')
+            return original(*args,**kwargs)
+        with patch('scripts.importers.bol_feed.publish',side_effect=second_fails):
+            with self.assertRaisesRegex(FeedError,'second_batch'):
+                publish_batched(self.plan,self.dsn,self.shops,approved=True,batch_products=1)
+        self.assertEqual(self.plan['write_progress']['committed_batches'],1)
+        with psycopg.connect(self.dsn) as conn:
+            self.assertEqual(conn.execute('select count(*) from public.products').fetchone()[0],1)
+            self.assertEqual(conn.execute('select count(*) from public.prices').fetchone()[0],2)
+
     def test_database_failure_rolls_back_products_prices_and_evidence(self):
         with patch("scripts.importers.bol_feed.maybe_insert_history", side_effect=RuntimeError("test failure")):
             with self.assertRaises(RuntimeError):

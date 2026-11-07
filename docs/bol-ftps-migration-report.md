@@ -12,6 +12,79 @@ gewijzigd. De Marketing API blijft actief; de volledige automatische FTPS-bronwi
 is nog niet vrijgegeven. De oorspronkelijke read-only resultaten staan hieronder,
 gevolgd door het actuele pilotresultaat in §5a.
 
+## Actuele voortzetting: knelpunten onderzocht en technisch afgevangen
+
+De latere volledige Windows-validatie heeft een nieuw snapshot van 913.984 regels
+geverifieerd (MDTM 7 november 2026, 21:03:54 CET). Daaruit blijven 146.011 geldige
+nieuwe NL-vinylaanbiedingen over na veilige quarantaine van 100 identiteits- en
+formaatconflicten. Er zijn geen canonieke formaten gecorrigeerd of overschreven.
+94 conflicten raken producten met `metadata_source=musicbrainz`; uitsluiting
+beschermt die bestaande data. De historische 99-conflictentelling hieronder is
+vervangen door deze nieuwe momentopname.
+
+De actuele read-only vergelijking telt 52.938 actieve bol-shopaanbiedingen, waarvan
+49.944 in de geschikte bronselectie voorkomen. Van 2.994 ontbrekende aanbiedingen
+zijn er 1.598 op het meetmoment zichtbaar en volgens de bestaande API-regels
+API-geschikt. Bronverklaring: 2.378 EANs ontbreken in Entertainment, 553 vallen af
+op drager, 36 hebben geen NL-aanbieding, 26 zijn niet NEW; één geval is niet
+verklaard door het eerder vastgelegde broncohort terwijl de API doorliep.
+Twintig van twintig onderzochte ontbrekende EANs hebben nog een geldig actueel
+NEW API-aanbod. Acht daarvan zijn door bol als Boek geclassificeerd en één als
+platenspeleronderdeel; dit verklaart voor die voorbeelden een andere feedgroep,
+maar bewijst niet de fysieke drager. Eén gecontroleerd geval heeft hetzelfde
+bol-product-ID bij verschillende EANs: er is geen onveilige aliasmatch toegepast.
+
+Opgeloste technische knelpunten:
+
+- De Windows-runner heeft opnieuw IP-controle, volledige download, integriteits-
+  en catalogusvalidatie en aanvullende metadata-inspectie succesvol uitgevoerd.
+- Identiteitsconflicten worden vóór publicatie uit alle markten van het plan
+  verwijderd en met redenen gerapporteerd; zij blokkeren niet langer de veilige
+  restselectie en veranderen geen masterdata.
+- Volledige writes gebruiken maximaal 250 producten per atomaire batch, bestaande
+  product-/prijs-/historiecontracten met pipelining, vaste GTIN-/shopidentiteit,
+  oudere-prijsbescherming en verificatie binnen én na elke commit. Eerdere
+  gecommitteerde batches worden bij een latere fout als voortgang bewaard; alleen
+  volledig succes krijgt een checkpoint. Dit is geen onbewezen globale transactie.
+- De gedeelde bol-lock wordt bij bulkwerk niet onbeperkt afgewacht: bezet betekent
+  geen mutatie en een begrensde retry. Fouten krijgen een veilige fasenaam.
+- Volledige publicatie is expliciet geblokkeerd bij onopgeloste dekking van huidige
+  zichtbare API-geschikte aanbiedingen. Oude/ongeschikte rijen blijven bewaard.
+- Twee-uurlijkse **read-only shadow** is geconfigureerd via
+  `config/bol-feed-automation.json` en de bestaande reviewworkflow. Een afzonderlijk
+  mode- en codegebonden review-checkpoint voorkomt nieuwe bulkdownloads van
+  ongewijzigde bronnen en kan nooit een schrijverscheckpoint vervangen.
+- Volledige publicatie staat bovendien expliciet op slot zolang de versiebeheer-
+  policy `mode=shadow`, `publication_allowed=false` is.
+
+Validatie van deze voortzetting: 108 bol-tests, inclusief 21 tijdelijke
+PostgreSQL-integratietests, en 43 prijscontracttests (de zeven daarin optionele
+PostgreSQL-tests zijn ook afzonderlijk op de eigen tijdelijke server uitgevoerd).
+Actionlint slaagt voor de drie FTPS-workflows. De tijdelijke prestatietest verwerkt
+200 producten/400 marktprijzen met minder dan dertig expliciete cursorrequests;
+dit bewijst de weggenomen per-aanbieding-roundtrips, niet de productieschrijftijd
+van een complete catalogus met alle gedeployde triggers.
+
+Deze voortzetting heeft geen nieuwe product- of prijswrites in Supabase gedaan.
+De bestaande API-keten blijft actief. De automatische publicatie is niet aangezet;
+shadow is uitsluitend bron-/databasecontrole zonder schrijfpad. Een volledige
+FTPS-only bronwissel blijft niet veilig bewezen. De aanvullende bronbestanden
+zijn bewust alleen met metadata en begrensde headerprobes onderzocht: onder meer
+International Books is 4,78 GB gecomprimeerd, boven de bestaande downloadlimiet.
+Een gedeelde CSV-header bewijst geen vinylrecord; boeken/accessoires en
+prijs-overname over verschillende EANs zijn niet geïmporteerd.
+
+Blijvende actuele evidence:
+
+- [Volledige nieuwe bronvalidatie](https://github.com/Vinylofy/curedplant./actions/runs/42412781246)
+- [Live API-/GPC-vergelijking](https://github.com/Vinylofy/curedplant./actions/runs/42414643425)
+- [Begrensde header-/grootteprobes](https://github.com/Vinylofy/curedplant./actions/runs/42415218461)
+- [Actuele bron- en conflictevidence](bol-ftps-source-evidence.json)
+- [Voorbereide bronvragen en reproduceerbare gevallen](bol-feed-source-investigation.md)
+
+De onderstaande eerdere resultaten blijven als historische pilot- en
+implementatie-evidence bewaard. De actuele blokkades en tellingen staan hierboven.
+
 ## 1. Connectiviteit en download
 
 De bestaande zelf gehoste Windows-runner is gebruikt, met controle van het
@@ -282,6 +355,7 @@ Belangrijkste initiële commits: `4440290`, `c2a3f65`, `c7acedd`,
 
 **FTPS PRODUCTIEGEREED: NEE.** Live toegang, schema, selectie en read-only
 prijs/EAN-validatie én de goedgekeurde beperkte NL-productiepilot zijn bewezen.
-Volledige conflict/dekkingsafhandeling, functionele API-pariteit, volledige
-schrijfprestaties en zelfstandig gevalideerde productieplanning ontbreken nog.
+Conflicten zijn veilig gequarantaineerd en bulk-/shadowverwerking is technisch
+voorbereid. Volledige brondekking, functionele API-pariteit, echte volledige
+productieschrijfprestaties en zelfstandig bewezen live planning ontbreken nog.
 De Marketing API blijft actief.

@@ -22,6 +22,7 @@ import re
 import ssl
 import sys
 import tempfile
+import zlib
 import time
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
@@ -31,7 +32,7 @@ from psycopg.types.json import Jsonb
 
 from scripts.importers.common import (
     CanonicalRecord, _insert_product, identifier_candidates, strict_normalize_gtin,
-    upsert_price, maybe_insert_history,
+    upsert_price, maybe_insert_history, insert_products, upsert_prices, insert_history_rows,
 )
 
 FEED_NAME = "product-feed_entertainment-v2.csv.gz"
@@ -198,19 +199,29 @@ def select_product(row, profile, countries, site_id, captured_at):
 
 
 def build_plan(path, profile, countries, site_id, *, limit=20, max_rows=1_000_000,
-               captured_at=None):
+               captured_at=None, audit_gtins=None):
     if not countries or not set(countries).issubset(MARKETS):
         raise FeedError("unsupported_market")
     if len(set(countries)) != len(countries) or limit < 0 or max_rows < 1:
         raise FeedError("invalid_limits_or_duplicate_markets")
     captured_at = captured_at or datetime.now(timezone.utc)
     accepted, ambiguous, reasons, samples = {}, set(), Counter(), []
+    audited_seen, source_rejections = set(), []
+    audit_gtins = set(audit_gtins or [])
     products, read, exhausted = set(), 0, False
     iterator = iter(rows_from(path, profile))
     for row in iterator:
         read += 1
+        if read % 100000 == 0:
+            print(json.dumps({'stage':'plan_progress','read_products':read,'accepted_offers':len(accepted)}),flush=True)
+        audit_gtin = strict_normalize_gtin(row.get(profile["ean"], ""))
+        if audit_gtin in audit_gtins:
+            audited_seen.add(audit_gtin)
+        rejection = None
         try:
             offers, skips = select_product(row, profile, countries, site_id, captured_at)
+            if audit_gtin in audit_gtins and not any(o["country"] == "NL" for o in offers):
+                rejection = next((v["reason"] for v in skips if v["country"] == "NL"), "no_selected_nl_offer")
             for skip in skips:
                 reasons[skip["reason"]] += 1
                 if len(samples) < 20:
@@ -231,9 +242,21 @@ def build_plan(path, profile, countries, site_id, *, limit=20, max_rows=1_000_00
                 accepted[key] = offer
                 products.add(offer["gtin"])
         except FeedError as exc:
+            rejection = str(exc)
             reasons[str(exc)] += 1
             if len(samples) < 20:
                 samples.append({"row": read, "reason": str(exc)})
+        if audit_gtin in audit_gtins and rejection:
+            fields = profile["offers"].get("NL", {})
+            source_rejections.append({"gtin": audit_gtin, "reason": rejection,
+                "source_product_id": row.get(profile["product_id"]),
+                "format": row.get(profile["format"]),
+                "category_subgroup": row.get("Category.subgroup"),
+                "category_subsubgroup": row.get("Category.subssubgroup"),
+                "condition": row.get(fields.get("condition", "")),
+                "selling_price": row.get(fields.get("price", "")),
+                "deliverable": row.get(fields.get("deliverable", "")),
+                "release_date": row.get(fields.get("release_date", ""))})
         if (limit and len(products) >= limit) or read >= max_rows:
             break
     else:
@@ -250,6 +273,9 @@ def build_plan(path, profile, countries, site_id, *, limit=20, max_rows=1_000_00
         }
     return {"source": "bol_affiliate_productfeed", "read_products": read,
             "markets": market_summary,
+            "coverage_source_rejections": source_rejections,
+            "coverage_source_absent_gtins": sorted(audit_gtins - audited_seen),
+            "coverage_source_targets": len(audit_gtins),
             "selected_new_vinyl": len({o["gtin"] for o in accepted.values()}),
             "valid_barcodes": len({o["gtin"] for o in accepted.values()}),
             "complete_feed": exhausted, "database_writes": 0,
@@ -271,6 +297,27 @@ def find_product(cur, offer):
             "cd", "dvd", "bluray", "blu-ray", "accessories", "poster", "digital"}:
         raise FeedError("existing_product_format_conflict")
     return rows[0][0] if rows else None
+
+
+def required_current_offer(row, now=None):
+    """Current UI/API parity scope; retain excluded legacy rows without publishing them."""
+    from scripts.importers.bol_api_prices import verified_ean,api_ean
+    now=now or datetime.now(timezone.utc)
+    if (not row[4] or not -300 <= (now-row[4]).total_seconds() <= 48*3600
+            or row[5] not in {'in_stock','unknown'} or row[6] != 'EUR' or row[7] <= 0):
+        return False
+    try:
+        _,gtin=verified_ean({'ean':row[1],'gtin_normalized':row[2],'format_label':row[3]})
+        api_ean(gtin)
+    except FeedError:
+        return False
+    return True
+
+
+def require_full_coverage(plan, countries):
+    coverage=plan.get('existing_offer_coverage',{})
+    if any(country not in coverage or coverage[country].get('required_current_absent') != 0 for country in countries):
+        raise FeedError('full_import_requires_resolved_current_offer_coverage')
 
 
 def review_matches(plan, dsn, shops=None, *, batch_size=500):
@@ -343,13 +390,20 @@ def review_matches(plan, dsn, shops=None, *, batch_size=500):
                 for country, shop_id in shops.items():
                     if country not in plan.get("markets", {}):
                         continue
-                    cur.execute("select product_id from public.prices where shop_id=%s and is_active=true", (shop_id,))
-                    active = {str(row[0]) for row in cur.fetchall()}
+                    cur.execute("""select p.id,p.ean,p.gtin_normalized,p.format_label,
+                                   pr.last_seen_at,pr.availability,pr.currency,pr.price
+                                   from public.prices pr join public.products p on p.id=pr.product_id
+                                   where pr.shop_id=%s and pr.is_active=true""", (shop_id,))
+                    active_rows=cur.fetchall()
+                    active = {str(row[0]) for row in active_rows}
+                    required = {str(row[0]) for row in active_rows if required_current_offer(row)}
                     missing = active - matched_by_market[country]
                     coverage[country] = {"existing_active_shop_offers": len(active),
                                          "covered_by_feed": len(active - missing),
                                          "absent_from_eligible_feed": len(missing),
-                                         "absent_product_samples": sorted(missing)[:20]}
+                                         "absent_product_samples": sorted(missing)[:20],
+                                         "required_current_offers":len(required),
+                                         "required_current_absent":len(required-matched_by_market[country])}
     plan["existing_offer_coverage"] = coverage
     for country, summary in plan.get("markets", {}).items():
         gtins = {o["gtin"] for o in plan["offers"] if o["country"] == country}
@@ -357,6 +411,41 @@ def review_matches(plan, dsn, shops=None, *, batch_size=500):
     plan.update(existing_matches=len(existing), new_products=len(new),
                 match_status="read_only_checked", match_conflicts=rejected,
                 price_comparisons=dict(comparisons), match_batch_size=batch_size)
+
+
+def load_coverage_gtins(dsn, shops):
+    with psycopg.connect(dsn, prepare_threshold=None) as conn, conn.cursor() as cur:
+        cur.execute("set transaction read only")
+        cur.execute("""select p.ean,p.gtin_normalized from public.products p
+                       join public.prices pr on pr.product_id=p.id
+                       where pr.shop_id=any(%s::uuid[]) and pr.is_active=true""", (list(shops.values()),))
+        return {g for row in cur.fetchall() for value in row
+                if (g := strict_normalize_gtin(value))}
+
+
+def quarantine_identity_conflicts(plan):
+    """Exclude unsafe GTINs from this source; never repair canonical metadata."""
+    conflicts = plan.get("match_conflicts", [])
+    if any(c["reason"] not in {"ambiguous_existing_barcode", "existing_product_format_conflict"}
+           for c in conflicts):
+        raise FeedError("unclassified_database_conflict")
+    if not conflicts:
+        return
+    blocked = {c["gtin"] for c in conflicts}
+    before = len(plan["offers"])
+    plan["offers"] = [o for o in plan["offers"] if o["gtin"] not in blocked]
+    plan["quarantined_identity_conflicts"] = conflicts
+    plan["quarantined_offers"] = before - len(plan["offers"])
+    plan["match_conflicts"] = []
+    plan["selected_new_vinyl"] = len({o["gtin"] for o in plan["offers"]})
+    plan["valid_barcodes"] = plan["selected_new_vinyl"]
+    plan["valid_prices"] = len(plan["offers"])
+    for country, summary in plan.get("markets", {}).items():
+        offers = [o for o in plan["offers"] if o["country"] == country]
+        summary.update(selected_new_vinyl=len({o["gtin"] for o in offers}),valid_prices=len(offers),
+                       availability=dict(Counter(o["availability"] for o in offers)),
+                       shipping=dict(Counter(o["shipping_status"] for o in offers)),
+                       seller=dict(Counter(o["seller"] for o in offers)))
 
 
 class SafeWriterCursor:
@@ -381,6 +470,15 @@ class SafeWriterCursor:
             return self.cursor.execute(statement, params)
         except psycopg.errors.QueryCanceled:
             raise FeedError("database_statement_timeout stage=" + stage) from None
+
+    def executemany(self, statement, params, **kwargs):
+        try:
+            return self.cursor.executemany(statement, params, **kwargs)
+        except psycopg.errors.QueryCanceled:
+            query = str(statement).lower()
+            table = next((t for t in ('products','prices','price_history','raw_shop_scrapes')
+                          if 'public.'+t in query), 'writer')
+            raise FeedError('database_statement_timeout stage='+table+'_batch_write') from None
 
 
 def reviewed_pilot(path, expected_digest, site_id):
@@ -461,7 +559,162 @@ def writer_diagnostics(dsn):
             "replay_lookup_plan": replay_plan, "product_lookup_plan": product_plan}
 
 
-def publish(plan, dsn, shops, approved=False, existing_only=False):
+def offer_record(offer, captured):
+    return CanonicalRecord(
+        source_row_number=0, shop_name="bol " + offer["country"], shop_domain="bol.com",
+        shop_country=offer["country"], ean=offer["ean"], gtin_normalized=offer["gtin"],
+        artist="", title="Vinyl " + offer["ean"], format_label="Vinyl", cover_url=None,
+        product_url=offer["product_url"], price=Decimal(offer["price"]), currency="EUR",
+        availability=offer["availability"], captured_at=captured, product_handle=None,
+        detail_status="ok", is_secondhand=False, raw={})
+
+
+def verify_written(cur, written, error):
+    if not written:
+        return
+    products = sorted({str(r[0]) for r in written})
+    shops = sorted({str(r[1]) for r in written})
+    cur.execute("""select product_id,shop_id,price,product_url from public.prices
+                   where product_id=any(%s::uuid[]) and shop_id=any(%s::uuid[])""", (products, shops))
+    actual = {(str(r[0]),str(r[1])):(r[2],r[3]) for r in cur.fetchall()}
+    if any(actual.get((str(pid),str(shop))) != (price,url) for pid,shop,price,url in written):
+        raise FeedError(error)
+
+
+def publish_bulk_rows(cur, plan, shops, captured, stats, written, existing_only):
+    offers = sorted(plan["offers"],key=lambda o:(o["gtin"],o["country"]))
+    grouped = {}
+    for offer in offers:
+        grouped.setdefault(offer["gtin"],[]).append(offer)
+    if len(grouped) > 250:
+        raise FeedError("bulk_transaction_product_limit")
+    cur.execute("select pg_advisory_xact_lock(hashtextextended(v,0)) from unnest(%s::text[]) as keys(v)",
+                (sorted(grouped),))
+    variants = {g:set().union(*(set(identifier_candidates(o["ean"],g)) for o in values))
+                for g,values in grouped.items()}
+    ids = sorted(set().union(*variants.values()))
+    cur.execute("""select id,format_label,ean,gtin_normalized from public.products
+                   where ean=any(%s) or gtin_normalized=any(%s)""",(ids,ids))
+    index = {}
+    for row in cur.fetchall():
+        for value in {row[2],row[3]}-{None}:
+            index.setdefault(value,{})[str(row[0])] = row
+    products = {}
+    missing = []
+    for gtin, values in grouped.items():
+        found = {pid:row for value in variants[gtin] for pid,row in index.get(value,{}).items()}
+        if len(found) > 1:
+            raise FeedError("ambiguous_existing_barcode")
+        if found:
+            pid,row = next(iter(found.items()))
+            if str(row[1] or '').strip().casefold() in {'cd','dvd','bluray','blu-ray','accessories','poster','digital'}:
+                raise FeedError("existing_product_format_conflict")
+            products[gtin] = pid
+        else:
+            missing.append(gtin)
+    if missing and existing_only:
+        raise FeedError("existing_product_required")
+    records = {g:offer_record(values[0],captured) for g,values in grouped.items()}
+    if missing:
+        cur.execute("savepoint bol_bulk_new_products")
+        try:
+            inserted = insert_products(cur,[records[g] for g in missing])
+            products.update(zip(missing,inserted))
+            stats['new_products'] += len(inserted)
+        except psycopg.errors.UniqueViolation:
+            cur.execute("rollback to savepoint bol_bulk_new_products")
+            for gtin in missing:
+                cur.execute("savepoint bol_single_new_product")
+                try:
+                    products[gtin] = _insert_product(cur,records[gtin])
+                    stats['new_products'] += 1
+                except psycopg.errors.UniqueViolation:
+                    cur.execute("rollback to savepoint bol_single_new_product")
+                    pid = find_product(cur,grouped[gtin][0])
+                    if pid is None:
+                        raise FeedError("product_identity_conflict") from None
+                    products[gtin] = str(pid)
+                cur.execute("release savepoint bol_single_new_product")
+        cur.execute("release savepoint bol_bulk_new_products")
+    product_ids = sorted(set(products.values()))
+    shop_ids = sorted(set(shops.values()))
+    cur.execute("""select product_id,shop_id,last_seen_at from public.prices
+                   where product_id=any(%s::uuid[]) and shop_id=any(%s::uuid[]) for update""",
+                (product_ids,shop_ids))
+    old = {(str(r[0]),str(r[1])):r[2] for r in cur.fetchall()}
+    eligible = []
+    for offer in offers:
+        pid,shop = str(products[offer['gtin']]),str(shops[offer['country']])
+        if old.get((pid,shop)) and old[(pid,shop)] > captured:
+            stats['skipped_newer'] += 1
+            continue
+        digest = hashlib.sha256(json.dumps(offer,sort_keys=True).encode()).hexdigest()
+        eligible.append((offer,pid,shop,digest))
+    if not eligible:
+        return
+    cur.execute("""select shop_id,source_product_id,payload->>'bol_import_digest'
+                   from public.raw_shop_scrapes where shop_id=any(%s::text[])
+                   and source_product_id=any(%s::text[]) and payload->>'bol_import_digest'=any(%s::text[])""",
+                (shop_ids, sorted({o['product_id'] for o,_,_,_ in eligible}),
+                 sorted({digest for _,_,_,digest in eligible})))
+    replay = {(str(r[0]),r[1],r[2]) for r in cur.fetchall()}
+    eligible = [(o,pid,shop,digest) for o,pid,shop,digest in eligible
+                if (shop,o['product_id'],digest) not in replay]
+    if not eligible:
+        return
+    cur.execute("""select distinct on (product_id,shop_id) product_id,shop_id,price,availability
+                   from public.price_history where product_id=any(%s::uuid[]) and shop_id=any(%s::uuid[])
+                   order by product_id,shop_id,captured_at desc""",(product_ids,shop_ids))
+    history = {(str(r[0]),str(r[1])):(r[2],r[3]) for r in cur.fetchall()}
+    price_rows,history_rows,raw_rows = [],[],[]
+    for offer,pid,shop,digest in eligible:
+        record = offer_record(offer,captured)
+        price_rows.append((pid,shop,record,captured))
+        if history.get((pid,shop)) != (record.price,record.availability):
+            history_rows.append((pid,shop,record))
+        raw_rows.append((shop,offer['product_url'],offer['product_id'],offer['title'],offer['ean'],
+                         offer['price'],offer['availability'],Jsonb({**offer,'bol_import_digest':digest}),captured))
+        written.append((pid,shop,record.price,record.product_url))
+    upsert_prices(cur,price_rows)
+    insert_history_rows(cur,history_rows)
+    cur.executemany("""insert into public.raw_shop_scrapes
+        (shop_id,source_url,source_product_id,title_raw,ean_raw,price_raw,availability_raw,payload,scraped_at,parse_status)
+        values (%s,%s,%s,%s,%s,%s,%s,%s,%s,'bol_affiliate_evidence')""",raw_rows)
+    stats['updated_offers'] += len(price_rows)
+
+
+def publish_batched(plan, dsn, shops, *, approved=False, batch_products=250):
+    """Prevalidated full plan, bounded atomic batches, resumable by snapshot digest."""
+    if not approved or not plan.get('complete_feed') or not 1 <= batch_products <= 250:
+        raise FeedError('approved_complete_feed_required_for_batches')
+    if plan.get('errors') or not plan.get('offers'):
+        raise FeedError('empty_or_failed_plan')
+    grouped = {}
+    for offer in plan['offers']:
+        grouped.setdefault(offer['gtin'],[]).append(offer)
+    keys = sorted(grouped)
+    totals = {'new_products':0,'updated_offers':0,'skipped_newer':0,'verified':0,'committed_verified':0,'committed_batches':0}
+    for offset in range(0,len(keys),batch_products):
+        chunk = {**plan,'offers':[o for g in keys[offset:offset+batch_products] for o in grouped[g]]}
+        for attempt in range(25):
+            try:
+                result = publish(chunk,dsn,shops,approved=True,bulk=True)
+                break
+            except FeedError as exc:
+                if str(exc) != 'bol_price_writer_busy' or attempt == 24:
+                    raise
+                time.sleep(5)
+        for field in totals:
+            if field != 'committed_batches':
+                totals[field] += result[field]
+        totals['committed_batches'] += 1
+        plan['write_progress'] = dict(totals)
+        print(json.dumps({'status':'batch_committed','completed_products':min(offset+batch_products,len(keys)),
+                          'total_products':len(keys),**totals}),flush=True)
+    return totals
+
+
+def publish(plan, dsn, shops, approved=False, existing_only=False, bulk=False):
     """One transaction for all selected markets; never registers/activates shops.
 
     No shared bol titles/covers/descriptions are published. New barcode products
@@ -479,7 +732,12 @@ def publish(plan, dsn, shops, approved=False, existing_only=False):
     with psycopg.connect(dsn, prepare_threshold=None) as conn, conn.cursor() as cur:
         cur = SafeWriterCursor(cur)
         # Shared lock across countries prevents two imports splitting NL/BE.
-        cur.execute("select pg_advisory_xact_lock(hashtextextended('bol-affiliate-import',0))")
+        if bulk:
+            cur.execute("select pg_try_advisory_xact_lock(hashtextextended('bol-affiliate-import',0))")
+            if not cur.fetchone()[0]:
+                raise FeedError('bol_price_writer_busy')
+        else:
+            cur.execute("select pg_advisory_xact_lock(hashtextextended('bol-affiliate-import',0))")
         for country in sorted({o["country"] for o in plan["offers"]}):
             if country not in shops:
                 raise FeedError("missing_market_shop_configuration")
@@ -494,77 +752,128 @@ def publish(plan, dsn, shops, approved=False, existing_only=False):
                 raise FeedError("cross_market_shop_exposure")
         if len(set(shops.values())) != len(shops):
             raise FeedError("markets_must_use_distinct_shops")
-        for offer in sorted(plan["offers"], key=lambda o: (o["gtin"], o["country"])):
-            cur.execute("select pg_advisory_xact_lock(hashtextextended(%s,0))", (offer["gtin"],))
-            product_id = find_product(cur, offer)
-            record = CanonicalRecord(
-                source_row_number=0, shop_name="bol " + offer["country"], shop_domain="bol.com",
-                shop_country=offer["country"], ean=offer["ean"], gtin_normalized=offer["gtin"],
-                artist="", title="Vinyl " + offer["ean"], format_label="Vinyl", cover_url=None,
-                product_url=offer["product_url"], price=Decimal(offer["price"]), currency="EUR",
-                availability=offer["availability"], captured_at=captured, product_handle=None,
-                detail_status="ok", is_secondhand=False, raw={})
-            if product_id is None and existing_only:
-                raise FeedError('existing_product_required')
-            if product_id is None:
-                # Savepoint handles a concurrent non-bol importer winning EAN.
-                cur.execute("savepoint bol_new_product")
-                try:
-                    product_id = _insert_product(cur, record)
-                    stats["new_products"] += 1
-                except psycopg.errors.UniqueViolation:
-                    cur.execute("rollback to savepoint bol_new_product")
-                    product_id = find_product(cur, offer)
-                    if product_id is None:
-                        raise FeedError("product_identity_conflict") from None
-                cur.execute("release savepoint bol_new_product")
-            shop_id = shops[offer["country"]]
-            cur.execute("""select last_seen_at from public.prices
-                           where product_id=%s and shop_id=%s for update""", (product_id, shop_id))
-            old = cur.fetchone()
-            if old and old[0] and old[0] > captured:
-                stats["skipped_newer"] += 1
-                continue
-            # Repeat of the same snapshot makes no price/history/content writes.
-            digest = hashlib.sha256(json.dumps(offer, sort_keys=True).encode()).hexdigest()
-            cur.execute("""select 1 from public.raw_shop_scrapes where shop_id=%s
-                           and source_product_id=%s and payload->>'bol_import_digest'=%s limit 1""",
-                        (str(shop_id), offer["product_id"], digest))
-            if cur.fetchone():
-                continue
-            upsert_price(cur, str(product_id), shop_id, record, captured)
-            # History records changes, including across calendar-day boundaries.
-            cur.execute("""select price,availability from public.price_history
-                           where product_id=%s and shop_id=%s
-                           order by captured_at desc limit 1""", (product_id, shop_id))
-            latest_history = cur.fetchone()
-            if latest_history != (record.price, record.availability):
-                maybe_insert_history(cur, str(product_id), shop_id, record)
-            cur.execute("""insert into public.raw_shop_scrapes
-                (shop_id,source_url,source_product_id,title_raw,ean_raw,price_raw,
-                 availability_raw,payload,scraped_at,parse_status)
-                values (%s,%s,%s,%s,%s,%s,%s,%s,%s,'bol_affiliate_evidence')""",
-                        (str(shop_id), offer["product_url"], offer["product_id"], offer["title"],
-                         offer["ean"], offer["price"], offer["availability"],
-                         Jsonb({**offer, "bol_import_digest": digest}), captured))
-            written.append((str(product_id), shop_id, Decimal(offer["price"]), offer["product_url"]))
-            stats["updated_offers"] += 1
-        for product_id, shop_id, price, url in written:
-            cur.execute("select price,product_url from public.prices where product_id=%s and shop_id=%s",
-                        (product_id, shop_id))
-            if cur.fetchone() != (price, url):
-                raise FeedError("price_postcondition_failed")
-            stats["verified"] += 1
+        if bulk:
+            publish_bulk_rows(cur,plan,shops,captured,stats,written,existing_only)
+        else:
+            for offer in sorted(plan["offers"], key=lambda o: (o["gtin"], o["country"])):
+                cur.execute("select pg_advisory_xact_lock(hashtextextended(%s,0))", (offer["gtin"],))
+                product_id = find_product(cur, offer)
+                record = offer_record(offer,captured)
+                if product_id is None and existing_only:
+                    raise FeedError('existing_product_required')
+                if product_id is None:
+                    # Savepoint handles a concurrent non-bol importer winning EAN.
+                    cur.execute("savepoint bol_new_product")
+                    try:
+                        product_id = _insert_product(cur, record)
+                        stats["new_products"] += 1
+                    except psycopg.errors.UniqueViolation:
+                        cur.execute("rollback to savepoint bol_new_product")
+                        product_id = find_product(cur, offer)
+                        if product_id is None:
+                            raise FeedError("product_identity_conflict") from None
+                    cur.execute("release savepoint bol_new_product")
+                shop_id = shops[offer["country"]]
+                cur.execute("""select last_seen_at from public.prices
+                               where product_id=%s and shop_id=%s for update""", (product_id, shop_id))
+                old = cur.fetchone()
+                if old and old[0] and old[0] > captured:
+                    stats["skipped_newer"] += 1
+                    continue
+                # Repeat of the same snapshot makes no price/history/content writes.
+                digest = hashlib.sha256(json.dumps(offer, sort_keys=True).encode()).hexdigest()
+                cur.execute("""select 1 from public.raw_shop_scrapes where shop_id=%s
+                               and source_product_id=%s and payload->>'bol_import_digest'=%s limit 1""",
+                            (str(shop_id), offer["product_id"], digest))
+                if cur.fetchone():
+                    continue
+                upsert_price(cur, str(product_id), shop_id, record, captured)
+                # History records changes, including across calendar-day boundaries.
+                cur.execute("""select price,availability from public.price_history
+                               where product_id=%s and shop_id=%s
+                               order by captured_at desc limit 1""", (product_id, shop_id))
+                latest_history = cur.fetchone()
+                if latest_history != (record.price, record.availability):
+                    maybe_insert_history(cur, str(product_id), shop_id, record)
+                cur.execute("""insert into public.raw_shop_scrapes
+                    (shop_id,source_url,source_product_id,title_raw,ean_raw,price_raw,
+                     availability_raw,payload,scraped_at,parse_status)
+                    values (%s,%s,%s,%s,%s,%s,%s,%s,%s,'bol_affiliate_evidence')""",
+                            (str(shop_id), offer["product_url"], offer["product_id"], offer["title"],
+                             offer["ean"], offer["price"], offer["availability"],
+                             Jsonb({**offer, "bol_import_digest": digest}), captured))
+                written.append((str(product_id), shop_id, Decimal(offer["price"]), offer["product_url"]))
+                stats["updated_offers"] += 1
+        verify_written(cur,written,"price_postcondition_failed")
+        stats["verified"] = len(written)
     # A context exit commits only after every market passes its postconditions.
     with psycopg.connect(dsn, prepare_threshold=None) as conn, conn.cursor() as cur:
         cur.execute("set transaction read only")
-        for product_id, shop_id, price, url in written:
-            cur.execute("select price,product_url from public.prices where product_id=%s and shop_id=%s",
-                        (product_id, shop_id))
-            if cur.fetchone() != (price, url):
-                raise FeedError("committed_price_verification_failed")
+        verify_written(cur,written,"committed_price_verification_failed")
     stats["committed_verified"] = len(written)
     return stats
+
+
+def inspect_official_feed_header(feed_name):
+    allowed={'product-feed_'+group+'-v2.csv.gz' for group in
+             ('dutch-books','international-books','educational-books','sound-vision')}
+    if feed_name not in allowed:
+        raise FeedError('unapproved_inventory_probe')
+    user,password=os.environ.get('BOL_FEED_USERNAME'),os.environ.get('BOL_FEED_PASSWORD')
+    if not user or not password:raise FeedError('missing_feed_credentials')
+    class HeaderComplete(Exception):pass
+    header=None;compressed=0;buffer=b'';decoder=zlib.decompressobj(16+zlib.MAX_WBITS)
+    with ftplib.FTP_TLS(context=ssl.create_default_context(),timeout=60) as ftp:
+        ftp.connect(FTP_HOST,21);ftp.auth();ftp.login(user,password);ftp.prot_p();ftp.set_pasv(True)
+        ftp.voidcmd('TYPE I')
+        size=ftp.size(feed_name)
+        modified=ftp.sendcmd('MDTM '+feed_name).split()[-1]
+        if not re.fullmatch(r'[0-9]{14}',modified):raise FeedError('invalid_inventory_mdtm')
+        def receive(block):
+            nonlocal compressed,buffer,header
+            compressed+=len(block)
+            if compressed>131072:raise FeedError('inventory_probe_compressed_limit')
+            buffer+=decoder.decompress(block,65537-len(buffer))
+            if b'\n' in buffer:
+                line=buffer.split(b'\n',1)[0].decode('utf-8-sig').rstrip('\r')
+                header=next(csv.reader([line],delimiter='|',strict=True))
+                raise HeaderComplete()
+            if len(buffer)>65536:raise FeedError('inventory_probe_header_limit')
+        try:
+            ftp.retrbinary('RETR '+feed_name,receive,blocksize=8192)
+        except HeaderComplete:
+            # Intentionally terminate a metadata-only transfer; no partial feed is usable for import.
+            ftp.close()
+        if not header:raise FeedError('inventory_probe_missing_header')
+    return {'filename':feed_name,'compressed_file_bytes':size,'source_mdtm_utc':modified,
+            'probe_compressed_bytes':compressed,'headers':header,'integrity':'header_only_not_full_validation'}
+
+
+def inspect_feed_inventory(inspect_headers=False):
+    user,password=os.environ.get('BOL_FEED_USERNAME'),os.environ.get('BOL_FEED_PASSWORD')
+    if not user or not password:
+        raise FeedError('missing_feed_credentials')
+    stage='connect'
+    try:
+        with ftplib.FTP_TLS(context=ssl.create_default_context(),timeout=60) as ftp:
+            ftp.connect(FTP_HOST,21);stage='tls_auth';ftp.auth()
+            stage='login';ftp.login(user,password);ftp.prot_p();ftp.set_pasv(True)
+            stage='list_official_feeds'
+            names=ftp.nlst()
+            if len(names)>2000:raise FeedError('feed_inventory_size_limit')
+            feeds=sorted({name.rsplit('/',1)[-1] for name in names if re.fullmatch(r'product-feed_[a-z0-9_-]+-v[0-9]+\.(?:csv|xml)\.gz',name.rsplit('/',1)[-1])})
+    except Exception as exc:
+        if isinstance(exc,FeedError):raise
+        raise FeedError('feed_inventory_failed stage='+stage+' reason='+type(exc).__name__) from None
+    probes=[]
+    if inspect_headers:
+        for group in ('dutch-books','international-books','educational-books','sound-vision'):
+            name='product-feed_'+group+'-v2.csv.gz'
+            if name not in feeds:continue
+            try:probes.append(inspect_official_feed_header(name))
+            except Exception as exc:probes.append({'filename':name,'error':str(exc) if isinstance(exc,FeedError) else type(exc).__name__})
+    return {'status':'feed_inventory_inspected','database_writes':0,'errors':[],
+            'host':FTP_HOST,'port':21,'official_feed_files':feeds,'supplemental_header_probes':probes}
 
 
 def _download_feed_once(destination, *, max_bytes=2_000_000_000, unchanged_since=None):
@@ -594,14 +903,19 @@ def _download_feed_once(destination, *, max_bytes=2_000_000_000, unchanged_since
                 if not 0 <= age <= 21600:
                     raise FeedError("stale_or_future_feed")
                 return source_at
+            print(json.dumps({'stage':'source_discovered','source_at':source_at.isoformat()}),flush=True)
             stage = "download"
+            next_progress = 64 * 1024 * 1024
             with destination.open("wb") as target:
                 def receive(block):
-                    nonlocal size
+                    nonlocal size, next_progress
                     size += len(block)
                     if size > max_bytes:
                         raise FeedError("feed_download_size_limit")
                     target.write(block)
+                    if size >= next_progress:
+                        print(json.dumps({'stage':'download_progress','downloaded_bytes':size}),flush=True)
+                        next_progress += 64 * 1024 * 1024
                 ftp.retrbinary("RETR " + FEED_NAME, receive)
             stage = "verify_source_timestamp"
             if ftp.sendcmd("MDTM " + FEED_NAME).split()[-1] != modified:
@@ -719,10 +1033,13 @@ def main(argv=None):
     parser.add_argument("--source-at", help="Local feed generation timestamp, ISO8601 with timezone")
     parser.add_argument("--output", type=Path, default=Path("output/bol/review.json"))
     parser.add_argument("--review-plan", type=Path, help="Trusted reviewed pilot selection; NL and <=20 products only")
+    parser.add_argument("--inspect-ftps-inventory", action="store_true")
+    parser.add_argument("--explain-coverage", action="store_true")
     parser.add_argument("--diagnose-writer", action="store_true")
     parser.add_argument("--check-matches", action="store_true")
     parser.add_argument("--inspect-schema", action="store_true")
     parser.add_argument("--expected-feed-sha256", help="Bind an approved pilot to its reviewed source bytes")
+    parser.add_argument("--review-state", type=Path, help="Successful complete read-only review checkpoint; never permits publication")
     parser.add_argument("--state", type=Path, help="Successful full-writer checkpoint; skips unchanged remote MDTM")
     parser.add_argument("--validation-suite", action="store_true", help="20-product pilot and full read-only scan from one download")
     parser.add_argument("--write", action="store_true")
@@ -731,6 +1048,14 @@ def main(argv=None):
     started = time.monotonic()
     report = {"status": "blocked", "database_writes": 0, "errors": []}
     try:
+        if args.inspect_ftps_inventory:
+            if args.write or args.check_matches or args.review_plan:
+                raise FeedError('feed_inventory_cannot_publish_or_query_database')
+            report=inspect_feed_inventory(inspect_headers=True)
+            args.output.parent.mkdir(parents=True,exist_ok=True)
+            args.output.write_text(json.dumps(report,indent=2)+'\n',encoding='utf-8')
+            print(json.dumps(report))
+            return 0
         if args.diagnose_writer:
             if args.write:
                 raise FeedError("writer_diagnostics_cannot_publish")
@@ -742,6 +1067,8 @@ def main(argv=None):
         profile = json.loads(args.profile.read_text(encoding="utf-8"))
         if args.validation_suite and args.limit != 0:
             raise FeedError("validation_suite_requires_limit_zero")
+        if args.review_state and (args.write or args.feed or args.limit != 0 or args.inspect_schema or args.state):
+            raise FeedError("review_checkpoint_requires_full_remote_read_only_review")
         if args.state and (not args.write or args.limit != 0 or args.feed):
             raise FeedError("state_requires_full_remote_writer")
         if args.validation_suite and (args.write or args.inspect_schema):
@@ -765,13 +1092,20 @@ def main(argv=None):
             args.output.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
             print(json.dumps({k:v for k,v in report.items() if k not in {"offers", "skip_samples"}}))
             return 0
+        audit_gtins = None
+        if args.explain_coverage:
+            if not args.check_matches or args.inspect_schema or args.limit != 0:
+                raise FeedError("coverage_explanation_requires_full_read_only_match_review")
+        checkpoint_path = args.state or args.review_state
         checkpoint_key = hashlib.sha256(json.dumps({
+            "mode":"writer" if args.write else "read_only_review", "check_matches":args.check_matches,
+            "explain_coverage":args.explain_coverage, "importer_sha256":file_digest(Path(__file__)),
             "profile": profile, "markets": args.markets, "site_id": os.environ.get("BOL_SITE_ID"),
             "shops": os.environ.get("BOL_SHOP_IDS"), "database": os.environ.get("DATABASE_URL"),
         }, sort_keys=True).encode()).hexdigest()
         previous_source = None
-        if args.state and args.state.exists():
-            previous = json.loads(args.state.read_text(encoding="utf-8"))
+        if checkpoint_path and checkpoint_path.exists():
+            previous = json.loads(checkpoint_path.read_text(encoding="utf-8"))
             if previous.get("key") == checkpoint_key:
                 previous_source = datetime.fromisoformat(previous["source_at"])
         with tempfile.TemporaryDirectory(prefix="bol-feed-") as directory:
@@ -781,6 +1115,7 @@ def main(argv=None):
                 source_at = download_feed(path, unchanged_since=previous_source)
                 if previous_source is not None and source_at == previous_source and not path.exists():
                     report.update(status="unchanged_feed", source_at=source_at.isoformat(),
+                                  previous_complete_review_at=previous.get("reviewed_at"),feed_sha256=previous.get("feed_sha256"),
                                   database_writes=0, duration_seconds=round(time.monotonic() - started, 3))
                     args.output.parent.mkdir(parents=True, exist_ok=True)
                     args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
@@ -788,6 +1123,8 @@ def main(argv=None):
                     return 0
             if args.write and source_at is None:
                 raise FeedError("local_write_requires_proven_source_timestamp")
+            if args.explain_coverage:
+                audit_gtins = load_coverage_gtins(os.environ["DATABASE_URL"],json.loads(os.environ.get("BOL_SHOP_IDS", "{}")))
             integrity = verify_integrity(path)
             if args.inspect_schema:
                 if args.write or args.check_matches:
@@ -795,7 +1132,9 @@ def main(argv=None):
                 report = inspect_schema(path, profile, max_rows=args.max_rows)
             else:
                 report = build_plan(path, profile, args.markets.split(","), os.environ.get("BOL_SITE_ID", ""),
-                                    limit=args.limit, max_rows=args.max_rows, captured_at=source_at)
+                                    limit=args.limit, max_rows=args.max_rows, captured_at=source_at, audit_gtins=audit_gtins)
+            if args.review_state and not report.get("complete_feed"):
+                raise FeedError("review_row_ceiling_reached")
             report["file_validation"] = integrity
             report["valid_prices"] = len(report.get("offers", []))
             report["source_at"] = source_at.isoformat() if source_at else None
@@ -813,22 +1152,33 @@ def main(argv=None):
                                    json.loads(os.environ.get("BOL_SHOP_IDS", "{}")))
                 report["pilot_20"] = {k: v for k, v in pilot.items() if k != "offers"}
                 report["pilot_20"]["valid_prices"] = len(pilot["offers"])
-            if args.check_matches:
+            if args.check_matches or (args.write and (profile.get("quarantine_identity_conflicts") or args.limit == 0)):
                 review_matches(report, os.environ["DATABASE_URL"],
                                json.loads(os.environ.get("BOL_SHOP_IDS", "{}")))
+            if profile.get("quarantine_identity_conflicts") and report.get("match_status") == "read_only_checked":
+                quarantine_identity_conflicts(report)
             if args.write:
                 if args.limit == 0 and not report["complete_feed"]:
                     raise FeedError("full_import_row_ceiling_reached")
                 shops = json.loads(os.environ.get("BOL_SHOP_IDS", "{}"))
-                result = publish(report, os.environ["DATABASE_URL"], shops, approved=True)
+                if args.limit == 0:
+                    require_full_coverage(report,{o["country"] for o in report["offers"]})
+                writer = publish_batched if args.limit == 0 else publish
+                result = writer(report, os.environ["DATABASE_URL"], shops, approved=True)
                 report["write_result"] = result
                 report["database_writes"] = result["updated_offers"]
                 report["status"] = "written"
                 if args.state and report["complete_feed"]:
                     args.state.parent.mkdir(parents=True, exist_ok=True)
                     temporary_state = args.state.with_suffix(args.state.suffix + ".tmp")
-                    temporary_state.write_text(json.dumps({"key": checkpoint_key, "source_at": source_at.isoformat()}), encoding="utf-8")
+                    temporary_state.write_text(json.dumps({"key": checkpoint_key, "source_at": source_at.isoformat(),"feed_sha256":report["feed_sha256"]}), encoding="utf-8")
                     temporary_state.replace(args.state)
+            if args.review_state and report.get("complete_feed") and report.get("offers") and not report.get("errors"):
+                args.review_state.parent.mkdir(parents=True,exist_ok=True)
+                temporary_state=args.review_state.with_suffix(args.review_state.suffix+'.tmp')
+                temporary_state.write_text(json.dumps({'key':checkpoint_key,'source_at':source_at.isoformat(),
+                    'reviewed_at':datetime.now(timezone.utc).isoformat(),'feed_sha256':report['feed_sha256']}),encoding='utf-8')
+                temporary_state.replace(args.review_state)
     except Exception as exc:
         # Never echo driver messages, secret paths/URLs or traceback.
         report["status"] = "blocked"
@@ -839,7 +1189,7 @@ def main(argv=None):
     report["duration_seconds"] = round(time.monotonic() - started, 3)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    print(json.dumps({k: v for k, v in report.items() if k not in {"offers", "skip_samples", "field_samples", "vinyl_candidate_samples", "vocabulary"}}))
+    print(json.dumps({k: v for k, v in report.items() if k not in {"offers", "skip_samples", "field_samples", "vinyl_candidate_samples", "vocabulary", "coverage_source_rejections", "coverage_source_absent_gtins"}}))
     return 1 if report["errors"] or (not report.get("offers") and report["status"] != "schema_inspected") else 0
 
 
