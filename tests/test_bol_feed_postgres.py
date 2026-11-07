@@ -313,6 +313,23 @@ class BolPostgresTests(unittest.TestCase):
             self.assertEqual(conn.execute('select count(*) from public.products').fetchone()[0],1)
             self.assertEqual(conn.execute('select count(*) from public.prices').fetchone()[0],2)
 
+    def test_module_entrypoint_handles_legacy_ineligible_rows_without_cross_module_errors(self):
+        import subprocess,sys
+        self.write()
+        with psycopg.connect(self.dsn) as conn:
+            conn.execute("update public.products set format_label='CD' where gtin_normalized=%s",(self.plan['offers'][0]['gtin'],))
+        with tempfile.TemporaryDirectory() as directory:
+            feed=Path(directory)/'feed.csv';demo.generate(feed,count=2)
+            output=Path(directory)/'report.json'
+            env=dict(os.environ,DATABASE_URL=self.dsn,BOL_SITE_ID='12345',BOL_SHOP_IDS=json.dumps(self.shops))
+            result=subprocess.run([sys.executable,'-m','scripts.importers.bol_feed','--feed',str(feed),
+                '--profile','config/bol-feed.live.json','--markets','NL,BE','--limit','0','--check-matches',
+                '--output',str(output)],cwd=Path(__file__).parents[1],env=env,capture_output=True,text=True,timeout=30)
+            report=json.loads(output.read_text())
+            self.assertEqual((result.returncode,report['errors']),(0,[]))
+            self.assertEqual(report['existing_offer_coverage']['NL']['required_current_offers'],1)
+            self.assertEqual(report['quarantined_offers'],2)
+
     def test_database_failure_rolls_back_products_prices_and_evidence(self):
         with patch("scripts.importers.bol_feed.maybe_insert_history", side_effect=RuntimeError("test failure")):
             with self.assertRaises(RuntimeError):

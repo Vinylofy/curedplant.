@@ -301,7 +301,7 @@ def find_product(cur, offer):
 
 def required_current_offer(row, now=None):
     """Current UI/API parity scope; retain excluded legacy rows without publishing them."""
-    from scripts.importers.bol_api_prices import verified_ean,api_ean
+    from scripts.importers.bol_api_prices import verified_ean,api_ean,FeedError as LegacyFeedError
     now=now or datetime.now(timezone.utc)
     if (not row[4] or not -300 <= (now-row[4]).total_seconds() <= 48*3600
             or row[5] not in {'in_stock','unknown'} or row[6] != 'EUR' or row[7] <= 0):
@@ -309,7 +309,7 @@ def required_current_offer(row, now=None):
     try:
         _,gtin=verified_ean({'ean':row[1],'gtin_normalized':row[2],'format_label':row[3]})
         api_ean(gtin)
-    except FeedError:
+    except LegacyFeedError:
         return False
     return True
 
