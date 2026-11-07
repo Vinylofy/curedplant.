@@ -98,6 +98,11 @@ class BolFeedTests(unittest.TestCase):
         self.assertFalse(offers)
         self.assertEqual({r["reason"] for r in rejected}, {"product_identity_link_mismatch"})
 
+    def test_future_or_unrecognised_release_date_never_claims_current_stock(self):
+        for value in ["2099-11-20", "unrecognised"]:
+            row = deepcopy(self.rows[0]); row["OfferNL.releaseDate"] = value
+            self.assertEqual(self.select(row)[0][0]["availability"], "unknown")
+
     def test_no_free_personal_or_shipping_prose_as_price(self):
         for value in ["Gratis", "€2.95 shipping", "Na Select 12.99", "0", "NaN", "Infinity", "-1"]:
             with self.assertRaises(FeedError):

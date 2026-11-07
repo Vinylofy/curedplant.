@@ -177,9 +177,20 @@ def select_product(row, profile, countries, site_id, captured_at):
         availability = {k.casefold(): v for k, v in profile.get("availability_values", {
             "true": "in_stock", "1": "in_stock", "false": "out_of_stock", "0": "out_of_stock"
         }).items()}.get(deliverable, "unknown")
+        release_date = get("release_date")
+        if release_date:
+            try:
+                released = datetime.strptime(release_date, "%Y-%m-%d").date()
+            except ValueError:
+                availability = "unknown"
+            else:
+                if released > captured_at.date():
+                    # Deliverable preorders are not proof of current stock.
+                    # Preserve evidence; do not invent an API preorder flag.
+                    availability = "unknown"
         offers.append({"ean": ean, "gtin": gtin, "product_id": product_id,
                        "title": title, "country": country, "price": price, "currency": "EUR",
-                       "availability": availability,
+                       "availability": availability, "release_date": release_date or None,
                        "seller": {"B": "bol", "P": "external_partner"}.get(get("seller_type"), "unknown"),
                        "shipping": shipping, "shipping_status": "known" if shipping is not None else "unknown",
                        "product_url": link, "captured_at": captured_at.isoformat()})

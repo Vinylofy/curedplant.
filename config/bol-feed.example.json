@@ -22,7 +22,8 @@
       "condition": "OfferNL.condition",
       "deliverable": "OfferNL.isDeliverable",
       "seller_type": "OfferNL.sellerType",
-      "url": "productPageUrlNL"
+      "url": "productPageUrlNL",
+      "release_date": "OfferNL.releaseDate"
     },
     "BE": {
       "price": "OfferBE.sellingPrice",
@@ -30,7 +31,8 @@
       "condition": "OfferBE.condition",
       "deliverable": "OfferBE.isDeliverable",
       "seller_type": "OfferBE.sellerType",
-      "url": "productPageUrlBE"
+      "url": "productPageUrlBE",
+      "release_date": "OfferBE.releaseDate"
     }
   },
   "availability_values": {
