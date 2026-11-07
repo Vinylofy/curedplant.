@@ -10,8 +10,12 @@ on:
       mode:
         description: "Publication requires separate explicit approval; full import also requires API chain paused"
         type: choice
-        options: [dry_run, diagnose_writer, pilot_review_write, pilot_write, full_write]
+        options: [dry_run, diagnose_writer, audit_catalogue, pilot_review_write, pilot_write, full_write]
         default: dry_run
+      audit_api_sample:
+        description: "Read-only: compare twenty missing feed EANs with current Marketing API offers"
+        type: boolean
+        default: false
       reviewed_run_id:
         description: "For pilot_review_write: trusted main workflow containing the reviewed selection"
         type: string
@@ -28,9 +32,65 @@ permissions:
   contents: read
   actions: read
 concurrency:
-  group: ${{ inputs.mode == 'diagnose_writer' && 'bol-feed-diagnostics' || 'bol-feed' }}
+  group: ${{ contains(fromJSON('["diagnose_writer","audit_catalogue"]'), inputs.mode) && 'bol-feed-diagnostics' || 'bol-feed' }}
   cancel-in-progress: false
 jobs:
+  audit_catalogue:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'audit_catalogue' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/github-script@v8
+        with:
+          script: |
+            const run_id = 42363509733;
+            const {data: run} = await github.rest.actions.getWorkflowRun({
+              owner: context.repo.owner, repo: context.repo.repo, run_id
+            });
+            if (run.conclusion !== 'success' || run.path !== '.github/workflows/bol-feed-review.yml') {
+              throw new Error('Trusted completed full read-only feed review required');
+            }
+            const {data} = await github.rest.actions.listWorkflowRunArtifacts({
+              owner: context.repo.owner, repo: context.repo.repo, run_id
+            });
+            const artifact = data.artifacts.find(a => a.name === `bol-feed-review-${run_id}` && !a.expired);
+            if (!artifact) throw new Error('Full review artifact unavailable');
+            const archive = await github.rest.actions.downloadArtifact({
+              owner: context.repo.owner, repo: context.repo.repo, artifact_id: artifact.id, archive_format: 'zip'
+            });
+            const fs = require('node:fs/promises');
+            await fs.mkdir('work/bol-audit', {recursive: true});
+            await fs.writeFile('work/bol-audit/review.zip', Buffer.from(archive.data));
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: python -m pip install 'psycopg[binary]>=3.2,<4' 'python-dotenv>=1,<2' 'lxml>=5,<6'
+      - name: Audit existing catalogue and optional current API sample without writes
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          BOL_API_CLIENT_ID: ${{ inputs.audit_api_sample && secrets.BOL_API_CLIENT_ID || '' }}
+          BOL_API_CLIENT_SECRET: ${{ inputs.audit_api_sample && secrets.BOL_API_CLIENT_SECRET || '' }}
+          BOL_SITE_ID: ${{ vars.BOL_SITE_ID }}
+          BOL_AUDIT_API: ${{ inputs.audit_api_sample }}
+        run: |
+          python - <<'PYTHON'
+          import os, subprocess, sys, zipfile
+          from pathlib import Path
+          with zipfile.ZipFile('work/bol-audit/review.zip') as archive:
+              Path('work/bol-audit/review.json').write_bytes(archive.read('review.json'))
+          subprocess.run([sys.executable, '-m', 'scripts.workers.bol_feed_audit',
+              '--review', 'work/bol-audit/review.json', '--api-sample',
+              '20' if os.environ['BOL_AUDIT_API']=='true' else '0'], check=True)
+          PYTHON
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bol-catalogue-audit-${{ github.run_id }}
+          path: output/bol/catalogue-audit.json
+          retention-days: 1
   reviewed_pilot:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'pilot_review_write' }}
     runs-on: ubuntu-latest
@@ -121,7 +181,7 @@ jobs:
           path: output/bol/review.json
           retention-days: 1
   import:
-    if: ${{ (github.event_name == 'workflow_dispatch' && !contains(fromJSON('["diagnose_writer","pilot_review_write"]'), inputs.mode)) || (github.event_name == 'schedule' && vars.BOL_FTPS_AUTOMATION_ENABLED == 'true' && vars.BOL_FTPS_PRODUCTION_APPROVED == 'true') }}
+    if: ${{ (github.event_name == 'workflow_dispatch' && !contains(fromJSON('["diagnose_writer","audit_catalogue","pilot_review_write"]'), inputs.mode)) || (github.event_name == 'schedule' && vars.BOL_FTPS_AUTOMATION_ENABLED == 'true' && vars.BOL_FTPS_PRODUCTION_APPROVED == 'true') }}
     runs-on: [self-hosted, Windows, "${{ vars.BOL_FEED_RUNNER || 'X64' }}"]
     timeout-minutes: 60
     defaults:

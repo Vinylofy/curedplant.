@@ -212,6 +212,20 @@ class BolPostgresTests(unittest.TestCase):
             self.assertEqual(conn.execute('select count(*) from public.products').fetchone()[0], 2)
             self.assertEqual(conn.execute('select count(*) from public.price_history').fetchone()[0], 2)
 
+    def test_catalogue_audit_classifies_missing_prices_without_writes(self):
+        from scripts.workers.bol_feed_audit import audit_catalogue
+        self.write()
+        plan=deepcopy(self.plan);plan['feed_sha256']='test-snapshot'
+        plan['offers']=plan['offers'][:2]
+        with patch('scripts.workers.bol_feed_audit.SHOP_ID',self.shops['NL']):
+            report=audit_catalogue(plan,self.dsn)
+        self.assertEqual(report['database_writes'],0)
+        self.assertEqual(report['counts']['active_shop_offers'],2)
+        self.assertEqual(report['counts']['missing_api_eligible_frontend_visible'],1)
+        self.assertEqual(report['api_sample'],[])
+        with psycopg.connect(self.dsn) as conn:
+            self.assertEqual(conn.execute('select count(*) from public.price_history').fetchone()[0],4)
+
     def test_database_failure_rolls_back_products_prices_and_evidence(self):
         with patch("scripts.importers.bol_feed.maybe_insert_history", side_effect=RuntimeError("test failure")):
             with self.assertRaises(RuntimeError):
