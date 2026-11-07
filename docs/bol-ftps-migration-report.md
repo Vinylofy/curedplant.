@@ -2,10 +2,15 @@
 
 Datum: 7 november 2026. **FTPS PRODUCTIEGEREED: NEE.**
 
-De bestaande importer is uitgebreid en de live bron is gecontroleerd. Er zijn
-geen productiewrites uitgevoerd, geen shops aangemaakt en geen frontendbestanden
-gewijzigd. De Marketing API blijft actief. Het voorstel staat op branch
-`codex/bol-ftps-migration`; productiepublicatie is niet uitgevoerd.
+De expliciet goedgekeurde NL-productiepilot is geslaagd: twintig aanbiedingen
+zijn gepubliceerd, inclusief twaalf nieuwe producten. De acht bestaande producten
+behielden hun canonieke metadata en covers. De productieherhaling schreef niets
+opnieuw. Supabase en de publieke frontend zijn gecontroleerd.
+
+De code staat op `main`. Er zijn geen shops aangemaakt en geen frontendbestanden
+gewijzigd. De Marketing API blijft actief; de volledige automatische FTPS-bronwissel
+is nog niet vrijgegeven. De oorspronkelijke read-only resultaten staan hieronder,
+gevolgd door het actuele pilotresultaat in §5a.
 
 ## 1. Connectiviteit en download
 
@@ -126,6 +131,82 @@ prijzen. Replays zijn idempotent en ongewijzigde prijzen/beschikbaarheid voegen
 ook op een nieuwe kalenderdag geen dubbele historie toe. Conflicterende
 bronaanbiedingen worden uitgesloten; productlinks moeten bij bron-ID en land passen.
 
+## 5a. Goedgekeurde productiepilot en herstel
+
+De gebruiker heeft het eerder beschreven voorstel expliciet goedgekeurd met
+“ga door”. [PR #5](https://github.com/Vinylofy/curedplant./pull/5) is samengevoegd;
+de pilot bleef beperkt tot dezelfde twintig NL-producten en dezelfde feedchecksum.
+
+De eerste poging op de Windows-runner downloadde en valideerde de juiste feed,
+maar stopte in de databasefase met `QueryCanceled`. Vergelijking vóór/na toonde
+exact dezelfde acht producten en zeven bestaande bol-prijsregels: geen nieuwe
+producten of gecommitteerde prijswijzigingen uit die poging. Read-only diagnose
+bevestigde bestaande lookup-indexen, een statement-time-out van twee minuten en
+geen advisory locks op het meetmoment. De precieze oorzaak/fase van die eerste
+time-out is niet bewezen; er is geen productiedatabase-index of time-outinstelling
+gewijzigd om de fout te omzeilen.
+
+Vervolgopdrachten kregen geen Windows-runner toegewezen en zijn geannuleerd. De
+handmatige pilot is vervolgens hersteld vanuit het onveranderlijke, gevalideerde
+selectie-artifact van de oorspronkelijke Windows-poging, via **dezelfde bestaande
+writer**. Deze herstelroute vereist `main`, expliciete publicatiegoedkeuring, een
+vertrouwde afgeronde main-workflow, de beoordeelde feedchecksum, een geverifieerd
+NL-profiel en maximaal twintig unieke geldige barcodes. Markt, affiliate-link,
+product-ID, bedragen en bestaande EAN-matches worden opnieuw gecontroleerd. Er is
+geen alternatieve bron of parallelle importer toegevoegd. De geplande FTPS-feedjob
+blijft de gewhiteliste Windows-runner vereisen.
+
+| Productiecontrole | Resultaat |
+| --- | ---: |
+| Beoordeelde NL-producten | 20 |
+| Bestaande producten, canonieke metadata en covers behouden | 8 |
+| Nieuwe producten via de bestaande veilige creatielogica | 12 |
+| Geschreven prijs-/shopaanbiedingen | 20 |
+| Prijs en link binnen én na commit geverifieerd | 20 |
+| Onafhankelijk gelezen prijzen, beschikbaarheid en links correct | 20 |
+| Beschikbaarheid: in_stock / out_of_stock | 19 / 1 |
+| Historieregels voor dit snapshot na publicatie | 18 |
+| Nieuwe producten of prijswrites bij productieherhaling | 0 |
+| Historieregels vóór / na die herhaling | 18 / 18 |
+
+De twaalf nieuwe producten hebben neutrale `Vinyl <EAN>`-titels,
+`metadata_source=shop_observed`, `metadata_status=placeholder`,
+`metadata_needs_review=true`, geen overgenomen bol-cover en geen geïmporteerde
+bol-artiest als canonieke metadata. De reguliere verrijking blijft leidend.
+
+De succesvolle herstelrun duurde 23,141 seconden voor matching/writes/verificatie;
+de herhaling 13,363 seconden. Deze beperkte pilot is geen benchmark voor een
+volledige cataloguspublicatie.
+
+Publieke frontendcontroles met Playwright:
+
+- Een [bestaand product](https://www.vinylofy.com/product/8dcd58b7-a5bd-4157-8d2d-706b7fb61e4e?market=NL)
+  toont bol €28,89 en de correcte affiliate-link.
+- Een [nieuw product](https://www.vinylofy.com/product/50f8c4a6-de88-42a9-b249-24781f0e10ad?market=NL)
+  toont de neutrale placeholder, bol €69,95 en de correcte affiliate-link;
+  dezelfde controle slaagde op preview.
+- Het [uitverkochte product](https://www.vinylofy.com/product/38ca09e7-0f60-4695-947e-c342f11b79b0?market=NL)
+  toont geen bol-koopaanbieding.
+- De [BE-weergave van het bestaande product](https://www.vinylofy.com/product/8dcd58b7-a5bd-4157-8d2d-706b7fb61e4e?market=BE)
+  toont geen NL-bol-aanbieding. De bestaande bol-shop heeft uitsluitend een
+  bevestigde NL-bestemming.
+
+Alle twintig bronaanbiedingen hebben expliciet `shippingCost=0.00`. De gecontroleerde
+zichtbare aanbiedingen tonen daarvoor gratis verzending via de bestaande
+frontendlogica; dit bewijst geen nieuwe algemene per-offer verzendkostenopslag.
+Er zijn geen affiliate-aankooplinks aangeklikt en geen accountattributierapporten
+gecontroleerd.
+
+Chromium kende de omgevingsproxy-CA niet. Daarom zijn de Playwright-responses via
+een TLS-verifiërende client met de systeem-CA geladen, zonder TLS-verificatie uit
+te schakelen. Afbeeldingen/fonts/media en externe verzoeken zijn in deze
+browsercontrole geblokkeerd; de pagina-JavaScript en prijs-/linkweergave zijn wel
+uitgevoerd. Er zijn geen frontendbestanden gewijzigd.
+
+Zie [de blijvende pilotevidence](bol-ftps-pilot-evidence.json),
+[de succesvolle publicatie](https://github.com/Vinylofy/curedplant./actions/runs/42365716216)
+en [de productieherhaling](https://github.com/Vinylofy/curedplant./actions/runs/42365907287).
+
 ## 6. Automatisering en frequentie
 
 De voorbereide publicatieworkflow ondersteunt read-only, een expliciet goedgekeurde
@@ -156,46 +237,51 @@ Herstelprocedure: eerst FTPS-automatisering stoppen en lopende writes laten
 afronden, dan na beoordeling de bestaande API-keten expliciet herstellen met de
 bestaande resumeprocedure. Geen van beide automatische bronnen wordt hier omgezet.
 
-## 8. Resterende blokkades en pilotvoorstel
+## 8. Resterende blokkades voor de volledige bronwissel
 
-- Expliciete goedkeuring voor publieke fase D ontbreekt. Voorstel: maximaal
-  twintig NL-producten in de bestaande bol-shop; het geobserveerde snapshot telt
-  acht bestaande en twaalf nieuwe producten. De pilot is gebonden aan de
-  beoordeelde SHA-256. Een gewijzigd snapshot wordt vóór databasewrites geweigerd
-  en vereist nieuwe review.
+- De beperkte NL-productiepilot is goedgekeurd en geslaagd. Dit is geen
+  goedkeuring voor een volledige cataloguspublicatie of API-uitschakeling.
 - Formaatconflicten vereisen veilige afhandeling vóór een volledige publicatie;
   de huidige writer blokkeert ze zonder productiegegevens te overschrijven.
 - Bestaande aanboddekking en eventuele verschillen moeten vóór API-uitfasering
   worden beoordeeld en opgelost.
 - API-preorderfunctionaliteit is nog niet aantoonbaar equivalent; de FTPS-reader
   claimt bij een toekomstige release daarom geen actuele voorraad.
-- Productieschrijftijd, volledige transactieduur en automatisch geplande werking
-  zijn nog niet bewezen. Een read-only scan bewijst die eigenschappen niet.
-- Supabase/frontend-controle na publicatie en echte affiliate-attributie ontbreken.
-  Verzendkosten/sellerinformatie staan alleen in bestaande raw evidence; er is
-  geen nieuwe per-offer frontendopslag of UI toegevoegd.
+- Volledige schrijftijd, transactieduur en automatisch geplande werking zijn
+  nog niet bewezen. De eerste time-out is niet causaal verklaard en de latere
+  Windows-runnerbeschikbaarheid is niet hersteld of structureel bewezen.
+- Supabase/frontend-controles voor de pilot zijn geslaagd. Echte
+  affiliate-accountattributie is niet gecontroleerd. Verzendkosten/sellerinformatie
+  blijven in bestaande raw evidence; er is geen nieuwe per-offer UI/opslag.
 - BE-productie blijft geblokkeerd tot een eigen shop/marktzichtbaarheid afzonderlijk
   is gevalideerd. Geen BE-shop is aangemaakt.
 
 ## 9. Tests, commits en workflowlinks
 
-84 gerichte bol-tests slagen, inclusief 11 integratietests met een geïsoleerde,
+88 gerichte bol-tests slagen, inclusief 13 integratietests met een geïsoleerde,
 tijdelijke PostgreSQL-database. Die tests schrijven niet naar Supabase.
 Actionlint slaagt voor beide FTPS-workflows; `git diff --check` slaagt.
 
-Belangrijkste commits op de voorgestelde branch: `4440290`, `c2a3f65`, `c7acedd`,
+Belangrijkste initiële commits: `4440290`, `c2a3f65`, `c7acedd`,
 `87f4f11`, `b9c3790`, `d533468`, `6fb64c1`. Zie ook [alle migratiewijzigingen](https://github.com/Vinylofy/curedplant./compare/main...codex/bol-ftps-migration).
 
 - [Oorspronkelijke live schema-inspectie](https://github.com/Vinylofy/curedplant./actions/runs/42352414844)
 - [Volledige schema-inspectie](https://github.com/Vinylofy/curedplant./actions/runs/42362647191)
 - [NL dry-run en volledige databasevergelijking](https://github.com/Vinylofy/curedplant./actions/runs/42363138872)
 - [Afzonderlijke marktstatistieken en aanboddekking](https://github.com/Vinylofy/curedplant./actions/runs/42363509733)
+- [Samengevoegde implementatie — PR #5](https://github.com/Vinylofy/curedplant./pull/5)
+- [Samengevoegde diagnose — PR #6](https://github.com/Vinylofy/curedplant./pull/6)
+- [Herstel via bestaande writer — cea6c9e](https://github.com/Vinylofy/curedplant./commit/cea6c9e)
+- [Geslaagde productiepilot](https://github.com/Vinylofy/curedplant./actions/runs/42365716216)
+- [Geslaagde productieherhaling zonder writes](https://github.com/Vinylofy/curedplant./actions/runs/42365907287)
+- [Pilotevidence](bol-ftps-pilot-evidence.json)
 - [Gedetailleerde blijvende evidence](bol-ftps-validation-evidence.json)
 - [Bediening, voorwaarden en herstel](bol-affiliate-import.md)
 
 ## 10. Conclusie
 
 **FTPS PRODUCTIEGEREED: NEE.** Live toegang, schema, selectie en read-only
-prijs/EAN-validatie zijn bewezen. De vereiste goedgekeurde productiepilot,
-volledige conflict/dekkingsafhandeling, functionele API-pariteit en zelfstandig
-gevalideerde productieplanning ontbreken nog. De Marketing API blijft actief.
+prijs/EAN-validatie én de goedgekeurde beperkte NL-productiepilot zijn bewezen.
+Volledige conflict/dekkingsafhandeling, functionele API-pariteit, volledige
+schrijfprestaties en zelfstandig gevalideerde productieplanning ontbreken nog.
+De Marketing API blijft actief.

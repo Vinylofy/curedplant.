@@ -2,8 +2,9 @@
 
 The existing importer is `scripts/importers/bol_feed.py`. Live connectivity,
 authentication, download and full schema inspection succeeded on the existing
-self-hosted Windows runner on 7 November 2026. Production publication and the
-Marketing API handover still require the explicitly approved pilot.
+self-hosted Windows runner on 7 November 2026. The explicitly approved NL pilot
+published twenty offers and twelve new products; production replay made no writes.
+The complete catalogue/API handover remains blocked by the findings in the report.
 See [the implementation report](bol-ftps-migration-report.md) for measured
 results and the current production-readiness decision.
 
@@ -114,9 +115,15 @@ compared with the NL shop.
 
 ## Publication workflow: explicit approval
 
-`.github/workflows/bol-feed-import.yml` prepares three modes:
+`.github/workflows/bol-feed-import.yml` provides these modes:
 
 - `dry_run`: twenty products, read-only database matching.
+- `diagnose_writer`: Ubuntu read-only database plans/indexes/locks/settings; no
+  feed login. Reports no driver messages or SQL parameters.
+- `pilot_review_write`: recover the same approved <=20 NL selection from the
+  trusted completed main pilot artifact, with checksum and full identity/link
+  validation, through the existing writer. This manual recovery does not change
+  the Windows requirement for scheduled FTPS downloads.
 - `pilot_write`: at most twenty products, NL only; requires `main`, the verified
   live profile, explicit `approve_publication=true` and the SHA-256 of the reviewed
   snapshot. A changed feed is rejected before any database access.
@@ -124,7 +131,7 @@ compared with the NL shop.
   `enabled=false` and no unfinished API workflow runs. Uses the successful-run
   checkpoint under the Windows service account's `LOCALAPPDATA`.
 
-**Do not run the pilot until the user explicitly approves its reviewed results.**
+**Public pilots require explicit user approval; the recorded twenty-product NL pilot has that approval and succeeded.**
 The pilot is public; there is no invisible production staging mode.
 
 A two-hour polling schedule (`15 */2 * * *`, UTC) is prepared, but its job is

@@ -1,0 +1,340 @@
+{
+  "approval": "User explicitly approved proceeding with the previously described bounded NL pilot.",
+  "source_feed_sha256": "1e5bed487fbc25766d1a57832f24764d960b9c5766f8e7a5f7003da938654971",
+  "source_at": "2026-11-07T10:01:47+00:00",
+  "original_windows_run": "https://github.com/Vinylofy/curedplant./actions/runs/42364543669",
+  "successful_recovery_run": "https://github.com/Vinylofy/curedplant./actions/runs/42365716216",
+  "production_replay_run": "https://github.com/Vinylofy/curedplant./actions/runs/42365907287",
+  "baseline": {
+    "products": 8,
+    "bol_prices": 7
+  },
+  "after": {
+    "products": 20,
+    "bol_prices": 20
+  },
+  "writer_result": {
+    "new_products": 12,
+    "updated_offers": 20,
+    "skipped_newer": 0,
+    "verified": 20,
+    "committed_verified": 20
+  },
+  "writer_duration_seconds": 23.141,
+  "replay_result": {
+    "new_products": 0,
+    "updated_offers": 0,
+    "skipped_newer": 0,
+    "verified": 0,
+    "committed_verified": 0
+  },
+  "replay_duration_seconds": 13.363,
+  "existing_metadata_unchanged": true,
+  "new_products_are_review_placeholders": 12,
+  "history_before_replay": 18,
+  "history_after_replay": 18,
+  "history_unchanged_by_replay": true,
+  "offer_checks": [
+    {
+      "id": "50f8c4a6-de88-42a9-b249-24781f0e10ad",
+      "ean": "9101389353587",
+      "new": true,
+      "price_match": true,
+      "url_match": true,
+      "availability_match": true,
+      "active": true,
+      "source_time_match": true,
+      "availability": "in_stock"
+    },
+    {
+      "id": "8dcd58b7-a5bd-4157-8d2d-706b7fb61e4e",
+      "ean": "4050538793437",
+      "new": false,
+      "price_match": true,
+      "url_match": true,
+      "availability_match": true,
+      "active": true,
+      "source_time_match": true,
+      "availability": "in_stock"
+    },
+    {
+      "id": "38ca09e7-0f60-4695-947e-c342f11b79b0",
+      "ean": "0888072760370",
+      "new": true,
+      "price_match": true,
+      "url_match": true,
+      "availability_match": true,
+      "active": true,
+      "source_time_match": true,
+      "availability": "out_of_stock"
+    },
+    {
+      "id": "25fb417a-7df3-4598-a354-108fcbdf12a0",
+      "ean": "0603497843251",
+      "new": false,
+      "price_match": true,
+      "url_match": true,
+      "availability_match": true,
+      "active": true,
+      "source_time_match": true,
+      "availability": "in_stock"
+    },
+    {
+      "id": "d954011f-e385-4b87-a025-956f74b59e0a",
+      "ean": "0034571995625",
+      "new": false,
+      "price_match": true,
+      "url_match": true,
+      "availability_match": true,
+      "active": true,
+      "source_time_match": true,
+      "availability": "in_stock"
+    },
+    {
+      "id": "20dff526-93e2-431f-be38-e07269ab55af",
+      "ean": "0810599024208",
+      "new": false,
+      "price_match": true,
+      "url_match": true,
+      "availability_match": true,
+      "active": true,
+      "source_time_match": true,
+      "availability": "in_stock"
+    },
+    {
+      "id": "18296b29-8f82-42e7-8c26-3b71de322bfe",
+      "ean": "0641871746057",
+      "new": true,
+      "price_match": true,
+      "url_match": true,
+      "availability_match": true,
+      "active": true,
+      "source_time_match": true,
+      "availability": "in_stock"
+    },
+    {
+      "id": "b4674b79-5b50-471c-9446-f77fdff77b89",
+      "ean": "5060331753957",
+      "new": false,
+      "price_match": true,
+      "url_match": true,
+      "availability_match": true,
+      "active": true,
+      "source_time_match": true,
+      "availability": "in_stock"
+    },
+    {
+      "id": "c0c3a41b-2c64-4b00-bb8f-9d90dcb4b38a",
+      "ean": "0617026042213",
+      "new": true,
+      "price_match": true,
+      "url_match": true,
+      "availability_match": true,
+      "active": true,
+      "source_time_match": true,
+      "availability": "in_stock"
+    },
+    {
+      "id": "b8467565-92fe-4cfb-b476-3758e481d1cc",
+      "ean": "5487567458201",
+      "new": true,
+      "price_match": true,
+      "url_match": true,
+      "availability_match": true,
+      "active": true,
+      "source_time_match": true,
+      "availability": "in_stock"
+    },
+    {
+      "id": "102c0422-23cb-4c4a-a868-28539bb1181d",
+      "ean": "0602455902252",
+      "new": false,
+      "price_match": true,
+      "url_match": true,
+      "availability_match": true,
+      "active": true,
+      "source_time_match": true,
+      "availability": "in_stock"
+    },
+    {
+      "id": "d9d8cfd3-68e8-4d69-9dff-22dce524ede5",
+      "ean": "8024709230423",
+      "new": false,
+      "price_match": true,
+      "url_match": true,
+      "availability_match": true,
+      "active": true,
+      "source_time_match": true,
+      "availability": "in_stock"
+    },
+    {
+      "id": "638d261c-59a9-439a-ac62-f2fad0a73300",
+      "ean": "4251267717231",
+      "new": true,
+      "price_match": true,
+      "url_match": true,
+      "availability_match": true,
+      "active": true,
+      "source_time_match": true,
+      "availability": "in_stock"
+    },
+    {
+      "id": "e7faa230-43fe-4559-8dd1-fe8838c21a40",
+      "ean": "0716043123711",
+      "new": true,
+      "price_match": true,
+      "url_match": true,
+      "availability_match": true,
+      "active": true,
+      "source_time_match": true,
+      "availability": "in_stock"
+    },
+    {
+      "id": "225f3016-3d77-4a8b-93ec-18568459b035",
+      "ean": "4260161862091",
+      "new": true,
+      "price_match": true,
+      "url_match": true,
+      "availability_match": true,
+      "active": true,
+      "source_time_match": true,
+      "availability": "in_stock"
+    },
+    {
+      "id": "6e31ca47-5305-4387-b913-64429b2ac46c",
+      "ean": "0821797249119",
+      "new": true,
+      "price_match": true,
+      "url_match": true,
+      "availability_match": true,
+      "active": true,
+      "source_time_match": true,
+      "availability": "in_stock"
+    },
+    {
+      "id": "c3e6fbd1-cecf-40e1-b07f-b034496b2be9",
+      "ean": "0013964415025",
+      "new": true,
+      "price_match": true,
+      "url_match": true,
+      "availability_match": true,
+      "active": true,
+      "source_time_match": true,
+      "availability": "in_stock"
+    },
+    {
+      "id": "774b00ec-6224-4737-9865-dbb569d2eae8",
+      "ean": "0810096652416",
+      "new": true,
+      "price_match": true,
+      "url_match": true,
+      "availability_match": true,
+      "active": true,
+      "source_time_match": true,
+      "availability": "in_stock"
+    },
+    {
+      "id": "44f68267-8263-40f9-8d83-d9b8cccf90ab",
+      "ean": "0823375309161",
+      "new": true,
+      "price_match": true,
+      "url_match": true,
+      "availability_match": true,
+      "active": true,
+      "source_time_match": true,
+      "availability": "in_stock"
+    },
+    {
+      "id": "3a3bdc12-d256-4ca9-8d0d-91fe5dcb16d5",
+      "ean": "0602478838101",
+      "new": false,
+      "price_match": true,
+      "url_match": true,
+      "availability_match": true,
+      "active": true,
+      "source_time_match": true,
+      "availability": "in_stock"
+    }
+  ],
+  "destinations": [
+    {
+      "country_code": "NL",
+      "status": "confirmed"
+    }
+  ],
+  "frontend_checks": [
+    {
+      "url": "https://www.vinylofy.com/product/8dcd58b7-a5bd-4157-8d2d-706b7fb61e4e?market=NL",
+      "status": 200,
+      "title": "Flogging Molly – Anthem (LP) · EAN 4050538793437 | Vinylofy",
+      "bol_offers": [
+        {
+          "href": "https://partner.bol.com/click/click?p=1&t=url&s=1550861&url=https%3A%2F%2Fwww.bol.com%2Fnl%2Fnl%2Fp%2Fflogging-molly-anthem%2F9300000121841762%2F&f=pf",
+          "label": "Ga naar shop: Bol",
+          "row": "Bol\nBeste prijs\nOnline Shop\nbol.com\n•\nVandaag gecontroleerd\n\n€ 28,89\n\nGratis\n\n± € 28,89 totaal\n\nGa naar shop"
+        }
+      ]
+    },
+    {
+      "url": "https://www.vinylofy.com/product/50f8c4a6-de88-42a9-b249-24781f0e10ad?market=NL",
+      "status": 200,
+      "title": "Vinyluitgave | Vinylofy",
+      "bol_offers": [
+        {
+          "href": "https://partner.bol.com/click/click?p=1&t=url&s=1550861&url=https%3A%2F%2Fwww.bol.com%2Fnl%2Fnl%2Fp%2Fmuziek-vinyl-pop-album-luisteren-ontspannen-unieke-collectie-lp-formaat-zwart%2F9300000332934928%2F&f=pf",
+          "label": "Ga naar shop: Bol",
+          "row": "Bol\nBeste prijs\nOnline Shop\nbol.com\n•\nVandaag gecontroleerd\n\n€ 69,95\n\nGratis\n\n± € 69,95 totaal\n\nGa naar shop"
+        }
+      ]
+    },
+    {
+      "url": "https://www.vinylofy.com/product/38ca09e7-0f60-4695-947e-c342f11b79b0?market=NL",
+      "status": 200,
+      "title": "Vinyluitgave | Vinylofy",
+      "bol_offers": []
+    },
+    {
+      "url": "https://preview.vinylofy.com/product/50f8c4a6-de88-42a9-b249-24781f0e10ad?market=NL",
+      "status": 200,
+      "title": "Vinyluitgave | Vinylofy",
+      "bol_offers": [
+        {
+          "href": "https://partner.bol.com/click/click?p=1&t=url&s=1550861&url=https%3A%2F%2Fwww.bol.com%2Fnl%2Fnl%2Fp%2Fmuziek-vinyl-pop-album-luisteren-ontspannen-unieke-collectie-lp-formaat-zwart%2F9300000332934928%2F&f=pf",
+          "label": "Ga naar shop: Bol",
+          "row": "Bol\nBeste prijs\nOnline Shop\nbol.com\n•\nVandaag gecontroleerd\n\n€ 69,95\n\nGratis\n\n± € 69,95 totaal\n\nGa naar shop"
+        }
+      ]
+    },
+    {
+      "url": "https://www.vinylofy.com/product/8dcd58b7-a5bd-4157-8d2d-706b7fb61e4e?market=BE",
+      "status": 200,
+      "title": "Flogging Molly – Anthem (LP) · EAN 4050538793437 | Vinylofy",
+      "bol_offers": []
+    }
+  ],
+  "browser_transport": "Playwright Chromium; requests fulfilled by a TLS-verifying urllib client using the system CA. Native Chromium proxy CA trust failed. Images/fonts/media/third-party requests were blocked; no affiliate clicks were made.",
+  "diagnostics": {
+    "statement_timeout": "2min",
+    "advisory_locks": [],
+    "replay_lookup_plan": [
+      "Limit  (cost=0.42..20.25 rows=1 width=4)",
+      "  ->  Index Scan using idx_raw_shop_scrapes_shop_product on raw_shop_scrapes  (cost=0.42..20.25 rows=1 width=4)",
+      "        Index Cond: ((shop_id = 'f08437c2-1d85-47a6-94f9-33a55612d5cc'::text) AND (source_product_id = '9300000332934928'::text))",
+      "        Filter: ((payload ->> 'bol_import_digest'::text) = 'diagnostic_nonexistent_digest'::text)"
+    ],
+    "product_lookup_plan": [
+      "Bitmap Heap Scan on products  (cost=8.85..16.79 rows=2 width=23)",
+      "  Recheck Cond: (((ean)::text = ANY ('{9101389353587}'::text[])) OR (gtin_normalized = ANY ('{09101389353587}'::text[])))",
+      "  ->  BitmapOr  (cost=8.85..8.85 rows=2 width=0)",
+      "        ->  Bitmap Index Scan on products_ean_unique  (cost=0.00..4.43 rows=1 width=0)",
+      "              Index Cond: ((ean)::text = ANY ('{9101389353587}'::text[]))",
+      "        ->  Bitmap Index Scan on products_gtin_normalized_unique_idx  (cost=0.00..4.43 rows=1 width=0)",
+      "              Index Cond: (gtin_normalized = ANY ('{09101389353587}'::text[]))"
+    ]
+  },
+  "limitations": [
+    "Original timeout stage/root cause unproven; subsequent controlled recovery succeeded.",
+    "Windows follow-up jobs were not assigned a runner and were cancelled.",
+    "Full catalogue conflict/coverage handling, API preorder parity, full writer throughput and automatic production operation remain unverified."
+  ]
+}
