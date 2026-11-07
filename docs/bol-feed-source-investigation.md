@@ -37,6 +37,12 @@ Turntable Element. These are sample facts, not a classification of all gaps.
    current NEW API best offer for the same EAN, including refresh timing and
    selected-offer rules.
 
+5. Is the CSV limited to one primary EAN per bol product? One observed API EAN,
+   `5060281610645`, resolves to the same bol product/price as feed EAN
+   `0825646632824`. These distinct barcodes have not been merged or treated as an
+   exact pressing match. A supported, independently validated alias contract
+   would be needed before reusing prices across different EANs.
+
 ## Bounded observed cases
 
 | EAN | FTPS selection result | Current API EUR | Observed API GPC hierarchy |
