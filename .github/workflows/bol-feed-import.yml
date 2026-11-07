@@ -1,6 +1,10 @@
 name: "Curedplant | Affiliate | bol | Approved FTPS import"
-run-name: "bol FTPS NL | ${{ inputs.mode }}"
+run-name: "bol FTPS NL | ${{ github.event_name == 'schedule' && 'full_write' || inputs.mode }}"
 on:
+  # Dormant until the verified pilot and source handover are explicitly approved.
+  # Two-hour polling; MDTM checkpoint prevents unchanged-feed downloads.
+  schedule:
+    - cron: "15 */2 * * *"
   workflow_dispatch:
     inputs:
       mode:
@@ -19,6 +23,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   import:
+    if: ${{ github.event_name == 'workflow_dispatch' || (vars.BOL_FTPS_AUTOMATION_ENABLED == 'true' && vars.BOL_FTPS_PRODUCTION_APPROVED == 'true') }}
     runs-on: [self-hosted, Windows, "${{ vars.BOL_FEED_RUNNER || 'X64' }}"]
     timeout-minutes: 60
     defaults:
@@ -28,8 +33,8 @@ jobs:
       - name: Check publication and source-handover conditions before credentials
         uses: actions/github-script@v8
         env:
-          BOL_MODE: ${{ inputs.mode }}
-          BOL_APPROVE: ${{ inputs.approve_publication }}
+          BOL_MODE: ${{ github.event_name == 'schedule' && 'full_write' || inputs.mode }}
+          BOL_APPROVE: ${{ inputs.approve_publication || (github.event_name == 'schedule' && vars.BOL_FTPS_PRODUCTION_APPROVED == 'true') }}
         with:
           script: |
             const mode = process.env.BOL_MODE;
@@ -129,7 +134,7 @@ jobs:
           BOL_SITE_ID: ${{ vars.BOL_SITE_ID }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           BOL_SHOP_IDS: '{"NL":"f08437c2-1d85-47a6-94f9-33a55612d5cc"}'
-          BOL_MODE: ${{ inputs.mode }}
+          BOL_MODE: ${{ github.event_name == 'schedule' && 'full_write' || inputs.mode }}
         run: |
           import os, subprocess, sys
           from pathlib import Path

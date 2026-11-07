@@ -1,0 +1,48 @@
+{
+  "live_schema_verified": true,
+  "type": "csv",
+  "ean": "ean",
+  "product_id": "productId",
+  "title": "title",
+  "format": "Format",
+  "vinyl_values": [
+    "LP",
+    "7\" Vinyl",
+    "12\" Vinyl",
+    "10\" Vinyl",
+    "LP + downloadcode"
+  ],
+  "new_values": [
+    "new"
+  ],
+  "offers": {
+    "NL": {
+      "price": "OfferNL.sellingPrice",
+      "shipping": "OfferNL.shippingCost",
+      "condition": "OfferNL.condition",
+      "deliverable": "OfferNL.isDeliverable",
+      "seller_type": "OfferNL.sellerType",
+      "url": "productPageUrlNL"
+    },
+    "BE": {
+      "price": "OfferBE.sellingPrice",
+      "shipping": "OfferBE.shippingCost",
+      "condition": "OfferBE.condition",
+      "deliverable": "OfferBE.isDeliverable",
+      "seller_type": "OfferBE.sellerType",
+      "url": "productPageUrlBE"
+    }
+  },
+  "availability_values": {
+    "Y": "in_stock",
+    "N": "out_of_stock"
+  },
+  "verified_markets": [
+    "NL"
+  ],
+  "schema_evidence": {
+    "inspection_run": "https://github.com/Vinylofy/curedplant./actions/runs/42362647191",
+    "nl_validation_run": "https://github.com/Vinylofy/curedplant./actions/runs/42363138872",
+    "source_at": "2026-11-07T10:01:47+00:00"
+  }
+}

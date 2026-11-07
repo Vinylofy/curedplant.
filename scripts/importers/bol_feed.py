@@ -267,6 +267,8 @@ def review_matches(plan, dsn, shops=None, *, batch_size=500):
     shops = shops or {}
     existing, new, rejected = set(), set(), []
     comparisons = Counter()
+    coverage = {}
+    matched_by_market = {country: set() for country in shops}
     grouped = {}
     for offer in plan["offers"]:
         grouped.setdefault(offer["gtin"], []).append(offer)
@@ -313,6 +315,8 @@ def review_matches(plan, dsn, shops=None, *, batch_size=500):
                     prices = {(str(r[0]), str(r[1])): r[2:] for r in cur.fetchall()}
                 for gtin, pid in matched.items():
                     for offer in grouped[gtin]:
+                        if offer["country"] in matched_by_market:
+                            matched_by_market[offer["country"]].add(pid)
                         shop = shops.get(offer["country"])
                         if not shop:
                             comparisons["market_shop_not_configured"] += 1; continue
@@ -324,6 +328,18 @@ def review_matches(plan, dsn, shops=None, *, batch_size=500):
                                         else "changed_price"] += 1
                             if old[1] and old[1] > datetime.fromisoformat(offer["captured_at"]):
                                 comparisons["newer_database_price"] += 1
+            if plan.get("complete_feed"):
+                for country, shop_id in shops.items():
+                    if country not in plan.get("markets", {}):
+                        continue
+                    cur.execute("select product_id from public.prices where shop_id=%s and is_active=true", (shop_id,))
+                    active = {str(row[0]) for row in cur.fetchall()}
+                    missing = active - matched_by_market[country]
+                    coverage[country] = {"existing_active_shop_offers": len(active),
+                                         "covered_by_feed": len(active - missing),
+                                         "absent_from_eligible_feed": len(missing),
+                                         "absent_product_samples": sorted(missing)[:20]}
+    plan["existing_offer_coverage"] = coverage
     for country, summary in plan.get("markets", {}).items():
         gtins = {o["gtin"] for o in plan["offers"] if o["country"] == country}
         summary.update(existing_matches=len(gtins & existing), new_products=len(gtins & new))

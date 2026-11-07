@@ -193,7 +193,7 @@ jobs:
           BOL_FEED_USERNAME: ${{ secrets.BOL_FEED_USERNAME }}
           BOL_FEED_PASSWORD: ${{ secrets.BOL_FEED_PASSWORD }}
           BOL_SITE_ID: ${{ vars.BOL_SITE_ID }}
-          BOL_PROFILE: ${{ vars.BOL_FEED_PROFILE || 'config/bol-feed.example.json' }}
+          BOL_PROFILE: ${{ vars.BOL_FEED_PROFILE || 'config/bol-feed.live.json' }}
           BOL_MARKETS: ${{ inputs.markets }}
           BOL_MAX_ROWS: ${{ inputs.max_rows }}
           BOL_LIMIT: ${{ inputs.limit }}

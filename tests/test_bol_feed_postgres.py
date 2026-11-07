@@ -117,6 +117,17 @@ class BolPostgresTests(unittest.TestCase):
         self.assertEqual(len(self.plan["match_conflicts"]), 2)
         self.assertEqual(self.plan["existing_matches"], 0)
 
+    def test_complete_feed_coverage_reports_missing_existing_shop_offers(self):
+        self.write()
+        plan = deepcopy(self.plan)
+        plan["offers"] = plan["offers"][:2]
+        review_matches(plan, self.dsn, self.shops, batch_size=1)
+        for country in self.shops:
+            coverage = plan["existing_offer_coverage"][country]
+            self.assertEqual(coverage["existing_active_shop_offers"], 2)
+            self.assertEqual(coverage["covered_by_feed"], 1)
+            self.assertEqual(coverage["absent_from_eligible_feed"], 1)
+
     def test_newer_existing_price_and_other_market_are_preserved(self):
         self.write()
         changed = deepcopy(self.plan); changed["offers"] = [changed["offers"][0]]
