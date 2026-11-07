@@ -59,13 +59,18 @@ is created. BE requires its own explicitly validated shop ID and destinations;
 no BE shop is created or activated by this migration. Confirmed cross-market
 shop exposure is rejected.
 
-Conflicting source offers for one GTIN/market are quarantined. Ambiguous existing
-barcodes or existing CD/DVD conflicts abort publication. Product-link country and
+Conflicting source offers for one GTIN/market are quarantined. With the live profile,
+read-only preflight quarantines ambiguous existing barcodes and canonical carrier
+conflicts before any publication. A new conflict occurring after preflight still
+aborts the affected transaction. Product-link country and
 source product ID must agree. Affiliate links encode the approved `BOL_SITE_ID`.
 
 The controlled writer reuses the existing `products`, `prices`, `price_history`
 and `raw_shop_scrapes` contracts. Its shared transaction-level advisory lock is
-also used by the current API writer. All markets commit together. Newer stored
+also used by the current API writer. All markets of each bounded product batch commit together. Full runs use at most
+250 products per transaction with pipelined versions of the same shared contracts;
+a failure preserves earlier committed-batch progress and never advances the full
+checkpoint. Pilot/API single transactions keep their existing scope. Newer stored
 prices are preserved; repeated identical snapshots produce no writes; unchanged
 price/availability produces no duplicate history even across calendar dates.
 A complete feed is required for a requested full publication. Missing offers
@@ -134,12 +139,27 @@ compared with the NL shop.
 **Public pilots require explicit user approval; the recorded twenty-product NL pilot has that approval and succeeded.**
 The pilot is public; there is no invisible production staging mode.
 
-A two-hour polling schedule (`15 */2 * * *`, UTC) is prepared, but its job is
+A two-hour publishing schedule (`15 */2 * * *`, UTC) exists, but its job is
 blocked unless BOTH `BOL_FTPS_AUTOMATION_ENABLED=true` and
 `BOL_FTPS_PRODUCTION_APPROVED=true` are set. Neither variable is enabled by this
 implementation. The official documentation describes two-hour refreshes;
 actual refresh phase/timezone still needs multiple observed MDTM snapshots.
 The schedule polls rather than asserting an exact feed-generation time.
+
+## Automatic read-only shadow
+
+`bol-feed-shadow.yml` polls every two hours (`15 */2 * * *`, UTC) and dispatches
+only the existing full no-write review. Its versioned policy is
+`config/bol-feed-automation.json`: `mode=shadow`, `publication_allowed=false`.
+The dispatcher has no database/feed credentials and the review has no write input.
+A completed full review records a separate source/profile/code/mode-bound Windows
+checkpoint. Unchanged sources are skipped without a bulk download. That marker
+cannot authorize publication or replace the full-writer checkpoint.
+
+Before any full write the current source must cover every current visible,
+API-eligible bol offer; unresolved gaps block the writer before mutation. The
+source audit explains missing rows and can check a bounded API/category sample.
+Only public carrier/category facts are retained; no images/descriptions/tokens.
 
 ## Controlled handover and recovery
 
