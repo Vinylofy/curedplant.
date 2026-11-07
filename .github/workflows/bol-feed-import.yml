@@ -26,8 +26,31 @@ concurrency:
   group: bol-feed
   cancel-in-progress: false
 jobs:
+  diagnose:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'diagnose_writer' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install existing importer dependencies
+        run: python -m pip install 'psycopg[binary]>=3.2,<4' 'python-dotenv>=1,<2' 'lxml>=5,<6'
+      - name: Read writer diagnostics without feed login or database writes
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python -m scripts.importers.bol_feed --profile config/bol-feed.live.json --diagnose-writer
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bol-writer-diagnostics-${{ github.run_id }}
+          path: output/bol/review.json
+          retention-days: 1
   import:
-    if: ${{ github.event_name == 'workflow_dispatch' || (vars.BOL_FTPS_AUTOMATION_ENABLED == 'true' && vars.BOL_FTPS_PRODUCTION_APPROVED == 'true') }}
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.mode != 'diagnose_writer') || (github.event_name == 'schedule' && vars.BOL_FTPS_AUTOMATION_ENABLED == 'true' && vars.BOL_FTPS_PRODUCTION_APPROVED == 'true') }}
     runs-on: [self-hosted, Windows, "${{ vars.BOL_FEED_RUNNER || 'X64' }}"]
     timeout-minutes: 60
     defaults:
