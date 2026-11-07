@@ -112,6 +112,8 @@ Windows reports explicitly use UTF-8.
    `check_matches=true`: one download, a 20-product dry-run and a full scan.
    Database identity/price comparisons use read-only, repeatable-read batches
    of 500 GTINs. Each requested market has separate reported counts.
+3. `inspect_inventory=true`: protected FTPS filenames, sizes, timestamps and
+   bounded supplemental CSV headers; no complete-file claim from a header probe.
 
 The review workflow receives `DATABASE_URL` only when match checks are requested
 and schema inspection is off. Review code never calls the writer. The existing
@@ -125,6 +127,14 @@ compared with the NL shop.
 - `dry_run`: twenty products, read-only database matching.
 - `diagnose_writer`: Ubuntu read-only database plans/indexes/locks/settings; no
   feed login. Reports no driver messages or SQL parameters.
+- `audit_catalogue`: read-only comparison of a completed full review with the
+  existing catalogue; optional bounded API classification samples.
+- `audit_supplemental`: one-off complete Dutch Books and Sound Vision scans,
+  limited to existing EANs missing from a trusted successful primary review
+  (`audit_review_run_id`). Uses the same importer, strict vinyl/NEW rules and
+  two-GB compressed-file guard. Rejects publication, creates no products and
+  records per-file integrity/source times. Cross-file conflicting offers are
+  excluded. This is not part of the automatic two-hour download chain.
 - `pilot_review_write`: recover the same approved <=20 NL selection from the
   trusted completed main pilot artifact, with checksum and full identity/link
   validation, through the existing writer. This manual recovery does not change

@@ -75,7 +75,7 @@ a source snapshot and a later live API response are not simultaneous observation
 
 ## Already verified supplemental source metadata
 
-Only file metadata and CSV headers were inspected, not complete book inventories:
+The initial bounded inspection measured these file sizes and shared headers:
 
 | Official file | Compressed bytes |
 | --- | ---: |
@@ -89,3 +89,20 @@ and NL/BE offer fields. A shared header does not prove that the missing EANs occ
 in a particular file or that their rows prove vinyl. Header probes consumed only
 1,573–2,758 compressed bytes each; complete-file integrity was deliberately not
 claimed. No books/accessories have been imported or published.
+
+## Completed targeted supplemental search
+
+A subsequent [read-only Windows run](https://github.com/Vinylofy/curedplant./actions/runs/42418345826)
+fully validated Dutch Books (658,614 rows) and Sound Vision (512,766 rows).
+The target cohort contained 2,995 existing EANs absent from the eligible primary
+selection. Dutch Books contained 371 matching rows and Sound Vision five; every
+one had an empty `Format`. No row satisfied the strict NEW/vinyl selection.
+There were zero resolved offers, zero new products and zero database writes.
+
+[Persistent per-file evidence](bol-ftps-supplemental-evidence.json) records source
+MDTM, SHA-256, full gzip integrity, counts and bounded non-descriptive examples.
+This narrows the source question: for the exact EANs that do occur outside
+Entertainment, an independently supported physical-carrier contract is still
+required. A Book GPC classification or an album-like title alone is insufficient.
+International and Educational Books have not been scanned completely; coverage
+of all groups is not claimed. No provider message has been sent.

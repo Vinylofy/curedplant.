@@ -1,0 +1,186 @@
+{
+  "source": "bol_affiliate_supplemental_read_only_review",
+  "status": "supplemental_audited",
+  "database_writes": 0,
+  "errors": [],
+  "complete_feed": false,
+  "complete_supplemental_files": true,
+  "primary_source_at": "2026-11-07T20:03:54+00:00",
+  "primary_feed_sha256": "84f38d02c353b60909161d78e9d17437c94034f05c0afbfccc9895ba73dcb66a",
+  "target_existing_gtins": 2995,
+  "read_products": 1171380,
+  "resolved_existing_gtins": 0,
+  "ambiguous_source_gtins": 0,
+  "duration_seconds": 175.156,
+  "workflow_run": "https://github.com/Vinylofy/curedplant./actions/runs/42418345826",
+  "commit": "02fd2c81faca4ab481ce52db7bd9dfad00fbc824",
+  "remaining_target_count": 2995,
+  "files": [
+    {
+      "read_products": 658614,
+      "complete_feed": true,
+      "skipped": {
+        "not_target_existing_barcode": 658243,
+        "format_not_proven_vinyl": 371
+      },
+      "selected_new_vinyl": 0,
+      "filename": "product-feed_dutch-books-v2.csv.gz",
+      "source_at": "2026-11-07T20:03:56+00:00",
+      "feed_sha256": "278db29a4e736f5290f9195f6d214c66fef3405082c22121f658aead23fb495a",
+      "file_validation": {
+        "compressed_bytes": 239146659,
+        "uncompressed_bytes": 888039460,
+        "integrity": "verified_full_read"
+      },
+      "matched_existing_gtins": 371,
+      "matched_format_values": {
+        "": 371
+      },
+      "examples": [
+        {
+          "gtin": "00808391207967",
+          "reason": "format_not_proven_vinyl",
+          "source_product_id": "9300000178777480",
+          "format": "",
+          "category_subgroup": "Various | Nederlandstalig",
+          "category_subsubgroup": "Various | Nederlandstalig",
+          "condition": "new",
+          "selling_price": "26.68",
+          "deliverable": "Y",
+          "release_date": "2024-04-26"
+        },
+        {
+          "gtin": "00075678608711",
+          "reason": "format_not_proven_vinyl",
+          "source_product_id": "9200000043418309",
+          "format": "",
+          "category_subgroup": "Vrije Tijd en Hobby | Nederlandstalig",
+          "category_subsubgroup": "Vrije Tijd en Hobby | Nederlandstalig",
+          "condition": "new",
+          "selling_price": "25.36",
+          "deliverable": "Y",
+          "release_date": "2025-05-09"
+        },
+        {
+          "gtin": "08719262036871",
+          "reason": "format_not_proven_vinyl",
+          "source_product_id": "9300000222726378",
+          "format": "",
+          "category_subgroup": "Various | Nederlandstalig",
+          "category_subsubgroup": "Various | Nederlandstalig",
+          "condition": "new",
+          "selling_price": "48.27",
+          "deliverable": "Y",
+          "release_date": ""
+        },
+        {
+          "gtin": "00044003241800",
+          "reason": "format_not_proven_vinyl",
+          "source_product_id": "9300000047987109",
+          "format": "",
+          "category_subgroup": "Geneeskunde en Verpleging | Nederlandstalig",
+          "category_subsubgroup": "Geneeskunde en Verpleging | Nederlandstalig",
+          "condition": "new",
+          "selling_price": "18.68",
+          "deliverable": "Y",
+          "release_date": "2023-08-23"
+        },
+        {
+          "gtin": "00840401712061",
+          "reason": "format_not_proven_vinyl",
+          "source_product_id": "9300000222857182",
+          "format": "",
+          "category_subgroup": "Various | Nederlandstalig",
+          "category_subsubgroup": "Various | Nederlandstalig",
+          "condition": "new",
+          "selling_price": "26.05",
+          "deliverable": "Y",
+          "release_date": "2025-03-14"
+        }
+      ]
+    },
+    {
+      "read_products": 512766,
+      "complete_feed": true,
+      "skipped": {
+        "not_target_existing_barcode": 512761,
+        "format_not_proven_vinyl": 5
+      },
+      "selected_new_vinyl": 0,
+      "filename": "product-feed_sound-vision-v2.csv.gz",
+      "source_at": "2026-11-07T20:03:53+00:00",
+      "feed_sha256": "e7ec4f04f8cfd160f89b12a798d4f8557884a1da41cc37d4d35318e0c7b00a58",
+      "file_validation": {
+        "compressed_bytes": 293707787,
+        "uncompressed_bytes": 1202238230,
+        "integrity": "verified_full_read"
+      },
+      "matched_existing_gtins": 5,
+      "matched_format_values": {
+        "": 5
+      },
+      "examples": [
+        {
+          "gtin": "00602475276210",
+          "reason": "format_not_proven_vinyl",
+          "source_product_id": "9300000281658560",
+          "format": "",
+          "category_subgroup": "Home Entertainment",
+          "category_subsubgroup": "Home Entertainment",
+          "condition": "new",
+          "selling_price": "36.99",
+          "deliverable": "Y",
+          "release_date": ""
+        },
+        {
+          "gtin": "08717662599095",
+          "reason": "format_not_proven_vinyl",
+          "source_product_id": "9300000246941330",
+          "format": "",
+          "category_subgroup": "Muziekwinkel",
+          "category_subsubgroup": "Muziekinstrumenten",
+          "condition": "new",
+          "selling_price": "34.50",
+          "deliverable": "Y",
+          "release_date": ""
+        },
+        {
+          "gtin": "08717662599170",
+          "reason": "format_not_proven_vinyl",
+          "source_product_id": "9300000246941327",
+          "format": "",
+          "category_subgroup": "Muziekwinkel",
+          "category_subsubgroup": "Muziekinstrumenten",
+          "condition": "new",
+          "selling_price": "36.50",
+          "deliverable": "Y",
+          "release_date": ""
+        },
+        {
+          "gtin": "00801056818812",
+          "reason": "format_not_proven_vinyl",
+          "source_product_id": "9300000179550546",
+          "format": "",
+          "category_subgroup": "Home Entertainment",
+          "category_subsubgroup": "Home Entertainment",
+          "condition": "new",
+          "selling_price": "38.72",
+          "deliverable": "Y",
+          "release_date": ""
+        },
+        {
+          "gtin": "00802644825915",
+          "reason": "format_not_proven_vinyl",
+          "source_product_id": "9300000224117521",
+          "format": "",
+          "category_subgroup": "Home Entertainment",
+          "category_subsubgroup": "Home Entertainment",
+          "condition": "new",
+          "selling_price": "28.99",
+          "deliverable": "Y",
+          "release_date": ""
+        }
+      ]
+    }
+  ]
+}
