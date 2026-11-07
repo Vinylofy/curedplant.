@@ -57,7 +57,7 @@ Opgeloste technische knelpunten:
 - Volledige publicatie staat bovendien expliciet op slot zolang de versiebeheer-
   policy `mode=shadow`, `publication_allowed=false` is.
 
-Validatie van deze voortzetting: 109 bol-tests, inclusief 22 tijdelijke
+Validatie van deze voortzetting: 112 bol-tests, inclusief 23 tijdelijke
 PostgreSQL-integratietests, en 43 prijscontracttests (de zeven daarin optionele
 PostgreSQL-tests zijn ook afzonderlijk op de eigen tijdelijke server uitgevoerd).
 Actionlint slaagt voor de drie FTPS-workflows. De tijdelijke prestatietest verwerkt
@@ -69,7 +69,8 @@ Deze voortzetting heeft geen nieuwe product- of prijswrites in Supabase gedaan.
 De bestaande API-keten blijft actief. De automatische publicatie is niet aangezet;
 shadow is uitsluitend bron-/databasecontrole zonder schrijfpad. Een volledige
 FTPS-only bronwissel blijft niet veilig bewezen. De aanvullende bronbestanden
-zijn bewust alleen met metadata en begrensde headerprobes onderzocht: onder meer
+zijn eerst met metadata en begrensde headerprobes onderzocht. Daarna zijn Dutch
+Books en Sound Vision volledig read-only gecontroleerd (zie hieronder).
 International Books is 4,78 GB gecomprimeerd, boven de bestaande downloadlimiet.
 Een gedeelde CSV-header bewijst geen vinylrecord; boeken/accessoires en
 prijs-overname over verschillende EANs zijn niet geïmporteerd.
@@ -81,6 +82,27 @@ Blijvende actuele evidence:
 - [Begrensde header-/grootteprobes](https://github.com/Vinylofy/curedplant./actions/runs/42415218461)
 - [Actuele bron- en conflictevidence](bol-ftps-source-evidence.json)
 - [Voorbereide bronvragen en reproduceerbare gevallen](bol-feed-source-investigation.md)
+
+### Aanvullende volledige broncontrole: geen veilige extra vinylprijzen
+
+De eenmalige [Windows-controle](https://github.com/Vinylofy/curedplant./actions/runs/42418345826)
+heeft Dutch Books (658.614 regels, 239.146.659 gecomprimeerde bytes) en Sound
+Vision (512.766 regels, 293.707.787 bytes) volledig gedownload en op gzip-integriteit
+gecontroleerd. Beide bronnen zijn van dezelfde verversing rond 21:03:54 CET.
+Van de 2.995 bestaande EANs buiten de Entertainment-selectie komen er 371 in
+Dutch Books en vijf in Sound Vision voor. Alle 376 bronregels hebben een lege
+`Format`; geen daarvan bewijst de vereiste vinyl-drager. De strikte selectie
+levert daarom nul teruggewonnen aanbiedingen, nul nieuwe producten en nul
+productiewrites. De controle duurde 175,156 seconden.
+
+Dit bewijst geen afwezigheid uit alle 26 officiële groepen en evenmin dat alle
+betrokken producten werkelijk boeken of accessoires zijn. De internationale en
+educatieve boekenbestanden zijn niet volledig gescand. Meer downloads lossen de
+reeds aangetroffen lege/tegenstrijdige dragerinformatie niet vanzelf op. De API
+blijft daarom actief; ontbrekende drager- of identiteitsevidence wordt niet
+verzonnen en bestaande prijzen worden niet verwijderd. De nieuwe auditmodus is
+een handmatige read-only uitbreiding van dezelfde importer, geen extra geplande
+bron of schrijfpad. [Blijvende evidence](bol-ftps-supplemental-evidence.json).
 
 ### Automatische schaduwketen daadwerkelijk gecontroleerd
 
