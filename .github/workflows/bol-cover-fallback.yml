@@ -1,0 +1,50 @@
+name: "[non scraper] Bol NL Cover Fallback"
+on:
+  workflow_dispatch:
+    inputs:
+      write:
+        description: "Persist quarantined evidence and checkpoints (never publish)"
+        type: boolean
+        default: false
+  schedule:
+    - cron: "23 */6 * * *"
+permissions:
+  contents: read
+concurrency:
+  group: vinylofy-cover-pipeline
+  cancel-in-progress: false
+jobs:
+  lookup:
+    if: vars.BOL_COVER_FALLBACK_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      BOL_COVER_FALLBACK_ENABLED: ${{ vars.BOL_COVER_FALLBACK_ENABLED || 'false' }}
+      BOL_COVER_PUBLICATION_ENABLED: ${{ vars.BOL_COVER_PUBLICATION_ENABLED || 'false' }}
+      BOL_COVER_BATCH_SIZE: ${{ vars.BOL_COVER_BATCH_SIZE || '100' }}
+      BOL_COVER_DATABASE_URL: ${{ secrets.BOL_COVER_DATABASE_URL }}
+      BOL_API_CLIENT_ID: ${{ secrets.BOL_API_CLIENT_ID }}
+      BOL_API_CLIENT_SECRET: ${{ secrets.BOL_API_CLIENT_SECRET }}
+      WRITE_EVIDENCE: ${{ github.event_name == 'schedule' || inputs.write }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - run: pip install -r requirements-bol-cover.txt
+      - name: Bounded discovery
+        shell: bash
+        run: |
+          args=()
+          if [ "$WRITE_EVIDENCE" = "true" ]; then args+=(--write); fi
+          python -m scripts.workers.bol_cover_fallback "${args[@]}"
+      - name: Counts only
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: bol-cover-summary-${{ github.run_id }}
+          path: output/bol-cover/summary.json
+          retention-days: 7
+          if-no-files-found: ignore
