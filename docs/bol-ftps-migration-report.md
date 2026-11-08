@@ -19,7 +19,8 @@ frontendbestanden gewijzigd en geen shops aangemaakt.
 **De automatische Marketing API-prijsketen is uitgeschakeld:** configuratie op
 `enabled=false` en de oude API-cron verwijderd na succesvolle publicatie en
 herhaling. Credentials, API-broncode, handmatige workflow, cursor en historie
-blijven bewaard. FTPS live-publicatie is ingesteld op eens per twee uur via één
+blijven bewaard. FTPS live-publicatie is op gebruikersverzoek ingesteld op tweemaal
+per dag (`15 6,18 * * *` UTC; circa 07:15/19:15 CET, 08:15/20:15 CEST) via één
 policygestuurde dispatcher en de bestaande gewhiteliste Windows-runner.
 De volledige live-dispatchketen is gecontroleerd; een eerdere natuurlijke
 crontrigger werkte in shadowmodus. De eerste volgende natuurlijke live-cron is

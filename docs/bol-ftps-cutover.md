@@ -26,7 +26,8 @@ veilige FTPS-selectie. Dit verschil is expliciet geaccepteerd; die prijzen zijn
 bewaard en kunnen verouderen. Er wordt geen volledige API-dekking of preorder-
 semantiek geclaimd. BE is niet gevalideerd voor publicatie en blijft uitgeschakeld.
 
-De twee-uurs-liveplanning is actief. Dezelfde dispatcher heeft de volledige
+De liveplanning is op gebruikersverzoek teruggebracht naar tweemaal per dag:
+`15 6,18 * * *` UTC, dus circa 07:15 en 19:15 CET (08:15 en 20:15 CEST). Dezelfde dispatcher heeft de volledige
 publicatie en de succesvolle checkpoint-herhaling gestart. Een natuurlijke
 GitHub-crontrigger is eerder bewezen in shadowmodus; de eerste volgende natuurlijke
 live-cron is op het moment van dit rapport nog niet waargenomen. GitHub bepaalt
@@ -53,7 +54,7 @@ broncode, credentials, cursor, historie en overige API-functionaliteit blijven
 behouden. Geen BE-publicatie. De strikte NEW/vinyl-, EAN-, identiteit-, bronleeftijd-
 en masterdatacontroles blijven gelden. Identiteitsconflicten blijven in quarantaine.
 
-De enige twee-uurscron staat in `bol-feed-shadow.yml` (bestaande workflow-ID), die
+De enige tweemaal-daagse cron staat in `bol-feed-shadow.yml` (bestaande workflow-ID), die
 nu op basis van de versiebeheerpolicy shadow of live dispatcht. Live gebruikt de
 bestaande gecontroleerde `full_write`-workflow op de gewhiteliste Windows-runner.
 De losse importcron is verwijderd om dubbel geplande imports te voorkomen.

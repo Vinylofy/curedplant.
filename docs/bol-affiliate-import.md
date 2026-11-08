@@ -137,7 +137,7 @@ compared with the NL shop.
   (`audit_review_run_id`). Uses the same importer, strict vinyl/NEW rules and
   two-GB compressed-file guard. Rejects publication, creates no products and
   records per-file integrity/source times. Cross-file conflicting offers are
-  excluded. This is not part of the automatic two-hour download chain.
+  excluded. This is not part of the automatic twice-daily download chain.
 - `pilot_review_write`: recover the same approved <=20 NL selection from the
   trusted completed main pilot artifact, with checksum and full identity/link
   validation, through the existing writer. This manual recovery does not change
@@ -152,7 +152,7 @@ compared with the NL shop.
 **Public pilots require explicit user approval; the recorded twenty-product NL pilot has that approval and succeeded.**
 The pilot is public; there is no invisible production staging mode.
 
-The sole two-hour schedule (`15 */2 * * *`, UTC) belongs to the policy-controlled
+The sole twice-daily schedule (`15 6,18 * * *`, UTC; 07:15/19:15 CET, 08:15/20:15 CEST) belongs to the policy-controlled
 `bol-feed-shadow.yml` dispatcher. In live mode it dispatches `full_write` with
 explicit approval; the import workflow separately requires main, approved live
 policy, the automatic API chain paused and no unfinished API runs. Publication
@@ -163,7 +163,7 @@ exact provider generation time.
 
 ## Policy-controlled automatic processing
 
-`bol-feed-shadow.yml` polls every two hours (`15 */2 * * *`, UTC). In shadow mode it dispatches
+`bol-feed-shadow.yml` polls twice daily (`15 6,18 * * *`, UTC). In shadow mode it dispatches
 only the existing full no-write review. Its versioned policy is
 `config/bol-feed-automation.json`: `mode=shadow`, `publication_allowed=false`.
 The approved live policy instead sets `mode=live`, `publication_allowed=true`,

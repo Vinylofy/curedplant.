@@ -2,7 +2,7 @@ name: "Curedplant | Affiliate | bol | Scheduled FTPS source"
 run-name: "bol FTPS NL | automatic source processing"
 on:
   schedule:
-    - cron: "15 */2 * * *"
+    - cron: "15 6,18 * * *"
   workflow_dispatch:
 permissions:
   contents: read
