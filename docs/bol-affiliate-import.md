@@ -4,11 +4,14 @@ The existing importer is `scripts/importers/bol_feed.py`. Live connectivity,
 authentication, download and full schema inspection succeeded on the existing
 self-hosted Windows runner on 7 November 2026. The explicitly approved NL pilot
 published twenty offers and twelve new products; production replay made no writes.
-The complete catalogue/API handover remains blocked by the findings in the report.
+The full NL handover was explicitly approved on 8 November 2026 despite incomplete
+legacy API coverage. See [the current cutover record](bol-ftps-cutover.md) for its
+measured production outcome and rollback procedure.
 See [the implementation report](bol-ftps-migration-report.md) for measured
 results and the current production-readiness decision.
 
-The [Marketing API updater](bol-marketing-api.md) remains the active source.
+The automatic [Marketing API updater](bol-marketing-api.md) is paused for the
+approved FTPS handover; its credentials, code and history remain available.
 Official references: [download instructions](https://api.bol.com/marketing/docs/product-feed/download-product-feed.html),
 [feed overview](https://api.bol.com/marketing/docs/product-feed/index.html) and
 [Entertainment group](https://api.bol.com/marketing/docs/product-feed/product-feed-groups.html).
@@ -149,18 +152,24 @@ compared with the NL shop.
 **Public pilots require explicit user approval; the recorded twenty-product NL pilot has that approval and succeeded.**
 The pilot is public; there is no invisible production staging mode.
 
-A two-hour publishing schedule (`15 */2 * * *`, UTC) exists, but its job is
-blocked unless BOTH `BOL_FTPS_AUTOMATION_ENABLED=true` and
-`BOL_FTPS_PRODUCTION_APPROVED=true` are set. Neither variable is enabled by this
-implementation. The official documentation describes two-hour refreshes;
-actual refresh phase/timezone still needs multiple observed MDTM snapshots.
-The schedule polls rather than asserting an exact feed-generation time.
+The sole two-hour schedule (`15 */2 * * *`, UTC) belongs to the policy-controlled
+`bol-feed-shadow.yml` dispatcher. In live mode it dispatches `full_write` with
+explicit approval; the import workflow separately requires main, approved live
+policy, the automatic API chain paused and no unfinished API runs. Publication
+no longer depends on additional repository variables. The source snapshot's
+MDTM checkpoint prevents unnecessary unchanged-feed downloads. Source freshness
+is still limited to six hours; scheduling polls rather than guaranteeing an
+exact provider generation time.
 
-## Automatic read-only shadow
+## Policy-controlled automatic processing
 
-`bol-feed-shadow.yml` polls every two hours (`15 */2 * * *`, UTC) and dispatches
+`bol-feed-shadow.yml` polls every two hours (`15 */2 * * *`, UTC). In shadow mode it dispatches
 only the existing full no-write review. Its versioned policy is
 `config/bol-feed-automation.json`: `mode=shadow`, `publication_allowed=false`.
+The approved live policy instead sets `mode=live`, `publication_allowed=true`,
+`accept_current_offer_gaps=true`, and the recorded user approval. Missing current
+API offers are counted and explicitly accepted, never deleted or silently matched.
+All strict carrier, NEW, barcode, identity and metadata safeguards remain in force.
 The dispatcher has no database/feed credentials and the review has no write input.
 A completed full review records a separate source/profile/code/mode-bound Windows
 checkpoint. Unchanged sources are skipped without a bulk download. That marker
@@ -169,29 +178,27 @@ dispatch chain has been checked end-to-end: a full read-only review succeeded,
 then an unchanged-source run skipped the bulk download in 0.406 seconds. See
 [the recorded evidence](bol-ftps-shadow-evidence.json).
 
-Before any full write the current source must cover every current visible,
-API-eligible bol offer; unresolved gaps block the writer before mutation. The
-source audit explains missing rows and can check a bounded API/category sample.
+By default, unresolved coverage of current visible API-eligible offers blocks
+full writes. The explicitly approved 8 November NL policy accepts those gaps
+while preserving absent prices and recording their count. Missing preflight
+coverage evidence still blocks publication. The source audit explains missing
+rows and can check a bounded API/category sample.
 Only public carrier/category facts are retained; no images/descriptions/tokens.
 
 ## Controlled handover and recovery
 
-After explicit pilot approval, merge/review the code, publish twenty NL products
-and verify the actual committed rows, frontend prices, availability and affiliate
-links. Review real new-product counts and masterdata preservation. Before enabling
-full automation, resolve critical conflicts, measure full-writer throughput and
-transaction duration against the runner timeout, and establish current Marketing API
-coverage parity, including the API's separate preorder classification; `Y` only
-proves feed deliverability and does not establish equivalent preorder semantics.
-FTPS discovery of new EANs alone does not establish that every
-previous API offer is present in the feed.
+The twenty-product pilot was approved, published and independently verified.
+On 8 November the user explicitly approved full NL publication and retirement of
+the automatic API chain despite source-coverage differences. That decision
+replaces the earlier coverage-parity acceptance condition; strict identity,
+carrier and NEW safeguards remain unchanged. Feed `Y` still proves deliverability,
+not API preorder equivalence. Uncovered prices are retained and may age out of
+the frontend's freshness window.
 
-Only after the verified pilot and the remaining acceptance conditions, set
-`config/bol-price-cycle.json` to `enabled=false`, allow queued/running API jobs to
-finish, run an approved full FTPS publication and validate it. Then approve and
-enable the FTPS schedule. The existing automatic API config is not changed by
-this implementation. API credentials, source code, cursor and price history are
-retained.
+The API automatic configuration is paused before the first full FTPS write,
+with existing runs drained. The production outcome, throughput, row counts,
+frontend checks and rollback steps are recorded in [the cutover record](bol-ftps-cutover.md).
+API credentials, source code, cursor and price history are retained.
 
 Recovery: first disable FTPS automation and drain its active run; investigate
 committed evidence, then explicitly restore the existing API chain configuration
@@ -203,4 +210,4 @@ sources concurrently. A rejected/failed download preserves existing prices.
 Run the targeted bol tests from the repository root. Integration tests require
 a disposable loopback PostgreSQL configured with `BOL_TEST_DATABASE_URL`; they
 create/drop only their own test database. They never connect to Supabase.
-Use actionlint on both FTPS workflows and `git diff --check` before review.
+Use actionlint on all three FTPS workflows and `git diff --check` before review.

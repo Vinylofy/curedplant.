@@ -1,7 +1,9 @@
 # Bol NL Marketing API prices
 
-The API is the working HTTPS price source while the separate FTPS feed is
-unreachable. Verified live on 23 October 2026: product lookup and the
+The automatic API chain is paused for the explicitly approved NL FTPS handover
+of 8 November 2026. Code, credentials, history, cursors and manual capabilities
+remain available for controlled rollback; see [the cutover record](bol-ftps-cutover.md).
+The historical API contract was verified live on 23 October 2026: product lookup and the
 `/marketing/catalog/v1/products/{ean}/offers/best?country-code=NL` endpoint.
 The product response's embedded offer omits condition. The best-offer response
 supplies `ean`, `countryCode`, `condition`, `isPreOrder`, `price`, `url` and

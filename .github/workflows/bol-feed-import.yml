@@ -1,5 +1,5 @@
 name: "Curedplant | Affiliate | bol | Approved FTPS import"
-run-name: "bol FTPS NL | ${{ github.event_name == 'schedule' && 'full_write' || inputs.mode }}"
+run-name: "bol FTPS NL | ${{ inputs.mode }}"
 on:
   # The policy-controlled dispatcher owns the sole two-hour schedule.
   workflow_dispatch:
@@ -187,7 +187,7 @@ jobs:
           path: output/bol/review.json
           retention-days: 1
   import:
-    if: ${{ (github.event_name == 'workflow_dispatch' && !contains(fromJSON('["diagnose_writer","audit_catalogue","pilot_review_write"]'), inputs.mode)) || (github.event_name == 'schedule' && vars.BOL_FTPS_AUTOMATION_ENABLED == 'true' && vars.BOL_FTPS_PRODUCTION_APPROVED == 'true') }}
+    if: ${{ github.event_name == 'workflow_dispatch' && !contains(fromJSON('["diagnose_writer","audit_catalogue","pilot_review_write"]'), inputs.mode) }}
     runs-on: [self-hosted, Windows, "${{ vars.BOL_FEED_RUNNER || 'X64' }}"]
     timeout-minutes: 60
     defaults:
@@ -198,8 +198,8 @@ jobs:
         uses: actions/github-script@v8
         env:
           BOL_EXPECTED_SHA256: ${{ inputs.expected_feed_sha256 }}
-          BOL_MODE: ${{ github.event_name == 'schedule' && 'full_write' || inputs.mode }}
-          BOL_APPROVE: ${{ inputs.approve_publication || (github.event_name == 'schedule' && vars.BOL_FTPS_PRODUCTION_APPROVED == 'true') }}
+          BOL_MODE: ${{ inputs.mode }}
+          BOL_APPROVE: ${{ inputs.approve_publication }}
         with:
           script: |
             const mode = process.env.BOL_MODE;
@@ -329,7 +329,7 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           BOL_SHOP_IDS: '{"NL":"f08437c2-1d85-47a6-94f9-33a55612d5cc"}'
           BOL_EXPECTED_SHA256: ${{ inputs.expected_feed_sha256 }}
-          BOL_MODE: ${{ github.event_name == 'schedule' && 'full_write' || inputs.mode }}
+          BOL_MODE: ${{ inputs.mode }}
         run: |
           import os, subprocess, sys
           from pathlib import Path
