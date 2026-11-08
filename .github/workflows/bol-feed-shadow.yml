@@ -1,5 +1,5 @@
-name: "Curedplant | Affiliate | bol | Scheduled FTPS shadow"
-run-name: "bol FTPS NL | automatic read-only shadow"
+name: "Curedplant | Affiliate | bol | Scheduled FTPS source"
+run-name: "bol FTPS NL | automatic source processing"
 on:
   schedule:
     - cron: "15 */2 * * *"
@@ -17,7 +17,7 @@ jobs:
       contents: read
       actions: write
     steps:
-      - name: Dispatch only the existing no-write feed review workflow
+      - name: Dispatch the approved policy mode to the existing Windows workflow
         uses: actions/github-script@v8
         with:
           script: |
@@ -26,17 +26,24 @@ jobs:
               path: 'config/bol-feed-automation.json', ref: 'main'
             });
             const config = JSON.parse(Buffer.from(data.content, 'base64').toString('utf8'));
-            if (config.version !== 1 || config.mode !== 'shadow' || config.market !== 'NL' || config.publication_allowed !== false) {
-              throw new Error('This dispatcher only supports explicitly read-only NL shadow mode');
+            if (config.version !== 1 || config.market !== 'NL' || !['shadow','live'].includes(config.mode)) {
+              throw new Error('Unsupported FTPS policy');
             }
             if (config.enabled !== true) {
-              await core.summary.addRaw('FTPS shadow disabled by repository configuration.').write();
+              await core.summary.addRaw('FTPS processing disabled by repository configuration.').write();
               return;
+            }
+            const live=config.mode==='live';
+            if (config.publication_allowed !== live) throw new Error('Publication policy does not match mode');
+            if (live && (config.accept_current_offer_gaps !== true || config.coverage_approval !== 'user_2026-11-08')) {
+              throw new Error('Explicit approved NL handover policy required');
             }
             await github.rest.actions.createWorkflowDispatch({
               owner: context.repo.owner, repo: context.repo.repo,
-              workflow_id: 'bol-feed-review.yml', ref: 'main',
-              inputs: {limit:'0',markets:'NL',max_rows:'5000000',inspect_schema:'false',
-                check_matches:'true',explain_coverage:'true',validation_suite:'false'}
+              workflow_id: live ? 'bol-feed-import.yml' : 'bol-feed-review.yml', ref: 'main',
+              inputs: live ? {mode:'full_write',approve_publication:'true'} :
+                {limit:'0',markets:'NL',max_rows:'5000000',inspect_schema:'false',
+                 check_matches:'true',explain_coverage:'true',validation_suite:'false'}
             });
-            await core.summary.addRaw('Full FTPS read-only review dispatched to the existing whitelisted Windows runner. No publication input exists in that workflow.').write();
+            await core.summary.addRaw(live ? 'Approved full NL FTPS import dispatched. The writer verifies API pause and drains before credentials.' :
+              'Full read-only FTPS review dispatched.').write();

@@ -1,8 +1,10 @@
 {
   "version": 1,
   "enabled": true,
-  "mode": "shadow",
+  "mode": "live",
   "market": "NL",
-  "publication_allowed": false,
-  "reason": "Read-only operational validation. Source coverage parity is not established; the Marketing API must remain active."
+  "publication_allowed": true,
+  "reason": "Explicit user approval: publish full NL NEW vinyl FTPS selection and retire automatic API prices; preserve uncovered offers without promising freshness.",
+  "accept_current_offer_gaps": true,
+  "coverage_approval": "user_2026-11-08"
 }

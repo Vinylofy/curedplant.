@@ -320,10 +320,22 @@ def required_current_offer(row, now=None):
     return True
 
 
-def require_full_coverage(plan, countries):
+def require_full_coverage(plan, countries, policy=None):
     coverage=plan.get('existing_offer_coverage',{})
-    if any(country not in coverage or coverage[country].get('required_current_absent') != 0 for country in countries):
+    if any(country not in coverage or not isinstance(coverage[country].get('required_current_absent'),int)
+           or coverage[country]['required_current_absent'] < 0 for country in countries):
         raise FeedError('full_import_requires_resolved_current_offer_coverage')
+    missing={country:coverage[country]['required_current_absent'] for country in countries}
+    if not any(missing.values()):
+        return
+    if not (policy and policy.get('version')==1 and policy.get('enabled') is True
+            and policy.get('mode')=='live' and policy.get('publication_allowed') is True
+            and policy.get('market')=='NL' and set(countries)=={'NL'}
+            and policy.get('accept_current_offer_gaps') is True
+            and policy.get('coverage_approval')=='user_2026-11-08'):
+        raise FeedError('full_import_requires_resolved_current_offer_coverage')
+    plan['accepted_coverage_gap']={'approval':policy['coverage_approval'],
+        'required_current_absent':missing,'absent_prices_preserved':True}
 
 
 def review_matches(plan, dsn, shops=None, *, batch_size=500):
@@ -1094,6 +1106,7 @@ def main(argv=None):
     parser.add_argument("--supplemental-reference",type=Path,help="Read-only existing-EAN audit of two fixed official supplemental groups")
     parser.add_argument("--inspect-ftps-inventory", action="store_true")
     parser.add_argument("--explain-coverage", action="store_true")
+    parser.add_argument("--coverage-policy",type=Path,help="Explicit approved NL source-gap policy for full writes")
     parser.add_argument("--diagnose-writer", action="store_true")
     parser.add_argument("--check-matches", action="store_true")
     parser.add_argument("--inspect-schema", action="store_true")
@@ -1165,11 +1178,12 @@ def main(argv=None):
         if args.explain_coverage:
             if not args.check_matches or args.inspect_schema or args.limit != 0:
                 raise FeedError("coverage_explanation_requires_full_read_only_match_review")
+        coverage_policy=json.loads(args.coverage_policy.read_text(encoding="utf-8")) if args.coverage_policy else None
         checkpoint_path = args.state or args.review_state
         checkpoint_key = hashlib.sha256(json.dumps({
             "mode":"writer" if args.write else "read_only_review", "check_matches":args.check_matches,
             "explain_coverage":args.explain_coverage, "importer_sha256":file_digest(Path(__file__)),
-            "profile": profile, "markets": args.markets, "site_id": os.environ.get("BOL_SITE_ID"),
+            "coverage_policy":coverage_policy, "profile": profile, "markets": args.markets, "site_id": os.environ.get("BOL_SITE_ID"),
             "shops": os.environ.get("BOL_SHOP_IDS"), "database": os.environ.get("DATABASE_URL"),
         }, sort_keys=True).encode()).hexdigest()
         previous_source = None
@@ -1231,7 +1245,7 @@ def main(argv=None):
                     raise FeedError("full_import_row_ceiling_reached")
                 shops = json.loads(os.environ.get("BOL_SHOP_IDS", "{}"))
                 if args.limit == 0:
-                    require_full_coverage(report,{o["country"] for o in report["offers"]})
+                    require_full_coverage(report,{o["country"] for o in report["offers"]},coverage_policy)
                 writer = publish_batched if args.limit == 0 else publish
                 result = writer(report, os.environ["DATABASE_URL"], shops, approved=True)
                 report["write_result"] = result

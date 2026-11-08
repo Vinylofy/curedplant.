@@ -1,10 +1,7 @@
 name: "Curedplant | Affiliate | bol | Approved FTPS import"
 run-name: "bol FTPS NL | ${{ github.event_name == 'schedule' && 'full_write' || inputs.mode }}"
 on:
-  # Dormant until the verified pilot and source handover are explicitly approved.
-  # Two-hour polling; MDTM checkpoint prevents unchanged-feed downloads.
-  schedule:
-    - cron: "15 */2 * * *"
+  # The policy-controlled dispatcher owns the sole two-hour schedule.
   workflow_dispatch:
     inputs:
       mode:
@@ -356,7 +353,7 @@ jobs:
               command.extend(['--expected-feed-sha256', os.environ['BOL_EXPECTED_SHA256']])
           if mode == 'full_write':
               state = Path(os.environ['LOCALAPPDATA']) / 'Vinylofy' / 'bol-feed-state.json'
-              command.extend(['--state', str(state)])
+              command.extend(['--state', str(state), '--coverage-policy', 'config/bol-feed-automation.json'])
           subprocess.run(command, cwd=os.environ['BOL_SOURCE_DIR'], check=True)
       - name: Save import evidence only
         if: always()

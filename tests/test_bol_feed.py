@@ -308,6 +308,35 @@ class BolFeedTests(unittest.TestCase):
         self.assertEqual(result,1);writer.assert_not_called()
         self.assertEqual(json.loads(output.read_text())['errors'],['full_import_requires_resolved_current_offer_coverage'])
 
+    def test_approved_nl_gap_policy_preserves_missing_prices_and_records_acceptance(self):
+        from scripts.importers.bol_feed import require_full_coverage
+        plan={'existing_offer_coverage':{'NL':{'required_current_absent':1618}}}
+        policy={'version':1,'enabled':True,'mode':'live','market':'NL',
+                'publication_allowed':True,'accept_current_offer_gaps':True,'coverage_approval':'user_2026-11-08'}
+        require_full_coverage(plan,{'NL'},policy)
+        self.assertEqual(plan['accepted_coverage_gap']['required_current_absent'],{'NL':1618})
+        self.assertTrue(plan['accepted_coverage_gap']['absent_prices_preserved'])
+        for change in ({'publication_allowed':False},{'accept_current_offer_gaps':False},{'coverage_approval':''}):
+            with self.assertRaises(FeedError):require_full_coverage(plan,{'NL'},dict(policy,**change))
+        for invalid in ({'BE':{'required_current_absent':2}},{'NL':{}},{}):
+            with self.assertRaises(FeedError):require_full_coverage({'existing_offer_coverage':invalid},set(invalid) or {'NL'},policy)
+
+    def test_full_cli_write_accepts_only_explicit_policy_and_passes_unchanged_offers(self):
+        policy=self.path.with_suffix('.policy.json');output=self.path.with_suffix('.approved.json')
+        policy.write_text(json.dumps({'version':1,'enabled':True,'mode':'live','market':'NL',
+            'publication_allowed':True,'accept_current_offer_gaps':True,'coverage_approval':'user_2026-11-08'}))
+        def missing(plan,*args,**kwargs):
+            plan.update(match_status='read_only_checked',existing_offer_coverage={'NL':{'required_current_absent':1618}})
+        with patch.dict('os.environ',{'BOL_SITE_ID':'12345','DATABASE_URL':'test'}),patch(
+                'scripts.importers.bol_feed.review_matches',side_effect=missing),patch(
+                'scripts.importers.bol_feed.publish_batched',return_value={'updated_offers':20}) as writer:
+            result=main(['--feed',str(self.path),'--profile',str(ROOT/'config/bol-feed.live.json'),
+                '--limit','0','--source-at',self.now.isoformat(),'--write','--approve-publication',
+                '--coverage-policy',str(policy),'--output',str(output)])
+        self.assertEqual(result,0)
+        self.assertEqual(len(writer.call_args.args[0]['offers']),20)
+        self.assertEqual(json.loads(output.read_text())['accepted_coverage_gap']['required_current_absent']['NL'],1618)
+
     def test_read_only_checkpoint_skips_unchanged_feed_without_permitting_writes(self):
         output=self.path.with_suffix('.review-output.json');state=self.path.with_suffix('.review-state.json')
         command=['--profile',str(ROOT/'config/bol-feed.example.json'),'--limit','0','--review-state',str(state),'--output',str(output)]
