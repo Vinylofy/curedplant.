@@ -1,14 +1,14 @@
 {
   "version": 1,
   "country": "NL",
-  "last_run_id": "42446149283",
-  "last_finished_at": "2026-11-08T04:47:41.746206+00:00",
+  "last_run_id": "42448231648",
+  "last_finished_at": "2026-11-08T05:12:41.582370+00:00",
   "halted": false,
   "transient_failures": 0,
   "status": "success",
-  "last_success_at": "2026-11-08T04:47:41.746206+00:00",
-  "last_started_at": "2026-11-08T04:17:58.804126+00:00",
-  "checked": 1484,
-  "database_writes": 1095,
-  "next_due_at": "2026-11-08T04:47:58.804126+00:00"
+  "last_success_at": "2026-11-08T05:12:41.582370+00:00",
+  "last_started_at": "2026-11-08T04:48:09.720314+00:00",
+  "checked": 1481,
+  "database_writes": 1085,
+  "next_due_at": "2026-11-08T05:18:09.720314+00:00"
 }
