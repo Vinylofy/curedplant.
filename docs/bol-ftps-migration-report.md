@@ -1,18 +1,52 @@
 # bol.com FTPS-migratie — implementatierapport
 
-Datum: 7 november 2026. **FTPS PRODUCTIEGEREED: NEE.**
+Datum: 8 november 2026. **FTPS PRODUCTIEGEREED: JA — NL, binnen de expliciet geaccepteerde FTPS-dekking.**
 
-De expliciet goedgekeurde NL-productiepilot is geslaagd: twintig aanbiedingen
-zijn gepubliceerd, inclusief twaalf nieuwe producten. De acht bestaande producten
-behielden hun canonieke metadata en covers. De productieherhaling schreef niets
-opnieuw. Supabase en de publieke frontend zijn gecontroleerd.
+De volledige NL-bronwissel is goedgekeurd, uitgevoerd en gevalideerd. De nieuwste
+bron bevat 916.327 regels; 146.130 aantoonbaar nieuwe vinylaanbiedingen zijn
+gepubliceerd na 99 veilige quarantaines. Daarbij zijn 86.577 neutrale producten
+nieuw aangemaakt en 59.553 bestaande producten op EAN gekoppeld. Alle 146.130
+shopprijzen zijn binnen én na commit geverifieerd, verdeeld over 585 batches.
+Verwerking: 32 minuten en 39 seconden, nul writer-fouten.
 
-De code staat op `main`. Er zijn geen shops aangemaakt en geen frontendbestanden
-gewijzigd. De Marketing API blijft actief; de volledige automatische FTPS-bronwissel
-is nog niet vrijgegeven. De oorspronkelijke read-only resultaten staan hieronder,
-gevolgd door het actuele pilotresultaat in §5a.
+De herhaling sloeg dezelfde bron in 0,5 seconde over: geen bulkdownload en nul
+writes. De twintig gecontroleerde bestaande producten behielden canonieke
+metadata en covers; hun prijzen bleven bij herhaling gelijk. De publieke frontend
+toont het gecontroleerde nieuwe en bestaande NL-aanbod correct, verbergt een
+uitverkochte aanbieding en laat geen NL-bol-aanbod zien in BE. Er zijn geen
+frontendbestanden gewijzigd en geen shops aangemaakt.
 
-## Laatste eindcontrole op main
+**De automatische Marketing API-prijsketen is uitgeschakeld:** configuratie op
+`enabled=false` en de oude API-cron verwijderd na succesvolle publicatie en
+herhaling. Credentials, API-broncode, handmatige workflow, cursor en historie
+blijven bewaard. FTPS live-publicatie is ingesteld op eens per twee uur via één
+policygestuurde dispatcher en de bestaande gewhiteliste Windows-runner.
+De volledige live-dispatchketen is gecontroleerd; een eerdere natuurlijke
+crontrigger werkte in shadowmodus. De eerste volgende natuurlijke live-cron is
+nog niet waargenomen. Er wordt geen exact GitHub-startmoment gegarandeerd.
+
+De gebruiker heeft de eerdere eis van volledige API-dekking expliciet laten
+vervallen. De laatste preflight telt 1.677 huidige API-geschikte aanbiedingen
+buiten de veilige FTPS-selectie. Die blijven bewaard, maar worden niet kunstmatig
+ververst en kunnen uit de versheidsselectie van de frontend vallen. NEW/vinyl-,
+EAN-, identiteits-, bronleeftijd- en masterdatacontroles blijven onverkort gelden.
+BE blijft uitgeschakeld voor publicatie.
+
+Validatie: 114 bol-tests, inclusief 23 PostgreSQL-integratietests; actionlint op
+alle vier betrokken workflows geslaagd. De code en policies staan op `main`.
+
+- [Volledige productiepublicatie](https://github.com/Vinylofy/curedplant./actions/runs/42462119932)
+- [Idempotente productieherhaling](https://github.com/Vinylofy/curedplant./actions/runs/42464577676)
+- [Goedgekeurde live-implementatie](https://github.com/Vinylofy/curedplant./commit/c264b78)
+- [Operationele documentatie](https://github.com/Vinylofy/curedplant./commit/f9bfee7)
+- [Blijvende productie-evidence](bol-ftps-cutover-evidence.json)
+- [Scope, planning en gecontroleerde terugval](bol-ftps-cutover.md)
+
+De onderstaande resultaten zijn historische metingen van 7 november en de
+voorbereiding. Hun eerdere NEE-conclusie is vervangen door de goedgekeurde en
+hierboven gemeten productie-uitkomst; hun bronverschillen blijven vastgelegd.
+
+## Historische main-controle van 7 november 2026
 
 Na merge van PR #8 is de volledige schaduwketen nogmaals handmatig gestart via
 de actieve dispatcher en de bestaande Windows-runner. De bron was inmiddels
@@ -34,7 +68,7 @@ een vaste exacte publicatiefase blijft niet gegarandeerd.
 resterende bron-/identiteitsdekking aantoonbaar veilig is overgenomen.
 Er zijn na de goedgekeurde twintig-productenpilot geen extra productiewrites gedaan.
 
-## Actuele voortzetting: knelpunten onderzocht en technisch afgevangen
+## Historische voortzetting van 7 november: knelpunten onderzocht en technisch afgevangen
 
 De latere volledige Windows-validatie heeft een nieuw snapshot van 913.984 regels
 geverifieerd (MDTM 7 november 2026, 21:03:54 CET). Daaruit blijven 146.011 geldige

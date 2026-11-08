@@ -1,0 +1,180 @@
+{
+  "approval": "User explicitly approved full automatic NL FTPS publication and automatic API retirement on 2026-11-08, accepting preserved uncovered offers.",
+  "source_commit": "c264b78",
+  "dispatcher_run": "https://github.com/Vinylofy/curedplant./actions/runs/42462110817",
+  "full_write_run": "https://github.com/Vinylofy/curedplant./actions/runs/42462119932",
+  "previous_natural_shadow_cron_run": "https://github.com/Vinylofy/curedplant./actions/runs/42434250292",
+  "full_write": {
+    "status": "written",
+    "source": "bol_affiliate_productfeed",
+    "read_products": 916327,
+    "complete_feed": true,
+    "selected_new_vinyl": 146130,
+    "valid_prices": 146130,
+    "existing_matches": 59534,
+    "new_products": 86596,
+    "quarantined_offers": 99,
+    "markets": {
+      "NL": {
+        "selected_new_vinyl": 146130,
+        "valid_prices": 146130,
+        "availability": {
+          "in_stock": 144075,
+          "out_of_stock": 2054,
+          "unknown": 1
+        },
+        "shipping": {
+          "known": 146130
+        },
+        "seller": {
+          "external_partner": 132961,
+          "bol": 13169
+        },
+        "existing_matches": 59534,
+        "new_products": 86596
+      }
+    },
+    "file_validation": {
+      "compressed_bytes": 343923709,
+      "uncompressed_bytes": 1237330820,
+      "integrity": "verified_full_read"
+    },
+    "source_at": "2026-11-08T08:03:23+00:00",
+    "feed_sha256": "53f5995269b892df31fac189db34706c7af1f949030a72491d7a0a3104461d51",
+    "duration_seconds": 1958.891,
+    "database_writes": 146130,
+    "errors": [],
+    "write_result": {
+      "new_products": 86577,
+      "updated_offers": 146130,
+      "skipped_newer": 0,
+      "verified": 146130,
+      "committed_verified": 146130,
+      "committed_batches": 585
+    },
+    "accepted_coverage_gap": {
+      "approval": "user_2026-11-08",
+      "required_current_absent": {
+        "NL": 1677
+      },
+      "absent_prices_preserved": true
+    },
+    "existing_offer_coverage": {
+      "NL": {
+        "existing_active_shop_offers": 53011,
+        "covered_by_feed": 49989,
+        "absent_from_eligible_feed": 3022,
+        "absent_product_samples": [
+          "000f2658-6a90-4cb1-9a0c-625c6df7e782",
+          "00271bf5-31f3-44cd-8baf-ed74719a2af0",
+          "002e7872-709f-4acf-b0fd-e33bee96488f",
+          "002ef63d-1f7f-492d-a0ab-dc11ac9d38c7",
+          "0036e563-124f-4ea4-b038-30af504cf732",
+          "00371303-5258-4001-8225-fbcf5066cd20",
+          "0041c828-a9f1-4908-bb2e-b46c0feca1c7",
+          "005b3e24-0be6-4f2f-b846-6bdf00c4a278",
+          "00726e99-7ae2-42a0-b773-e4f093f77381",
+          "009c01cd-5971-4c97-afd1-7385c6b9d641",
+          "00a0edb2-5356-485d-993b-e94d0ff1b1d0",
+          "00b640d0-93aa-4fcf-ad36-16e86ab792ca",
+          "00e26f16-2295-4ee5-84d7-646ff8d496d6",
+          "0102b69f-a986-4c18-bd4e-0cacbbc98fe5",
+          "010adbb2-fab6-4d0c-85f8-5617868e7707",
+          "011a2cda-1004-41f6-8d91-ac85046ac552",
+          "0156e0eb-f646-4f63-8f23-31d2ee0417ee",
+          "01760a62-d26c-4d0f-8c02-e71af66b240a",
+          "0176847c-2d99-4f8c-8e56-d78006063355",
+          "01c527ad-70a7-4109-b0d0-d256a87d8bb3"
+        ],
+        "required_current_offers": 51336,
+        "required_current_absent": 1677
+      }
+    }
+  },
+  "canonical_sample": {
+    "sample_products": 20,
+    "before_bol_prices": 20,
+    "after_bol_prices": 20,
+    "canonical_or_cover_changes": []
+  },
+  "frontend_checks": [
+    {
+      "url": "https://www.vinylofy.com/product/40c05dd1-a98f-4ac9-99d9-41b787eecc7d?market=NL",
+      "status": 200,
+      "error": null,
+      "bol_offers": [
+        {
+          "displayed_row": "Bol\nBeste prijs\nOnline Shop\nbol.com\n•\nVandaag gecontroleerd\n\n€ 26,19\n\nGratis\n\n± € 26,19 totaal\n\nGa naar shop",
+          "destination": [
+            "https://www.bol.com/nl/nl/p/june-silver-demon/9200000130622367/"
+          ]
+        }
+      ]
+    },
+    {
+      "url": "https://www.vinylofy.com/product/8dcd58b7-a5bd-4157-8d2d-706b7fb61e4e?market=NL",
+      "status": 200,
+      "error": null,
+      "bol_offers": [
+        {
+          "displayed_row": "Bol\nBeste prijs\nOnline Shop\nbol.com\n•\nVandaag gecontroleerd\n\n€ 28,89\n\nGratis\n\n± € 28,89 totaal\n\nGa naar shop",
+          "destination": [
+            "https://www.bol.com/nl/nl/p/flogging-molly-anthem/9300000121841762/"
+          ]
+        }
+      ]
+    },
+    {
+      "url": "https://www.vinylofy.com/product/40c05dd1-a98f-4ac9-99d9-41b787eecc7d?market=BE",
+      "status": 200,
+      "error": null,
+      "bol_offers": []
+    },
+    {
+      "url": "https://www.vinylofy.com/product/b9b513b1-31f0-4070-af78-328d920b399d?market=NL",
+      "status": 200,
+      "error": null,
+      "bol_offers": []
+    },
+    {
+      "url": "https://www.vinylofy.com/?market=NL",
+      "status": 200,
+      "error": null,
+      "bol_offers": []
+    }
+  ],
+  "replay_run": "https://github.com/Vinylofy/curedplant./actions/runs/42464577676",
+  "replay_dispatcher_run": "https://github.com/Vinylofy/curedplant./actions/runs/42464570693",
+  "replay": {
+    "status": "unchanged_feed",
+    "database_writes": 0,
+    "errors": [],
+    "source_at": "2026-11-08T08:03:23+00:00",
+    "previous_complete_review_at": null,
+    "feed_sha256": "53f5995269b892df31fac189db34706c7af1f949030a72491d7a0a3104461d51",
+    "duration_seconds": 0.5
+  },
+  "sample_after_replay": {
+    "products": 20,
+    "prices": 20,
+    "metadata_unchanged": true,
+    "prices_unchanged": true
+  },
+  "automation": {
+    "enabled": true,
+    "mode": "live",
+    "market": "NL",
+    "publication_allowed": true,
+    "cron_utc": "15 */2 * * *",
+    "automatic_api_enabled": false,
+    "automatic_api_cron_removed": true,
+    "manual_api_and_credentials_preserved": true,
+    "natural_shadow_cron_previously_observed": true,
+    "first_natural_live_cron_not_yet_observed": true
+  },
+  "validation": {
+    "bol_tests": 114,
+    "postgres_tests_included": 23,
+    "actionlint_workflows": 4
+  }
+}

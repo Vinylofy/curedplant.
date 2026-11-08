@@ -1,8 +1,7 @@
 name: "Curedplant | Price | Bol NL API"
 run-name: "Bol NL | API prices | ${{ github.event_name == 'schedule' && 'automatic chain' || format('write={0} | sample={1} | limit={2} | chain={3}', inputs.write, inputs.sample, inputs.limit, inputs.continue_chain) }}"
 on:
-  schedule:
-    - cron: "0,30 * * * *"
+  # Automatic prices retired after approved NL FTPS handover; manual rollback remains.
   workflow_dispatch:
     inputs:
       limit:
