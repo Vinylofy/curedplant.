@@ -2,10 +2,9 @@
   "version": 1,
   "shop": "atthemovies",
   "cursor": {
-    "page": 1,
+    "page": 2,
     "seed": 0,
-    "exhausted": true,
-    "exhausted_on": "2026-11-02"
+    "signature": "5b3fb4db3097cfcf812cd521263b46b37661d5bc6a1bebd5b92f043e627677c1"
   },
   "budget": {
     "date": "2026-11-09",
