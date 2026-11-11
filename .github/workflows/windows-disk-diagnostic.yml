@@ -1,0 +1,29 @@
+name: 'Maintenance | Windows runner disk diagnostic'
+on:
+  workflow_dispatch:
+permissions: {}
+jobs:
+  disk:
+    runs-on: [self-hosted, Windows, "${{ vars.BOL_FEED_RUNNER || 'X64' }}"]
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0}
+    steps:
+      - name: Inspect disk capacity and runner-owned directories
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" | Where-Object { $_.DeviceID -in @('C:','E:') } | ForEach-Object {
+            Write-Output ("DRIVE {0} capacity_gb={1:N2} free_gb={2:N2}" -f $_.DeviceID, ($_.Size / 1GB), ($_.FreeSpace / 1GB))
+          }
+          $roots = @($env:RUNNER_TEMP, (Join-Path $env:LOCALAPPDATA 'Vinylofy')) | Where-Object { $_ -and (Test-Path -LiteralPath $_) }
+          foreach ($root in $roots) {
+            Write-Output "ROOT $root"
+            $entries = foreach ($entry in (Get-ChildItem -LiteralPath $root -Force -ErrorAction SilentlyContinue)) {
+              if ($entry.PSIsContainer) {
+                $size = (Get-ChildItem -LiteralPath $entry.FullName -File -Recurse -Force -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum
+              } else { $size = $entry.Length }
+              [PSCustomObject]@{Name=$entry.Name; SizeGB=[math]::Round(($size / 1GB), 3); LastWrite=$entry.LastWriteTimeUtc.ToString('s')}
+            }
+            $entries | Sort-Object SizeGB -Descending | Select-Object -First 20 | ConvertTo-Json -Compress -Depth 3 | Write-Output
+          }
