@@ -14,13 +14,13 @@ from pathlib import Path
 from urllib.parse import urlsplit,parse_qs,urljoin
 from urllib.robotparser import RobotFileParser
 import requests
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, element
 import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from scripts.importers.common import strict_normalize_gtin
 
-REVISION=5
+REVISION=6
 UA='VinylofyAlbumSource/1.0 (https://vinylofy.com; contact: info@vinylofy.com)'
 
 def now():return datetime.now(timezone.utc)
@@ -117,6 +117,25 @@ def visible_article_prices(area,domain):
         value=node.get('content') or node.get_text(' ',strip=True)
         match=re.fullmatch(r'\s*(?:€\s*)?([0-9]{1,5}(?:[.,][0-9]{2})?)\s*(?:€)?\s*',value)
         if match:found.add(Decimal(match.group(1).replace(',','.')))
+    if domain.removeprefix('www.') == 'muziker.nl':
+        # Muziker renders its own product information in Turbo templates.
+        # Scope to the current product panel; never use recommendations,
+        # crossed-out prices, shipping or membership-only amounts.
+        for panel in area.find_all('turbo-stream', attrs={'target':'product-info-panel-frame'}):
+            for node in panel.find_all(attrs={'data-original-price-value':True}):
+                if not node.find_parent(class_='product-price') or node.find_parent('del'):
+                    continue
+                if any('text-crossed' in (p.get('class') or []) for p in [node,*node.parents] if getattr(p,'attrs',None)):
+                    continue
+                visible=node.get_text(' ',strip=True,types=(element.NavigableString,element.TemplateString))
+                match=re.fullmatch(r'\s*€\s*([0-9]{1,5})[,.]([0-9]{2})\s*',visible)
+                if not match:continue
+                try:
+                    displayed=Decimal(match.group(1)+'.'+match.group(2))
+                    attribute=Decimal(node['data-original-price-value'])
+                except Exception:continue
+                if displayed.is_finite() and displayed>0 and displayed==attribute:
+                    found.add(displayed)
     return found
 
 def verify_source(row,transport):
@@ -266,15 +285,26 @@ def claim(conn,limit):
         cur.execute("select pg_advisory_xact_lock(hashtextextended('album_offer_queue_capacity_v1',0))")
         cur.execute("select count(*) as active from album_offer_queue where (status in ('pending_source','pending_match','ready') or (status in ('source_retry','match_retry') and next_attempt_at<=now())) or lease_until>now()")
         capacity=max(0,50-cur.fetchone()['active'])
-        cur.execute("""with revisited as(select id from public.album_offer_queue where status='source_review'
+        cur.execute("""with priority_revisited as(select q.id from public.album_offer_queue q join public.shops s on s.id=q.shop_id
+          where q.status='source_review' and q.reason='fresh_listing_or_visible_own_price_required'
+          and regexp_replace(s.domain,'^www\\.','')='muziker.nl'
+          and coalesce(q.source_input->>'validator_revision','0')::integer<%s
+          and not exists(select 1 from public.album_offer_queue paused where paused.shop_id=q.shop_id
+            and paused.status='source_retry' and paused.reason in ('HTTP_403','HTTP_429','ACCESS_CHALLENGE')
+            and paused.next_attempt_at>now())
+          and q.next_attempt_at<=now() and (q.lease_until is null or q.lease_until<now()) order by q.updated_at,q.id limit %s),
+          revisited as(select id from public.album_offer_queue where status='source_review'
           and coalesce(source_input->>'validator_revision','0')::integer<%s
+          and not (coalesce(reason,'')='fresh_listing_or_visible_own_price_required' and exists(
+            select 1 from public.shops s where s.id=album_offer_queue.shop_id
+            and regexp_replace(s.domain,'^www\\.','')='muziker.nl'))
           and next_attempt_at<=now() and (lease_until is null or lease_until<now()) order by updated_at,id limit %s),
           due as(select id from public.album_offer_queue
-          where (status in ('pending_source','source_retry','published','awaiting_market') or id in(select id from revisited)) and next_attempt_at<=now()
+          where (status in ('pending_source','source_retry','published','awaiting_market') or id in(select id from revisited) or id in(select id from priority_revisited)) and next_attempt_at<=now()
             and (lease_until is null or lease_until<now())
-          order by (status='source_review'),next_attempt_at,updated_at,id for update skip locked limit %s)
+          order by (id in(select id from priority_revisited)) desc,next_attempt_at,updated_at,id for update skip locked limit %s)
           update public.album_offer_queue q set claim_token=%s,lease_until=now()+interval '30 minutes',source_attempts=source_attempts+1
-          from due where due.id=q.id returning q.*,(select domain from shops where id=q.shop_id) as shop_domain""",(REVISION,capacity,limit,token))
+          from due where due.id=q.id returning q.*,(select domain from shops where id=q.shop_id) as shop_domain""",(REVISION,min(5,limit),REVISION,capacity,limit,token))
         return cur.fetchall(),token
 
 def collect(conn,limit=50):

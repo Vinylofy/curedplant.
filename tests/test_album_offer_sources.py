@@ -87,6 +87,29 @@ class AlbumSource(unittest.TestCase):
   result=src.verify_source(row,Mock(get=Mock(return_value=body),requests=[]))
   self.assertEqual((result['price'],result['price_basis']),('25.00','verified_visible_article_price_fallback'))
   with self.assertRaises(ValueError):src.verify_source(row,Mock(get=Mock(return_value=body.replace('€25,00','€26,00')),requests=[]))
+ def test_muziker_product_panel_price_is_compared_with_own_offer(self):
+  row=self.row();row['shop_domain']='muziker.nl';row['product_url']='https://www.muziker.nl/artist-album-lp'
+  body=self.html().replace(self.row()['product_url'],row['product_url'])
+  panel='<turbo-stream target="product-info-panel-frame"><template><div class="product-price"><div data-original-price-value="25.0">€ 25,00</div></div></template></turbo-stream>'
+  body='<main>'+body+panel+'<footer>Verzending € 4,95</footer></main>'
+  result=src.verify_source(row,Mock(get=Mock(return_value=body),requests=[]))
+  self.assertEqual((result['route'],result['price']),('ARTIST_TITLE','25.00'))
+  for changed in (body.replace('€ 25,00','€ 26,00'),body.replace('data-original-price-value="25.0"','data-original-price-value="26.0"'),body.replace('product-info-panel-frame','recommendation-frame')):
+   with self.subTest(changed=changed),self.assertRaisesRegex(ValueError,'fresh_listing_or_visible_own_price_required'):
+    src.verify_source(row,Mock(get=Mock(return_value=changed),requests=[]))
+  cd=body.replace('Artist Album LP','Artist Album CD')
+  with self.assertRaisesRegex(ValueError,'vinyl_format_unproven'):
+   src.verify_source(row,Mock(get=Mock(return_value=cd),requests=[]))
+ def test_muziker_price_never_falls_back_to_crossed_out_price(self):
+  area=src.BeautifulSoup('<main><turbo-stream target="product-info-panel-frame"><template><div class="product-price"><del><span data-original-price-value="25">€ 25,00</span></del></div></template></turbo-stream></main>','html.parser')
+  self.assertEqual(src.visible_article_prices(area,'muziker.nl'),set())
+ def test_priority_source_review_has_bounded_automatic_retry_even_with_backlog(self):
+  conn=MagicMock();cur=conn.cursor.return_value.__enter__.return_value
+  cur.fetchone.return_value={'active':7000};cur.fetchall.return_value=[]
+  src.claim(conn,50)
+  sql,args=cur.execute.call_args.args
+  self.assertIn('priority_revisited',sql);self.assertIn('muziker.nl',sql)
+  self.assertEqual(args[1],5);self.assertEqual(args[3],0)
  def test_physical_colour_suffix_in_heading_and_explicit_vinyl_property(self):
   product_name='Artist Album LP (Clear Vinyl)'
   t=self.transport();t.get.side_effect=[self.html(name=product_name),json.dumps({'title':product_name,'variants':[{'id':123,'price':2500,'available':True,'barcode':''}]})]
