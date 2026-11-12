@@ -15,6 +15,18 @@ def product(content):
 
 
 class SoundsVenloTests(unittest.TestCase):
+    def test_ubuntu_http_denial_stops_without_browser_retry(self):
+        blocked = requests.Response()
+        blocked.status_code, blocked.url = 403, URL
+        with patch.dict('os.environ', {'SOUNDSVENLO_HTTP_ONLY': 'true'}), \
+             SoundsVenloSession(sleeper=Mock()) as session, \
+             patch('requests.Session.get', return_value=blocked) as get:
+            self.assertTrue(session.headers['User-Agent'].startswith('Vinylofy-SoundsVenlo/'))
+            self.assertEqual(session.get(URL).status_code, 403)
+            self.assertEqual(session.get(URL).status_code, 403)
+            get.assert_called_once()
+            self.assertIsNone(session._browser)
+
     def test_related_album_image_cannot_supply_missing_product_ean(self):
         html = product('<p>LP</p><p>Release 31-12-2026</p><p>4707526</p>')
         html += '<aside><a href="/4704205-fresku-in-het-diepe/">In Het Diepe</a>'
