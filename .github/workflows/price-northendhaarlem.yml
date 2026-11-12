@@ -1,55 +1,42 @@
-name: "Curedplant | Price | North End Haarlem"
-run-name: "Price | North End Haarlem | ${{ github.event_name == 'schedule' && 'scheduled write' || (inputs.write && 'write=true' || 'write=false') }} | limit=${{ github.event_name == 'schedule' && '0' || inputs.limit }}"
-
+name: North End Ubuntu source access probe
 on:
-  schedule:
-    - cron: "35 3 * * *"
   workflow_dispatch:
-    inputs:
-      source_version:
-        description: "current = Windows collector; windows-baseline = read-only Linux comparison"
-        required: true
-        default: current
-        type: choice
-        options:
-          - windows-baseline
-          - current
-      limit:
-        description: "0 = native full catalogue; positive = pages/products pilot"
-        required: true
-        default: "0"
-        type: string
-      write:
-        description: "Write to database"
-        required: true
-        default: false
-        type: boolean
-      approved_dry_run_id:
-        description: "Optional source run ID: false=recheck, true=write reviewed prices; max 6 hours"
-        required: false
-        default: ""
-        type: string
-
 permissions:
   contents: read
-  actions: write
-
 jobs:
-  windows:
-    if: inputs.source_version != 'windows-baseline' && !inputs.approved_dry_run_id
-    uses: ./.github/workflows/price-windows-catalog.yml
-    with:
-      worker: northendhaarlem
-      limit: ${{ github.event_name == 'schedule' && '0' || inputs.limit }}
-      write: ${{ github.event_name == 'schedule' || inputs.write }}
-    secrets: inherit
-  reviewed-source-or-baseline:
-    if: inputs.source_version == 'windows-baseline' || inputs.approved_dry_run_id
-    uses: ./.github/workflows/_catalog-price-worker.yml
-    with:
-      source_version: ${{ inputs.source_version || 'current' }}
-      approved_dry_run_id: ${{ inputs.approved_dry_run_id || '' }}
-      worker: northendhaarlem
-      limit: ${{ inputs.limit }}
-      write: ${{ inputs.write }}
-    secrets: inherit
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: python -m pip install 'requests>=2.31,<3' 'beautifulsoup4>=4.12,<5' 'psycopg[binary]>=3.2,<4' 'python-dotenv>=1,<2'
+      - name: Check robots and one catalogue page without database access
+        run: |
+          python -u - <<'PY'
+          import time, requests
+          from urllib.robotparser import RobotFileParser
+          from datetime import datetime,timezone
+          from scripts.scrapers.usf.jobs.refresh_northendhaarlem_listing_prices import CATEGORY_SEEDS, category_url, parse_listing_page
+          session=requests.Session()
+          agent='Vinylofy-NorthEnd/1.0 (https://vinylofy.com; info@vinylofy.com)'
+          session.headers['User-Agent']=agent
+          response=session.get('https://www.northendhaarlem.nl/robots.txt', timeout=30, allow_redirects=False)
+          print('ROBOTS',response.status_code,flush=True)
+          response.raise_for_status()
+          if response.status_code != 200: raise RuntimeError('unexpected_robots_redirect')
+          robot=RobotFileParser(); robot.parse(response.text.splitlines())
+          seed=CATEGORY_SEEDS[0];url=category_url(seed,1)
+          if not robot.can_fetch(agent,url): raise RuntimeError('robots_disallow')
+          time.sleep(max(30,robot.crawl_delay(agent) or robot.crawl_delay('*') or 0))
+          response=session.get(url,timeout=30,allow_redirects=False)
+          print('CATALOG_HTTP',response.status_code,flush=True)
+          response.raise_for_status()
+          if response.status_code != 200: raise RuntimeError('unexpected_catalogue_redirect')
+          rows=parse_listing_page(response.text,discovery_url=url,seed=seed,page=1,seen_at=datetime.now(timezone.utc).isoformat())
+          print('CATALOG_ROWS',len(rows),flush=True)
+          if not rows: raise RuntimeError('no_listing_rows')
+          print('SAMPLES',[{'url':r.link.source_url,'title':r.link.payload.get('title_raw'),'price':str(r.offer.price)} for r in rows[:3]],flush=True)
+          PY
