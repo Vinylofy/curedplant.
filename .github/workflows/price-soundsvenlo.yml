@@ -1,41 +1,56 @@
-name: Sounds Venlo Ubuntu read-only source probe
+name: "Curedplant | Price | Sounds Venlo"
+run-name: "Price | Sounds Venlo | ${{ github.event_name == 'schedule' && 'scheduled write' || (inputs.write && 'write=true' || 'write=false') }} | limit=${{ github.event_name == 'schedule' && '0' || inputs.limit }}"
+
 on:
+  schedule:
+    - cron: "35 7 * * *"
   workflow_dispatch:
+    inputs:
+      source_version:
+        description: "current = Windows collector; ubuntu-pilot = Ubuntu collector; windows-baseline = read-only comparison"
+        required: true
+        default: current
+        type: choice
+        options:
+          - windows-baseline
+          - current
+          - ubuntu-pilot
+      limit:
+        description: "0 = native full catalogue; positive = pages/products pilot"
+        required: true
+        default: "0"
+        type: string
+      write:
+        description: "Write to database"
+        required: true
+        default: false
+        type: boolean
+      approved_dry_run_id:
+        description: "Optional source run ID: false=recheck, true=write reviewed prices; max 6 hours"
+        required: false
+        default: ""
+        type: string
+
 permissions:
   contents: read
+  actions: write
+
 jobs:
-  source:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
-        with:
-          python-version: '3.12'
-      - run: python -m pip install 'requests>=2.31,<3' 'beautifulsoup4>=4.12,<5' 'psycopg[binary]>=3.2,<4' 'python-dotenv>=1,<2'
-      - name: Check two catalog pages without database access
-        run: |
-          python -u - <<'PY'
-          import json,time,requests,urllib.robotparser
-          from datetime import datetime,timezone
-          from scripts.scrapers.usf.jobs.refresh_soundsvenlo_listing_prices import listing_url_for_page,parse_listing_page
-          session=requests.Session()
-          session.headers['User-Agent']='Vinylofy-SoundsVenlo/1.0 (https://vinylofy.com; info@vinylofy.com)'
-          robot=session.get('https://www.sounds-venlo.nl/robots.txt',timeout=20)
-          print('ROBOTS',robot.status_code,flush=True)
-          robot.raise_for_status()
-          parser=urllib.robotparser.RobotFileParser();parser.parse(robot.text.splitlines())
-          delay=max(10,parser.crawl_delay('*') or 0)
-          for page in (1,2):
-              url=listing_url_for_page(page)
-              if not parser.can_fetch(session.headers['User-Agent'],url): raise RuntimeError('robots_disallow')
-              time.sleep(delay)
-              response=session.get(url,timeout=30,allow_redirects=False)
-              print('HTTP',page,response.status_code,flush=True)
-              response.raise_for_status()
-              if response.status_code != 200: raise RuntimeError('unexpected_redirect')
-              links,offers=parse_listing_page(response.text,page=page,listing_url=url,seen_at=datetime.now(timezone.utc),debug=False)
-              print('PAGE',page,'links',len(links),'offers',len(offers),flush=True)
-              print('SAMPLES',json.dumps([{'url':o.source_url,'price':str(o.price),'availability':o.availability} for o in offers[:3]]),flush=True)
-              if not offers: raise RuntimeError('no_valid_prices')
-          PY
+  windows:
+    if: inputs.source_version != 'windows-baseline' && inputs.source_version != 'ubuntu-pilot' && !inputs.approved_dry_run_id
+    uses: ./.github/workflows/price-windows-catalog.yml
+    with:
+      worker: soundsvenlo
+      limit: ${{ github.event_name == 'schedule' && '0' || inputs.limit }}
+      write: ${{ github.event_name == 'schedule' || inputs.write }}
+    secrets: inherit
+  reviewed-source-or-baseline:
+    if: inputs.source_version == 'windows-baseline' || inputs.source_version == 'ubuntu-pilot' || inputs.approved_dry_run_id
+    uses: ./.github/workflows/_catalog-price-worker.yml
+    with:
+      source_version: ${{ inputs.source_version == 'ubuntu-pilot' && 'current' || inputs.source_version || 'current' }}
+      approved_dry_run_id: ${{ inputs.approved_dry_run_id || '' }}
+      worker: soundsvenlo
+      limit: ${{ inputs.limit }}
+      write: ${{ inputs.write }}
+    secrets: inherit

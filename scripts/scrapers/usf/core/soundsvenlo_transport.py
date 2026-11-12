@@ -1,5 +1,8 @@
 """Sounds Venlo's persistent session and published 10-second crawl interval."""
+import os
 from urllib.parse import urlparse, urlunparse
+
+import requests
 
 from scripts.scrapers.usf.core.northend_transport import NorthEndSession
 
@@ -27,3 +30,19 @@ class SoundsVenloSession(NorthEndSession):
         'Cache-Control': 'no-cache', 'Pragma': 'no-cache',
         'Connection': 'keep-alive', 'Upgrade-Insecure-Requests': '1',
     }
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.http_only = os.environ.get('SOUNDSVENLO_HTTP_ONLY') == 'true'
+        if self.http_only:
+            self.headers['User-Agent'] = 'Vinylofy-SoundsVenlo/1.0 (https://vinylofy.com; info@vinylofy.com)'
+
+    def get(self, url, **kwargs):
+        if not self.http_only:
+            return super().get(url, **kwargs)
+        url = self.canonical_url(url)
+        if self._blocked is not None:
+            return self._blocked
+        self._pace()
+        response = requests.Session.get(self, url, **kwargs)
+        return self._observe(response, 'http_session')

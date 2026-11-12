@@ -40,6 +40,7 @@ jobs:
     timeout-minutes: ${{ inputs.source_version == 'windows-baseline' && 30 || (inputs.worker == 'jpc' && 300 || 180) }}
     env:
       DATABASE_URL: ${{ inputs.source_version != 'windows-baseline' && secrets.DATABASE_URL || '' }}
+      SOUNDSVENLO_HTTP_ONLY: ${{ inputs.worker == 'soundsvenlo' && inputs.source_version == 'current' && 'true' || 'false' }}
       PYTHONUNBUFFERED: "1"
     steps:
       - uses: actions/checkout@v5
