@@ -1,0 +1,38 @@
+name: 'Maintenance | Verify and remove migrated browser cache backup'
+on:
+  workflow_dispatch:
+permissions: {}
+jobs:
+  verify-and-clean:
+    runs-on: [self-hosted, Windows, "${{ vars.BOL_FEED_RUNNER || 'X64' }}"]
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0}
+    steps:
+      - name: Verify exact copy and safely remove old backup
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $parent = Join-Path $env:LOCALAPPDATA 'Vinylofy'
+          $link = Join-Path $parent 'shop-price-browsers'
+          $backup = Join-Path $parent 'shop-price-browsers-old'
+          $dest = 'E:\Vinylofy\shop-price-browsers'
+          $item = Get-Item -LiteralPath $link -Force
+          if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -eq 0 -or $item.LinkType -ne 'Junction' -or @($item.Target).Count -ne 1 -or [IO.Path]::GetFullPath(@($item.Target)[0]).TrimEnd('\') -ine $dest) { throw 'Unexpected browser junction; preserve backup' }
+          if (-not (Test-Path -LiteralPath $backup -PathType Container)) { throw 'Backup missing; nothing removed' }
+          if (Get-ChildItem -LiteralPath $backup -Recurse -Force -Attributes ReparsePoint -ErrorAction Stop) { throw 'Backup contains a reparse point; preserve backup' }
+          $probe = Join-Path $dest ('.vinylofy-write-probe-' + [guid]::NewGuid().ToString('N'))
+          try { [IO.File]::WriteAllText($probe,'ok'); if ([IO.File]::ReadAllText($probe) -ne 'ok') { throw 'Write test mismatch' } } finally { if (Test-Path -LiteralPath $probe) { Remove-Item -LiteralPath $probe -Force } }
+          $files = @(Get-ChildItem -LiteralPath $backup -Recurse -Force -File -ErrorAction Stop)
+          $targetFiles = @(Get-ChildItem -LiteralPath $dest -Recurse -Force -File -ErrorAction Stop)
+          if ($files.Count -eq 0 -or $files.Count -ne $targetFiles.Count) { throw 'File count mismatch; preserve backup' }
+          foreach ($file in $files) {
+            $relative = $file.FullName.Substring($backup.Length).TrimStart('\')
+            $copy = Join-Path $dest $relative
+            if (-not (Test-Path -LiteralPath $copy -PathType Leaf)) { throw 'Missing copied file; preserve backup' }
+            if ($file.Length -ne (Get-Item -LiteralPath $copy).Length) { throw 'Copied file size differs; preserve backup' }
+            if ((Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash -ne (Get-FileHash -LiteralPath $copy -Algorithm SHA256).Hash) { throw 'Copied file content differs; preserve backup' }
+          }
+          Write-Output "Verified $($files.Count) files and runner write access to E:; removing only the old backup"
+          Remove-Item -LiteralPath $backup -Recurse -Force -ErrorAction Stop
+          Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='C:'" | ForEach-Object { Write-Output ("C_FREE_GB={0:N2}" -f ($_.FreeSpace / 1GB)) }
