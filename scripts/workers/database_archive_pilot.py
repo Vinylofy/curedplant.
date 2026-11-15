@@ -22,6 +22,9 @@ def read_checkpoint(destination: Path):
     if not manifest.is_file():
         raise ValueError("checkpoint manifest missing")
     record = json.loads(manifest.read_text(encoding="utf-8"))
+    if (record.get("last_id") != state.get("last_id")
+            or record.get("last_scraped_at") != state.get("last_scraped_at")):
+        raise ValueError("checkpoint does not match manifest")
     body = destination / record["file"]
     if not body.is_file() or hashlib.sha256(body.read_bytes()).hexdigest() != record["sha256"]:
         raise ValueError("checkpoint archive missing or corrupt")

@@ -1,7 +1,7 @@
 name: "DATABASE | E drive Bol evidence copy"
 on:
   schedule:
-    - cron: "35 0,12 * * *"
+    - cron: "35 0,6,12,18 * * *"
   workflow_dispatch:
     inputs:
       limit:
