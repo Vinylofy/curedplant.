@@ -7,6 +7,8 @@ import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+BOL_NL_SHOP_ID = "f08437c2-1d85-47a6-94f9-33a55612d5cc"
+
 
 def export_batch(conn, destination: Path, cutoff: datetime, limit: int, run_id: str):
     if not 1 <= limit <= 500:
@@ -19,10 +21,12 @@ def export_batch(conn, destination: Path, cutoff: datetime, limit: int, run_id: 
         cur.execute("""
             select r.id::text, r.scraped_at, row_to_json(r)::text
               from public.raw_shop_scrapes r
-             where r.scraped_at < %s
-             order by r.scraped_at, r.id
+             where r.shop_id = %s
+               and r.scraped_at < %s
+               and r.parse_status = 'bol_affiliate_evidence'
+             order by r.scraped_at desc
              limit %s
-        """, (cutoff, limit))
+        """, (BOL_NL_SHOP_ID, cutoff, limit))
         rows = cur.fetchall()
     if not rows:
         return {"status": "empty", "rows": 0, "deleted": 0}
