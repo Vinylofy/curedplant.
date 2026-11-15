@@ -160,24 +160,26 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         working-directory: ${{ env.ARCHIVE_SOURCE_DIR }}
       - name: Delete bounded verified raw archive rows
-        if: github.event_name == 'workflow_dispatch' && inputs.operation == 'cleanup-write' && (inputs.dataset == 'both' || inputs.dataset == 'raw_shop_scrapes')
+        if: github.event_name == 'schedule' || (inputs.operation == 'cleanup-write' && (inputs.dataset == 'both' || inputs.dataset == 'raw_shop_scrapes'))
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          CONFIRM_CLEANUP: ${{ inputs.confirm_cleanup }}
+          CONFIRM_CLEANUP: ${{ github.event_name == 'schedule' && 'SINGLE_E_COPY_RISK_ACCEPTED' || inputs.confirm_cleanup }}
+          CLEANUP_FILES: ${{ github.event_name == 'schedule' && '100' || inputs.batches }}
         run: |
           $ErrorActionPreference = 'Stop'
           $python = Join-Path $env:LOCALAPPDATA 'Vinylofy\bol-feed-venv\Scripts\python.exe'
-          & $python -m scripts.workers.database_archive_cleanup --destination 'E:\Vinylofy\database-archive' --table raw_shop_scrapes --files ${{ inputs.batches }} --confirm-redundancy $env:CONFIRM_CLEANUP
+          & $python -m scripts.workers.database_archive_cleanup --destination 'E:\Vinylofy\database-archive' --table raw_shop_scrapes --files $env:CLEANUP_FILES --confirm-redundancy $env:CONFIRM_CLEANUP
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         working-directory: ${{ env.ARCHIVE_SOURCE_DIR }}
       - name: Delete bounded verified price archive rows
-        if: github.event_name == 'workflow_dispatch' && inputs.operation == 'cleanup-write' && (inputs.dataset == 'both' || inputs.dataset == 'price_history')
+        if: github.event_name == 'schedule' || (inputs.operation == 'cleanup-write' && (inputs.dataset == 'both' || inputs.dataset == 'price_history'))
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          CONFIRM_CLEANUP: ${{ inputs.confirm_cleanup }}
+          CONFIRM_CLEANUP: ${{ github.event_name == 'schedule' && 'SINGLE_E_COPY_RISK_ACCEPTED' || inputs.confirm_cleanup }}
+          CLEANUP_FILES: ${{ github.event_name == 'schedule' && '100' || inputs.batches }}
         run: |
           $ErrorActionPreference = 'Stop'
           $python = Join-Path $env:LOCALAPPDATA 'Vinylofy\bol-feed-venv\Scripts\python.exe'
-          & $python -m scripts.workers.database_archive_cleanup --destination 'E:\Vinylofy\database-archive' --table price_history --files ${{ inputs.batches }} --confirm-redundancy $env:CONFIRM_CLEANUP
+          & $python -m scripts.workers.database_archive_cleanup --destination 'E:\Vinylofy\database-archive' --table price_history --files $env:CLEANUP_FILES --confirm-redundancy $env:CONFIRM_CLEANUP
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         working-directory: ${{ env.ARCHIVE_SOURCE_DIR }}
