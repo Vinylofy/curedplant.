@@ -111,18 +111,24 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--destination", type=Path, required=True)
     parser.add_argument("--limit", type=int, default=10)
+    parser.add_argument("--batches", type=int, default=1)
     parser.add_argument("--min-age-days", type=int, default=1)
     parser.add_argument("--run-id", required=True)
     args = parser.parse_args()
-    if args.min_age_days < 1 or not args.run_id.isdigit():
-        parser.error("age >= 1 day and a numeric run ID are required")
+    if args.min_age_days < 1 or not args.run_id.isdigit() or not 1 <= args.batches <= 200:
+        parser.error("age >= 1 day, numeric run ID and 1..200 batches are required")
     import psycopg
     with psycopg.connect(os.environ["DATABASE_URL"], autocommit=False) as conn:
-        result = export_batch(conn, args.destination,
-                              datetime.now(timezone.utc) - timedelta(days=args.min_age_days),
-                              args.limit, args.run_id)
-        conn.rollback()
-    print(json.dumps(result))
+        total = 0
+        cutoff = datetime.now(timezone.utc) - timedelta(days=args.min_age_days)
+        for index in range(args.batches):
+            result = export_batch(conn, args.destination, cutoff, args.limit, args.run_id)
+            conn.rollback()
+            total += result["rows"]
+            print(json.dumps({"batch": index + 1, **result}), flush=True)
+            if result["rows"] < args.limit:
+                break
+    print(json.dumps({"total_exported": total, "deleted": 0}), flush=True)
 
 
 if __name__ == "__main__":
