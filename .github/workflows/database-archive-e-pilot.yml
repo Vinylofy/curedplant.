@@ -23,7 +23,7 @@ on:
         type: number
         default: 1
       confirm_cleanup:
-        description: "Required for cleanup-write: INDEPENDENT_COPY_VERIFIED"
+        description: "Required for cleanup-write: SINGLE_E_COPY_RISK_ACCEPTED"
         type: string
         default: ""
 permissions:
@@ -163,7 +163,6 @@ jobs:
         if: github.event_name == 'workflow_dispatch' && inputs.operation == 'cleanup-write' && (inputs.dataset == 'both' || inputs.dataset == 'raw_shop_scrapes')
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          ARCHIVE_REDUNDANCY_ATTESTED: ${{ secrets.ARCHIVE_REDUNDANCY_ATTESTED }}
           CONFIRM_CLEANUP: ${{ inputs.confirm_cleanup }}
         run: |
           $ErrorActionPreference = 'Stop'
@@ -175,7 +174,6 @@ jobs:
         if: github.event_name == 'workflow_dispatch' && inputs.operation == 'cleanup-write' && (inputs.dataset == 'both' || inputs.dataset == 'price_history')
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          ARCHIVE_REDUNDANCY_ATTESTED: ${{ secrets.ARCHIVE_REDUNDANCY_ATTESTED }}
           CONFIRM_CLEANUP: ${{ inputs.confirm_cleanup }}
         run: |
           $ErrorActionPreference = 'Stop'

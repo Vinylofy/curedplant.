@@ -12,10 +12,10 @@ from scripts.workers.database_archive_full import PROFILES
 CHUNK_SIZE = 500
 
 
-def require_redundancy_confirmation(value: str):
-    expected = "INDEPENDENT_COPY_VERIFIED"
-    if value != expected or os.getenv("ARCHIVE_REDUNDANCY_ATTESTED") != expected:
-        raise RuntimeError("independent archive copy has not been attested")
+def require_cleanup_confirmation(value: str):
+    expected = "SINGLE_E_COPY_RISK_ACCEPTED"
+    if value != expected:
+        raise RuntimeError("single-copy cleanup risk has not been explicitly accepted")
 
 
 def pending_archives(destination: Path, table: str, limit: int):
@@ -90,7 +90,7 @@ def main():
     args = parser.parse_args()
     if args.destination.drive.upper() != "E:" or not 1 <= args.files <= 100:
         parser.error("an E: destination and 1..100 files are required")
-    require_redundancy_confirmation(args.confirm_redundancy)
+    require_cleanup_confirmation(args.confirm_redundancy)
     archives = pending_archives(args.destination, args.table, args.files)
 
     import psycopg

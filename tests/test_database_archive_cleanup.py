@@ -1,8 +1,6 @@
-import os
 import unittest
-from unittest.mock import patch
 
-from scripts.workers.database_archive_cleanup import delete_chunk, require_redundancy_confirmation
+from scripts.workers.database_archive_cleanup import delete_chunk, require_cleanup_confirmation
 
 
 class Cursor:
@@ -27,14 +25,10 @@ class ArchiveCleanupTests(unittest.TestCase):
         self.assertIn("newer.product_id = p.product_id", price.query)
         self.assertIn("newer.shop_id = p.shop_id", price.query)
 
-    def test_requires_matching_independent_copy_attestation(self):
-        with patch.dict(os.environ, {}, clear=True):
-            with self.assertRaisesRegex(RuntimeError, "independent"):
-                require_redundancy_confirmation("INDEPENDENT_COPY_VERIFIED")
-        with patch.dict(os.environ, {
-            "ARCHIVE_REDUNDANCY_ATTESTED": "INDEPENDENT_COPY_VERIFIED"
-        }, clear=True):
-            require_redundancy_confirmation("INDEPENDENT_COPY_VERIFIED")
+    def test_requires_explicit_single_copy_risk_acceptance(self):
+        with self.assertRaisesRegex(RuntimeError, "single-copy"):
+            require_cleanup_confirmation("INDEPENDENT_COPY_VERIFIED")
+        require_cleanup_confirmation("SINGLE_E_COPY_RISK_ACCEPTED")
 
 
 if __name__ == "__main__":
