@@ -72,11 +72,11 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--destination", type=Path, required=True)
     parser.add_argument("--limit", type=int, default=10)
-    parser.add_argument("--min-age-days", type=int, default=30)
+    parser.add_argument("--min-age-days", type=int, default=1)
     parser.add_argument("--run-id", required=True)
     args = parser.parse_args()
-    if args.min_age_days < 30 or not args.run_id.isdigit():
-        parser.error("age >= 30 days and a numeric run ID are required")
+    if args.min_age_days < 1 or not args.run_id.isdigit():
+        parser.error("age >= 1 day and a numeric run ID are required")
     import psycopg
     with psycopg.connect(os.environ["DATABASE_URL"], autocommit=False) as conn:
         result = export_batch(conn, args.destination,
