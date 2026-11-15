@@ -1,4 +1,4 @@
-name: "DATABASE | E drive Bol evidence copy"
+name: "DATABASE | E drive historical archive"
 on:
   schedule:
     - cron: "35 0,6,12,18 * * *"
@@ -7,7 +7,7 @@ on:
       operation:
         description: "Read-only inventory or verified archive copy"
         type: choice
-        options: [archive-full, archive-bol, inventory]
+        options: [archive-full, archive-bol, restore-test, inventory]
         default: archive-full
       dataset:
         description: "Historical dataset for archive-full"
@@ -103,5 +103,25 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $python = Join-Path $env:LOCALAPPDATA 'Vinylofy\bol-feed-venv\Scripts\python.exe'
           & $python -m scripts.workers.database_archive_inventory
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        working-directory: ${{ env.ARCHIVE_SOURCE_DIR }}
+      - name: Restore raw archive samples transactionally
+        if: github.event_name == 'workflow_dispatch' && inputs.operation == 'restore-test' && (inputs.dataset == 'both' || inputs.dataset == 'raw_shop_scrapes')
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $python = Join-Path $env:LOCALAPPDATA 'Vinylofy\bol-feed-venv\Scripts\python.exe'
+          & $python -m scripts.workers.database_archive_restore_test --destination 'E:\Vinylofy\database-archive' --table raw_shop_scrapes --files 2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        working-directory: ${{ env.ARCHIVE_SOURCE_DIR }}
+      - name: Restore price archive samples transactionally
+        if: github.event_name == 'workflow_dispatch' && inputs.operation == 'restore-test' && (inputs.dataset == 'both' || inputs.dataset == 'price_history')
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $python = Join-Path $env:LOCALAPPDATA 'Vinylofy\bol-feed-venv\Scripts\python.exe'
+          & $python -m scripts.workers.database_archive_restore_test --destination 'E:\Vinylofy\database-archive' --table price_history --files 2
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         working-directory: ${{ env.ARCHIVE_SOURCE_DIR }}
