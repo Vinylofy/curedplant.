@@ -8,6 +8,35 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 BOL_NL_SHOP_ID = "f08437c2-1d85-47a6-94f9-33a55612d5cc"
+CHECKPOINT = "bol-evidence-checkpoint.json"
+
+
+def read_checkpoint(destination: Path):
+    path = destination / CHECKPOINT
+    if not path.exists():
+        return "0001-01-01T00:00:00+00:00", "00000000-0000-0000-0000-000000000000"
+    state = json.loads(path.read_text(encoding="utf-8"))
+    if state.get("version") != 1:
+        raise ValueError("unsupported checkpoint version")
+    manifest = destination / state["manifest"]
+    if not manifest.is_file():
+        raise ValueError("checkpoint manifest missing")
+    record = json.loads(manifest.read_text(encoding="utf-8"))
+    body = destination / record["file"]
+    if not body.is_file() or hashlib.sha256(body.read_bytes()).hexdigest() != record["sha256"]:
+        raise ValueError("checkpoint archive missing or corrupt")
+    return state["last_scraped_at"], state["last_id"]
+
+
+def write_checkpoint(destination: Path, metadata: dict, manifest: Path):
+    state = {"version": 1, "last_scraped_at": metadata["last_scraped_at"],
+             "last_id": metadata["last_id"], "manifest": manifest.name}
+    temp = destination / (CHECKPOINT + ".pending")
+    with temp.open("w", encoding="utf-8") as output:
+        json.dump(state, output)
+        output.flush()
+        os.fsync(output.fileno())
+    temp.replace(destination / CHECKPOINT)
 
 
 def export_batch(conn, destination: Path, cutoff: datetime, limit: int, run_id: str):
@@ -15,6 +44,7 @@ def export_batch(conn, destination: Path, cutoff: datetime, limit: int, run_id: 
         raise ValueError("limit must be 1..500")
     if destination.drive.upper() != "E:" or not destination.is_dir():
         raise ValueError("existing E: destination required")
+    last_time, last_id = read_checkpoint(destination)
     with conn.cursor() as cur:
         cur.execute("set transaction read only")
         cur.execute("set local statement_timeout = '20s'")
@@ -24,18 +54,26 @@ def export_batch(conn, destination: Path, cutoff: datetime, limit: int, run_id: 
              where r.shop_id = %s
                and r.scraped_at < %s
                and r.parse_status = 'bol_affiliate_evidence'
-             order by r.scraped_at desc
+               and (r.scraped_at, r.id) > (%s::timestamptz, %s::uuid)
+             order by r.scraped_at asc, r.id asc
              limit %s
-        """, (BOL_NL_SHOP_ID, cutoff, limit))
+        """, (BOL_NL_SHOP_ID, cutoff, last_time, last_id, limit))
         rows = cur.fetchall()
     if not rows:
         return {"status": "empty", "rows": 0, "deleted": 0}
     body = "".join(row[2] + "\n" for row in rows).encode("utf-8")
     digest = hashlib.sha256(body).hexdigest()
-    target = destination / f"raw_shop_scrapes-{run_id}-{digest}.jsonl"
+    target = destination / f"raw_shop_scrapes-{digest}.jsonl"
     manifest = target.with_suffix(".manifest.json")
     if target.exists() or manifest.exists():
-        raise FileExistsError("archive file exists; refusing overwrite")
+        if not target.is_file() or not manifest.is_file():
+            raise RuntimeError("incomplete previous export requires inspection")
+        previous = json.loads(manifest.read_text(encoding="utf-8"))
+        if previous.get("sha256") != digest or hashlib.sha256(target.read_bytes()).hexdigest() != digest:
+            raise RuntimeError("previous archive differs from current batch")
+        write_checkpoint(destination, previous, manifest)
+        return {"status": "resumed_verified_copy", "rows": len(rows), "deleted": 0,
+                "file": target.name, "sha256": digest}
     pending = target.with_suffix(".pending")
     try:
         with pending.open("xb") as output:
@@ -62,6 +100,7 @@ def export_batch(conn, destination: Path, cutoff: datetime, limit: int, run_id: 
             raise RuntimeError("destination count/checksum mismatch")
         if [str(row["id"]) for row in parsed] != [row[0] for row in rows]:
             raise RuntimeError("destination IDs mismatch")
+        write_checkpoint(destination, metadata, manifest)
         return {"status": "verified_local_copy", "rows": len(rows), "deleted": 0,
                 "file": target.name, "sha256": digest}
     finally:
