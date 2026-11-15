@@ -7,13 +7,13 @@
   },
   "budget": {
     "date": "2026-11-15",
-    "reserved": 100
+    "reserved": 1
   },
   "last_result": {
-    "day": "2026-11-14",
-    "attempted": 4,
-    "details_started": 4,
-    "valid_eans": 4,
+    "day": "2026-11-15",
+    "attempted": 1,
+    "details_started": 1,
+    "valid_eans": 1,
     "missing_ean": 0,
     "unavailable": 0,
     "excluded_non_vinyl": 0,
