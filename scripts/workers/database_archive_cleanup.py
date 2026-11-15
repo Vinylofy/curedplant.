@@ -9,7 +9,9 @@ from pathlib import Path
 
 from scripts.workers.database_archive_full import PROFILES
 
-CHUNK_SIZE = 500
+# Direct PostgreSQL UUID batches; large enough to reduce commit overhead while
+# keeping each destructive transaction small and independently resumable.
+CHUNK_SIZE = 2000
 
 
 def require_cleanup_confirmation(value: str):
