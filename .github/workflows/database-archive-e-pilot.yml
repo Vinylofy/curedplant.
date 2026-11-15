@@ -7,7 +7,7 @@ on:
       operation:
         description: "Read-only inventory or verified archive copy"
         type: choice
-        options: [archive-full, archive-bol, restore-test, cleanup-plan, status, inventory]
+        options: [archive-full, archive-bol, restore-test, cleanup-plan, cleanup-write, status, inventory]
         default: archive-full
       dataset:
         description: "Historical dataset for archive-full"
@@ -22,6 +22,10 @@ on:
         description: "Maximum batches (1-200)"
         type: number
         default: 1
+      confirm_cleanup:
+        description: "Required for cleanup-write: INDEPENDENT_COPY_VERIFIED"
+        type: string
+        default: ""
 permissions:
   contents: read
 concurrency:
@@ -153,5 +157,29 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $python = Join-Path $env:LOCALAPPDATA 'Vinylofy\bol-feed-venv\Scripts\python.exe'
           & $python -m scripts.workers.database_archive_status --destination 'E:\Vinylofy\database-archive'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        working-directory: ${{ env.ARCHIVE_SOURCE_DIR }}
+      - name: Delete bounded verified raw archive rows
+        if: github.event_name == 'workflow_dispatch' && inputs.operation == 'cleanup-write' && (inputs.dataset == 'both' || inputs.dataset == 'raw_shop_scrapes')
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ARCHIVE_REDUNDANCY_ATTESTED: ${{ secrets.ARCHIVE_REDUNDANCY_ATTESTED }}
+          CONFIRM_CLEANUP: ${{ inputs.confirm_cleanup }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $python = Join-Path $env:LOCALAPPDATA 'Vinylofy\bol-feed-venv\Scripts\python.exe'
+          & $python -m scripts.workers.database_archive_cleanup --destination 'E:\Vinylofy\database-archive' --table raw_shop_scrapes --files ${{ inputs.batches }} --confirm-redundancy $env:CONFIRM_CLEANUP
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        working-directory: ${{ env.ARCHIVE_SOURCE_DIR }}
+      - name: Delete bounded verified price archive rows
+        if: github.event_name == 'workflow_dispatch' && inputs.operation == 'cleanup-write' && (inputs.dataset == 'both' || inputs.dataset == 'price_history')
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ARCHIVE_REDUNDANCY_ATTESTED: ${{ secrets.ARCHIVE_REDUNDANCY_ATTESTED }}
+          CONFIRM_CLEANUP: ${{ inputs.confirm_cleanup }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $python = Join-Path $env:LOCALAPPDATA 'Vinylofy\bol-feed-venv\Scripts\python.exe'
+          & $python -m scripts.workers.database_archive_cleanup --destination 'E:\Vinylofy\database-archive' --table price_history --files ${{ inputs.batches }} --confirm-redundancy $env:CONFIRM_CLEANUP
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         working-directory: ${{ env.ARCHIVE_SOURCE_DIR }}
