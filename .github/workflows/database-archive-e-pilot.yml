@@ -7,8 +7,13 @@ on:
       operation:
         description: "Read-only inventory or verified archive copy"
         type: choice
-        options: [archive, inventory]
-        default: archive
+        options: [archive-full, archive-bol, inventory]
+        default: archive-full
+      dataset:
+        description: "Historical dataset for archive-full"
+        type: choice
+        options: [both, raw_shop_scrapes, price_history]
+        default: both
       limit:
         description: "Maximum old raw rows to export (1-500)"
         type: number
@@ -52,7 +57,7 @@ jobs:
           if (-not (Test-Path -LiteralPath 'E:\Vinylofy' -PathType Container)) { throw 'E:\Vinylofy is unavailable' }
           New-Item -ItemType Directory -Path 'E:\Vinylofy\database-archive' -Force | Out-Null
       - name: Export and verify a bounded read-only sample
-        if: github.event_name == 'schedule' || inputs.operation == 'archive'
+        if: github.event_name == 'workflow_dispatch' && inputs.operation == 'archive-bol'
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           ROW_LIMIT: ${{ github.event_name == 'schedule' && '500' || inputs.limit }}
@@ -64,6 +69,30 @@ jobs:
           & $python -m pip --version | Out-Null
           if ($LASTEXITCODE -ne 0) { throw 'Python environment unavailable' }
           & $python -m scripts.workers.database_archive_pilot --destination 'E:\Vinylofy\database-archive' --limit $env:ROW_LIMIT --batches $env:BATCH_LIMIT --run-id $env:GITHUB_RUN_ID
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        working-directory: ${{ env.ARCHIVE_SOURCE_DIR }}
+      - name: Archive historical raw source rows
+        if: github.event_name == 'schedule' || (inputs.operation == 'archive-full' && (inputs.dataset == 'both' || inputs.dataset == 'raw_shop_scrapes'))
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ROW_LIMIT: ${{ github.event_name == 'schedule' && '1000' || inputs.limit }}
+          BATCH_LIMIT: ${{ github.event_name == 'schedule' && '200' || inputs.batches }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $python = Join-Path $env:LOCALAPPDATA 'Vinylofy\bol-feed-venv\Scripts\python.exe'
+          & $python -m scripts.workers.database_archive_full --destination 'E:\Vinylofy\database-archive' --table raw_shop_scrapes --limit $env:ROW_LIMIT --batches $env:BATCH_LIMIT
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        working-directory: ${{ env.ARCHIVE_SOURCE_DIR }}
+      - name: Archive historical price observations
+        if: github.event_name == 'schedule' || (inputs.operation == 'archive-full' && (inputs.dataset == 'both' || inputs.dataset == 'price_history'))
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ROW_LIMIT: ${{ github.event_name == 'schedule' && '1000' || inputs.limit }}
+          BATCH_LIMIT: ${{ github.event_name == 'schedule' && '200' || inputs.batches }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $python = Join-Path $env:LOCALAPPDATA 'Vinylofy\bol-feed-venv\Scripts\python.exe'
+          & $python -m scripts.workers.database_archive_full --destination 'E:\Vinylofy\database-archive' --table price_history --limit $env:ROW_LIMIT --batches $env:BATCH_LIMIT
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         working-directory: ${{ env.ARCHIVE_SOURCE_DIR }}
       - name: Inspect archive schemas and dependencies read-only
