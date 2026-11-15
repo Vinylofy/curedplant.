@@ -7,7 +7,7 @@ on:
       operation:
         description: "Read-only inventory or verified archive copy"
         type: choice
-        options: [archive-full, archive-bol, restore-test, inventory]
+        options: [archive-full, archive-bol, restore-test, cleanup-plan, inventory]
         default: archive-full
       dataset:
         description: "Historical dataset for archive-full"
@@ -123,5 +123,25 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $python = Join-Path $env:LOCALAPPDATA 'Vinylofy\bol-feed-venv\Scripts\python.exe'
           & $python -m scripts.workers.database_archive_restore_test --destination 'E:\Vinylofy\database-archive' --table price_history --files 2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        working-directory: ${{ env.ARCHIVE_SOURCE_DIR }}
+      - name: Calculate raw cleanup eligibility without deletes
+        if: github.event_name == 'workflow_dispatch' && inputs.operation == 'cleanup-plan' && (inputs.dataset == 'both' || inputs.dataset == 'raw_shop_scrapes')
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $python = Join-Path $env:LOCALAPPDATA 'Vinylofy\bol-feed-venv\Scripts\python.exe'
+          & $python -m scripts.workers.database_archive_cleanup_plan --destination 'E:\Vinylofy\database-archive' --table raw_shop_scrapes --files 10
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        working-directory: ${{ env.ARCHIVE_SOURCE_DIR }}
+      - name: Calculate price cleanup eligibility without deletes
+        if: github.event_name == 'workflow_dispatch' && inputs.operation == 'cleanup-plan' && (inputs.dataset == 'both' || inputs.dataset == 'price_history')
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $python = Join-Path $env:LOCALAPPDATA 'Vinylofy\bol-feed-venv\Scripts\python.exe'
+          & $python -m scripts.workers.database_archive_cleanup_plan --destination 'E:\Vinylofy\database-archive' --table price_history --files 10
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         working-directory: ${{ env.ARCHIVE_SOURCE_DIR }}
