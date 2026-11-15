@@ -47,7 +47,7 @@ def restore_file(conn, table: str, metadata: dict, archive: Path):
         count, distinct_ids = cur.fetchone()
         if count != metadata["count"] or distinct_ids != count:
             raise RuntimeError("temporary restore count or identity mismatch")
-        cur.execute(f"select min(id)::text, max(id)::text from pg_temp.{temporary}")
+        cur.execute(f"select min(id::text), max(id::text) from pg_temp.{temporary}")
         restored_ids = set(cur.fetchone())
         source_ids = {str(json.loads(row)["id"]) for row in rows}
         if not restored_ids.issubset(source_ids):

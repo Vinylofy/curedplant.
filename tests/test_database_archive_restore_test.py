@@ -8,6 +8,13 @@ from scripts.workers.database_archive_restore_test import checkpoint_manifests
 
 
 class RestoreArchiveTests(unittest.TestCase):
+    def test_restore_query_casts_uuid_before_aggregation(self):
+        source = Path("scripts/workers/database_archive_restore_test.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("min(id::text), max(id::text)", source)
+        self.assertNotIn("min(id)::text", source)
+
     def test_only_checkpointed_checksum_verified_archives_are_selected(self):
         with tempfile.TemporaryDirectory() as directory:
             destination = Path(directory)
