@@ -2,9 +2,10 @@
   "version": 1,
   "shop": "viprecords",
   "cursor": {
-    "page": 49,
+    "page": 1,
     "seed": 0,
-    "signature": "c5a054b5ef83ecb2fcf32276c3b070713ddd1396ee419f12a791c001dc19b41a"
+    "exhausted": true,
+    "exhausted_on": "2026-11-15"
   },
   "budget": {
     "date": "2026-11-15",
