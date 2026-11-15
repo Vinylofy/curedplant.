@@ -1,0 +1,59 @@
+name: "DATABASE | Manual | E drive archive pilot"
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Maximum old raw rows to export (1-500)"
+        type: number
+        default: 10
+permissions:
+  contents: read
+concurrency:
+  group: database-archive-e-pilot
+  cancel-in-progress: false
+jobs:
+  export:
+    runs-on: [self-hosted, Windows, "${{ vars.BOL_FEED_RUNNER || 'X64' }}"]
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy RemoteSigned -File {0}
+    steps:
+      - name: Download source to a Windows-safe path
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('node:fs/promises');
+            const path = require('node:path');
+            const target = path.join(process.env.RUNNER_TEMP, `archive-source-${context.runId}-${context.runAttempt}`);
+            await fs.mkdir(target);
+            const { data } = await github.rest.repos.downloadZipballArchive({ ...context.repo, ref: context.sha });
+            await fs.writeFile(path.join(target, 'source.zip'), Buffer.from(data));
+            core.exportVariable('ARCHIVE_SOURCE_ROOT', target);
+      - name: Extract source and confirm E drive
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = $env:ARCHIVE_SOURCE_ROOT
+          Expand-Archive -LiteralPath (Join-Path $root 'source.zip') -DestinationPath $root
+          $source = @(Get-ChildItem -LiteralPath $root -Directory)
+          if ($source.Count -ne 1) { throw 'Unexpected source archive layout' }
+          Add-Content -LiteralPath $env:GITHUB_ENV -Encoding UTF8 -Value "ARCHIVE_SOURCE_DIR=$($source[0].FullName)"
+          if (-not (Test-Path -LiteralPath 'E:\Vinylofy' -PathType Container)) { throw 'E:\Vinylofy is unavailable' }
+          New-Item -ItemType Directory -Path 'E:\Vinylofy\database-archive' -Force | Out-Null
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
+        with:
+          version: '0.12.15'
+          enable-cache: false
+      - name: Export and verify a bounded read-only sample
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ROW_LIMIT: ${{ inputs.limit }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $python = Join-Path $env:LOCALAPPDATA 'Vinylofy\bol-feed-venv\Scripts\python.exe'
+          if (-not (Test-Path -LiteralPath $python)) { throw 'Existing Bol Python environment is unavailable' }
+          & $python -m pip --version | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Python environment unavailable' }
+          & $python -m scripts.workers.database_archive_pilot --destination 'E:\Vinylofy\database-archive' --limit $env:ROW_LIMIT --run-id $env:GITHUB_RUN_ID
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        working-directory: ${{ env.ARCHIVE_SOURCE_DIR }}
