@@ -88,8 +88,8 @@ def main():
     parser.add_argument("--files", type=int, default=10)
     parser.add_argument("--confirm-redundancy", required=True)
     args = parser.parse_args()
-    if args.destination.drive.upper() != "E:" or not 1 <= args.files <= 100:
-        parser.error("an E: destination and 1..100 files are required")
+    if args.destination.drive.upper() != "E:" or not 1 <= args.files <= 500:
+        parser.error("an E: destination and 1..500 files are required")
     require_cleanup_confirmation(args.confirm_redundancy)
     archives = pending_archives(args.destination, args.table, args.files)
 
