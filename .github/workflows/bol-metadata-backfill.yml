@@ -1,0 +1,91 @@
+name: "ONE-TIME | Bol exact-EAN metadata repair"
+run-name: "Bol metadata | write=${{ inputs.write }} | limit=${{ inputs.limit }} | chain=${{ inputs.continue_chain }}"
+
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Technical titles to inspect (1-1500)"
+        required: true
+        default: "100"
+        type: string
+      write:
+        description: "Replace only guarded technical titles"
+        required: true
+        default: false
+        type: boolean
+      continue_chain:
+        description: "Continue bounded batches until the one-time cursor reaches the end"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  actions: write
+concurrency:
+  group: bol-metadata-one-time
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: python -m pip install "psycopg[binary]>=3.2,<4" "python-dotenv>=1,<2"
+      - name: Validate request
+        env:
+          LIMIT: ${{ inputs.limit }}
+          WRITE: ${{ inputs.write }}
+          CHAIN: ${{ inputs.continue_chain }}
+        run: |
+          [[ "$LIMIT" =~ ^[0-9]+$ ]] && (( LIMIT >= 1 && LIMIT <= 1500 )) || { echo 'limit must be 1-1500'; exit 1; }
+          if [[ "$CHAIN" == true && "$WRITE" != true ]]; then echo 'continuation requires write=true'; exit 1; fi
+      - name: Run exact-EAN metadata repair
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          BOL_API_CLIENT_ID: ${{ secrets.BOL_API_CLIENT_ID }}
+          BOL_API_CLIENT_SECRET: ${{ secrets.BOL_API_CLIENT_SECRET }}
+        run: |
+          args=(--limit "${{ inputs.limit }}")
+          if [[ "${{ inputs.write }}" == true ]]; then args+=(--write); fi
+          python -u -m scripts.importers.bol_metadata_backfill "${args[@]}"
+      - name: Persist cursor after successful write batch
+        if: inputs.write
+        id: persist
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('node:fs/promises');
+            const result = JSON.parse(await fs.readFile('output/bol-metadata/result.json','utf8'));
+            core.setOutput('status', result.status);
+            core.setOutput('checked', String(result.checked || 0));
+            if (result.status !== 'success' || !(result.checked > 0)) return;
+            const path = 'state/bol-metadata/nl.json';
+            const content = await fs.readFile(path,'utf8');
+            let current;
+            try { current = (await github.rest.repos.getContent({...context.repo,path,ref:'main'})).data; }
+            catch (error) { if (error.status !== 404) throw error; }
+            await github.rest.repos.createOrUpdateFileContents({...context.repo,path,branch:'main',sha:current?.sha,
+              message:'Advance one-time Bol metadata repair cursor',content:Buffer.from(content).toString('base64')});
+      - uses: actions/upload-artifact@v5
+        if: always()
+        with:
+          name: bol-metadata-${{ github.run_id }}
+          path: output/bol-metadata/result.json
+          if-no-files-found: error
+          retention-days: 30
+      - name: Start next one-time batch
+        if: inputs.write && inputs.continue_chain && steps.persist.outputs.status == 'success' && steps.persist.outputs.checked != '0'
+        uses: actions/github-script@v8
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({...context.repo,
+              workflow_id:'bol-metadata-backfill.yml',ref:'main',
+              inputs:{limit:'${{ inputs.limit }}',write:'true',continue_chain:'true'}});
