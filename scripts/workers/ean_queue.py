@@ -19,37 +19,41 @@ class EanQueue:
         from scripts.scrapers.usf.jobs.detail_sounds import extract_artist_title
 
         repaired = 0
-        with db_connection() as conn, conn.cursor(row_factory=dict_row) as cur:
-            cur.execute("""
-                select id,source_url,source_product_id,payload
-                from public.shop_product_links
-                where shop_id='sounds' and status='active'
-                  and payload->'curedplant_daily_ean'->>'metadata_deferred'='missing_artist'
-                  and nullif(payload->'curedplant_daily_ean'->>'ean','') is not null
-                order by last_detail_scraped_at asc nulls last,id
-                limit %s
-            """, (limit,))
-            for row in cur.fetchall():
-                observed = dict((row["payload"] or {}).get("curedplant_daily_ean") or {})
-                artist, title = extract_artist_title(observed.get("source_title_raw") or observed.get("title"))
-                ean = strict_normalize_gtin(observed.get("ean"))
-                if not artist or not title or not ean:
-                    continue
-                record = CanonicalRecord(source_row_number=0, shop_name="sounds",
-                    shop_domain="sounds.nl", shop_country="NL", ean=ean, artist=artist, title=title,
-                    format_label=None, cover_url=observed.get("image_url"), product_url=row["source_url"],
-                    price=0.0, currency="EUR", availability="unknown",
-                    captured_at=datetime.now(timezone.utc), product_handle=None, detail_status="ok",
-                    is_secondhand=False, raw=observed, gtin_normalized=ean)
-                upsert_product(cur, record)
-                observed.update(artist=artist, title=title, identity_parser_version=2,
-                                identity_repaired_at=datetime.now(timezone.utc).isoformat())
-                observed.pop("metadata_deferred", None)
-                cur.execute("""update public.shop_product_links
-                    set payload=coalesce(payload,'{}'::jsonb) || %s
-                    where id=%s and shop_id='sounds'""",
-                    (Jsonb({"curedplant_daily_ean": observed}), row["id"]))
-                repaired += 1
+        with db_connection() as conn:
+            with conn.cursor(row_factory=dict_row) as select_cur:
+                select_cur.execute("""
+                    select id,source_url,source_product_id,payload
+                    from public.shop_product_links
+                    where shop_id='sounds' and status='active'
+                      and payload->'curedplant_daily_ean'->>'metadata_deferred'='missing_artist'
+                      and nullif(payload->'curedplant_daily_ean'->>'ean','') is not null
+                    order by last_detail_scraped_at asc nulls last,id
+                    limit %s
+                """, (limit,))
+                rows = [dict(row) for row in select_cur.fetchall()]
+            # Canonical helpers use tuple-style positional result access.
+            with conn.cursor() as cur:
+                for row in rows:
+                    observed = dict((row["payload"] or {}).get("curedplant_daily_ean") or {})
+                    artist, title = extract_artist_title(observed.get("source_title_raw") or observed.get("title"))
+                    ean = strict_normalize_gtin(observed.get("ean"))
+                    if not artist or not title or not ean:
+                        continue
+                    record = CanonicalRecord(source_row_number=0, shop_name="sounds",
+                        shop_domain="sounds.nl", shop_country="NL", ean=ean, artist=artist, title=title,
+                        format_label=None, cover_url=observed.get("image_url"), product_url=row["source_url"],
+                        price=0.0, currency="EUR", availability="unknown",
+                        captured_at=datetime.now(timezone.utc), product_handle=None, detail_status="ok",
+                        is_secondhand=False, raw=observed, gtin_normalized=ean)
+                    upsert_product(cur, record)
+                    observed.update(artist=artist, title=title, identity_parser_version=2,
+                                    identity_repaired_at=datetime.now(timezone.utc).isoformat())
+                    observed.pop("metadata_deferred", None)
+                    cur.execute("""update public.shop_product_links
+                        set payload=coalesce(payload,'{}'::jsonb) || %s
+                        where id=%s and shop_id='sounds'""",
+                        (Jsonb({"curedplant_daily_ean": observed}), row["id"]))
+                    repaired += 1
         return repaired
 
     def requeue_fifties_layout_misses(self):
