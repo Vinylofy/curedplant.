@@ -89,24 +89,21 @@ class VariaworldIdentityTests(unittest.TestCase):
             session.get.assert_called_once()
             self.assertEqual(second[0]['price'], '31.00')
 
-class VariaworldOptionalIdentityTests(unittest.TestCase):
-    def test_identity_timeout_does_not_stop_verified_listing_price_publication(self):
+class VariaworldPriceSeparationTests(unittest.TestCase):
+    def test_price_worker_never_calls_detail_identity_enrichment(self):
         import contextlib
         import io
         import os
         from unittest.mock import patch
         from scripts.workers import run_catalog_price as worker
         from scripts.workers.price_evidence import capture
-        registered = {'product_id': 'existing', 'product_url': OLD, 'ean': EAN, 'gtin_normalized': EAN.zfill(14)}
         with tempfile.TemporaryDirectory() as directory, \
              patch.object(worker, 'Path', side_effect=lambda path: Path(directory) / path), \
-             patch('psycopg.connect') as connect, \
-             patch('scripts.workers.variaworld_identity.enrich_identities', side_effect=requests.Timeout('temporary')), \
+             patch('scripts.workers.variaworld_identity.enrich_identities', side_effect=AssertionError('price worker fetched detail')) as enrich, \
              patch('scripts.workers.price_database.update_existing', return_value={'updated': 1, 'verified': 1}) as writer, \
              patch.dict(os.environ, {'DATABASE_URL': 'parent-only'}), \
              patch('sys.argv', ['worker', '--worker', 'variaworld', '--limit', '1', '--write']), \
              contextlib.redirect_stdout(io.StringIO()):
-            connect.return_value.__enter__.return_value.execute.return_value.fetchall.return_value = [registered]
             def collect(command, **kwargs):
                 with patch.dict(os.environ, kwargs['env']):
                     capture({'source_url': OLD, 'price': '35.00', 'shop_domain': 'variaworld.nl'})
@@ -114,11 +111,11 @@ class VariaworldOptionalIdentityTests(unittest.TestCase):
                 return Mock(returncode=0)
             with patch.object(worker.subprocess, 'run', side_effect=collect):
                 self.assertEqual(worker.main(), 0)
+            enrich.assert_not_called()
             self.assertEqual(writer.call_count, 1)
             self.assertTrue(all(not row.get('identity_proof') for row in writer.call_args.args[1]))
             summary = json.loads((Path(directory) / 'output/price-verification/variaworld/summary.json').read_text())
-            self.assertEqual(summary['identity_review']['status'], 'deferred')
-            self.assertEqual(summary['identity_review']['pending'], 1)
+            self.assertNotIn('identity_review', summary)
 
 
 if __name__ == '__main__':

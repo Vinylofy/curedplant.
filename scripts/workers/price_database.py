@@ -8,7 +8,8 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
 from scripts.workers.price_evidence import url_key
-from scripts.scrapers.usf.core.listing_price_sync import normalize_availability
+from scripts.importers.common import strict_normalize_gtin
+from scripts.scrapers.usf.core.listing_price_sync import normalize_availability, upsert_listing_price
 
 
 def shop_domain(worker, rows):
@@ -23,11 +24,49 @@ def shop_domain(worker, rows):
     return get_shop_importer(worker).config.shop_domain
 
 
+def _variaworld_stored_ean_matches(cur, records):
+    """Resolve listing URLs only from EAN evidence written by the EAN worker.
+
+    The price worker never fetches a detail page. Ambiguous source EANs and
+    duplicate canonical products fail closed and are not returned.
+    """
+    urls = list({record["source_url"] for record in records})
+    if not urls:
+        return {}
+    cur.execute("""
+        select source_url,array_agg(distinct ean_raw) as eans
+        from public.raw_shop_scrapes
+        where shop_id='variaworld' and source_url=any(%s)
+          and payload->>'source'='curedplant_daily_ean'
+          and nullif(ean_raw,'') is not null
+        group by source_url
+    """, (urls,))
+    source_codes = {}
+    for row in cur.fetchall():
+        codes = {strict_normalize_gtin(value) for value in row["eans"]} - {None}
+        if len(codes) == 1:
+            source_codes[url_key(row["source_url"])] = next(iter(codes))
+    if not source_codes:
+        return {}
+    cur.execute("""select id,gtin_normalized from public.products
+        where gtin_normalized=any(%s)""", (list(set(source_codes.values())),))
+    products = {}
+    for row in cur.fetchall():
+        products.setdefault(row["gtin_normalized"], []).append(str(row["id"]))
+    return {source: products[code][0] for source, code in source_codes.items()
+            if len(products.get(code, [])) == 1}
+
+
 def update_existing(worker, records, started_at, *, allow_no_matches=False, preserve_unknown=True):
-    """Never creates products/offers or changes EAN, covers or detail queues."""
+    """Update existing offers; Variaworld may add an exact stored-EAN offer.
+
+    This function never fetches product details and never changes products,
+    EANs, covers or detail queues. A new Variaworld offer is possible only when
+    the separate EAN worker stored unambiguous evidence for that exact URL.
+    """
     domain = shop_domain(worker, records)
     expected = {url_key(r["source_url"]): r for r in records}
-    stats = {"shop_domain": domain, "matched": 0, "updated": 0, "changed": 0,
+    stats = {"shop_domain": domain, "matched": 0, "updated": 0, "inserted": 0, "changed": 0,
              "skipped_newer": 0, "unmatched": 0, "verified": 0, "samples": [],
              "quarantined_urls": []}
     written = []
@@ -43,12 +82,25 @@ def update_existing(worker, records, started_at, *, allow_no_matches=False, pres
             cur.execute("""select product_id,product_url from public.prices where shop_id=%s""", (shop_id,))
             registered = cur.fetchall()
             fallbacks = {}
-            if worker == "variaworld" and any(row.get("identity_proof") for row in records):
-                from scripts.workers.variaworld_identity import fallback_matches
-                cur.execute("""select pr.product_id,pr.product_url,p.ean,p.gtin_normalized
-                    from public.prices pr join public.products p on p.id=pr.product_id
-                    where pr.shop_id=%s""", (shop_id,))
-                fallbacks = fallback_matches(records, cur.fetchall())
+            new_matches = {}
+            if worker == "variaworld":
+                stored = _variaworld_stored_ean_matches(cur, records)
+                registered_ids = {str(row["product_id"]) for row in registered}
+                registered_urls = {url_key(row["product_url"]): str(row["product_id"]) for row in registered}
+                by_product = {}
+                for record in records:
+                    product_id = stored.get(url_key(record["source_url"]))
+                    direct_product = registered_urls.get(url_key(record["source_url"]))
+                    if product_id and (not direct_product or direct_product == product_id):
+                        by_product.setdefault(product_id, []).append(record)
+                # One live listing per product is required. Multiple current
+                # URLs for one EAN are a variant ambiguity, never an arbitrary
+                # choice by price.
+                unique = {product_id: rows[0] for product_id, rows in by_product.items() if len(rows) == 1}
+                fallbacks = {product_id: record for product_id, record in unique.items()
+                             if product_id in registered_ids}
+                new_matches = {product_id: record for product_id, record in unique.items()
+                               if product_id not in registered_ids}
             target_ids = [r["product_id"] for r in registered
                           if url_key(r["product_url"]) in expected or str(r["product_id"]) in fallbacks]
             cur.execute("""select product_id, shop_id, product_url, price, currency,
@@ -99,6 +151,20 @@ def update_existing(worker, records, started_at, *, allow_no_matches=False, pres
                 written.append((target["product_id"], value, availability, product_url))
                 if len(stats["samples"]) < 12:
                     stats["samples"].append({"url": record["source_url"], "before": str(target["price"]), "after": str(value), "currency": record["currency"]})
+            for product_id, record in new_matches.items():
+                value = Decimal(record["price"])
+                availability = normalize_availability(record.get("availability"))
+                upsert_listing_price(cur, product_id=product_id, shop_id=shop_id,
+                    source_url=record["source_url"], price=value, currency=record["currency"],
+                    availability=availability, seen_at=started_at)
+                matched_keys.add(url_key(record["source_url"]))
+                stats["matched"] += 1
+                stats["updated"] += 1
+                stats["inserted"] += 1
+                written.append((product_id, value, availability, record["source_url"]))
+                if len(stats["samples"]) < 12:
+                    stats["samples"].append({"url": record["source_url"], "before": None,
+                                             "after": str(value), "currency": record["currency"]})
             stats["unmatched"] = len(expected) - len(matched_keys)
             if not written and allow_no_matches and stats["matched"] == stats["skipped_newer"]:
                 return stats
