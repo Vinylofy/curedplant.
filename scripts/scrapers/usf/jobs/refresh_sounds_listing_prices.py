@@ -21,7 +21,23 @@ SHOP_ID = "sounds"
 SHOP_NAME = "Sounds"
 SHOP_DOMAIN = "sounds.nl"
 SHOP_COUNTRY = "NL"
-BASE_URL = "https://sounds.nl"
+BASE_URL = "https://www.sounds.nl"
+
+# Sounds/Cloudflare started returning HTTP 403 to the default python-requests
+# fingerprint on GitHub-hosted runners on 10 November 2026.  Use the canonical
+# host and the same ordinary navigation headers a browser sends.  No challenge
+# bypassing or cookie fabrication is involved.
+BROWSER_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+    "Accept-Language": "nl-NL,nl;q=0.9,en;q=0.7",
+    "Cache-Control": "no-cache",
+    "Pragma": "no-cache",
+    "Upgrade-Insecure-Requests": "1",
+}
 
 
 def clean(value: object) -> str:
@@ -234,6 +250,7 @@ def main() -> int:
         raise SystemExit("[ERROR] --max-page-failures moet minimaal 1 zijn.")
 
     session = requests.Session()
+    session.headers.update(BROWSER_HEADERS)
     seen_at = datetime.now(timezone.utc)
 
     all_links: list[DiscoveredLink] = []
