@@ -12,7 +12,7 @@ import requests
 import yaml
 
 from scripts.workers import run_daily_ean as daily
-from scripts.workers.ean_progress import GitHubProgress, day_key, initial_state, reserve, validate_state
+from scripts.workers.ean_progress import GitHubProgress, daily_limit, day_key, initial_state, reserve, validate_state
 from scripts.workers.ean_sources import BLOCKED, GREEN, EanSource
 
 
@@ -131,6 +131,12 @@ class DailyEanTests(unittest.TestCase):
         self.assertEqual(reserve(state, 300, "2026-11-16"), 300)
         self.assertEqual(reserve(state, 300, "2026-11-16"), 200)
         self.assertEqual(reserve(state, 500, "2026-11-16"), 0)
+
+    def test_variaworld_has_bounded_one_thousand_per_day_budget(self):
+        state = initial_state("variaworld")
+        self.assertEqual(reserve(state, 600, "2026-11-16"), 600)
+        self.assertEqual(reserve(state, 600, "2026-11-16"), 400)
+        self.assertEqual(reserve(state, 1000, "2026-11-16"), 0)
 
     def test_exhausted_budget_does_not_write_or_overwrite_previous_result(self):
         progress = Progress()
@@ -253,7 +259,7 @@ class DailyEanTests(unittest.TestCase):
             cron = config["on"]["schedule"][0]["cron"]
             self.assertNotIn(cron, crons)
             crons.add(cron)
-            expected = "'500'" if shop == "sounds" else "'100'"
+            expected = f"'{daily_limit(shop)}'"
             self.assertIn(expected, config["jobs"]["worker"]["with"]["limit"])
             self.assertTrue(config["jobs"]["worker"]["uses"].endswith("_daily-ean-worker.yml"))
         self.assertEqual(len(crons), 26)
