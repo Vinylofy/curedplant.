@@ -141,10 +141,10 @@ def load_targets(conn, limit: int, cursor: str | None):
 
 
 def apply_one(conn, product: dict, metadata: dict) -> bool:
-    result = conn.execute("""update products set artist=coalesce(%s::text,artist),title=%s,
+    result = conn.execute("""update products set artist=coalesce(%s::text,artist),title=%s::text,
       artist_normalized=case when %s::text is null then artist_normalized else lower(btrim(%s::text)) end,
-      title_normalized=lower(btrim(%s)),
-      search_text=lower(btrim(concat_ws(' ',coalesce(%s::text,artist),%s,ean,gtin_normalized))),
+      title_normalized=lower(btrim(%s::text)),
+      search_text=lower(btrim(concat_ws(' ',coalesce(%s::text,artist),%s::text,ean,gtin_normalized))),
       metadata_source='bol_catalog_api',metadata_status='enriched',metadata_confidence=95,
       metadata_needs_review=false,metadata_last_enriched_at=now(),updated_at=now()
       where id=%s::uuid
