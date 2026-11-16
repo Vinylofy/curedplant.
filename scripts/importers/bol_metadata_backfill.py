@@ -79,8 +79,11 @@ def normalize_response(product: dict, response: dict) -> dict:
     artist = next((value for value in artists if valid_artist(value)), None)
     if not artist:
         artist = clean(product.get("artist"))
+    # A catalog title is still a strict exact-EAN improvement when Bol does not
+    # expose a structured artist. Preserve the current artist in that case; a
+    # separate metadata source may enrich it later. Never manufacture an artist.
     if not valid_artist(artist):
-        raise ValueError("artist_unavailable")
+        artist = None
     return {"artist": artist, "title": title, "media": media, "bol_product_id": clean(response.get("bolProductId")) or None}
 
 
@@ -138,9 +141,10 @@ def load_targets(conn, limit: int, cursor: str | None):
 
 
 def apply_one(conn, product: dict, metadata: dict) -> bool:
-    result = conn.execute("""update products set artist=%s,title=%s,
-      artist_normalized=lower(btrim(%s)),title_normalized=lower(btrim(%s)),
-      search_text=lower(btrim(concat_ws(' ',%s,%s,ean,gtin_normalized))),
+    result = conn.execute("""update products set artist=coalesce(%s,artist),title=%s,
+      artist_normalized=case when %s is null then artist_normalized else lower(btrim(%s)) end,
+      title_normalized=lower(btrim(%s)),
+      search_text=lower(btrim(concat_ws(' ',coalesce(%s,artist),%s,ean,gtin_normalized))),
       metadata_source='bol_catalog_api',metadata_status='enriched',metadata_confidence=95,
       metadata_needs_review=false,metadata_last_enriched_at=now(),updated_at=now()
       where id=%s::uuid
@@ -148,8 +152,8 @@ def apply_one(conn, product: dict, metadata: dict) -> bool:
           or title ~ '^[0-9]{8,14}$' or title ~* '^unknown( (album|title))?$' or btrim(title)='')
         and coalesce(metadata_source,'') not in ('manual','verified')
         and coalesce(metadata_status,'') not in ('manual','verified')""",
-      (metadata["artist"], metadata["title"], metadata["artist"], metadata["title"],
-       metadata["artist"], metadata["title"], product["id"])).rowcount
+      (metadata["artist"], metadata["title"], metadata["artist"], metadata["artist"],
+       metadata["title"], metadata["artist"], metadata["title"], product["id"])).rowcount
     return result == 1
 
 

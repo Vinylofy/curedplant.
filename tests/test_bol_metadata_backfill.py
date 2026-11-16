@@ -29,6 +29,14 @@ def test_existing_artist_is_safe_fallback_when_bol_artist_is_absent():
     assert subject.normalize_response(product(),value)["artist"]=="Queens Of The Stone Age"
 
 
+def test_exact_bol_title_is_accepted_without_an_available_artist():
+    value=response(); value["specificationGroups"][0]["specifications"]=value["specificationGroups"][0]["specifications"][1:]
+    item=product(); item["artist"]="Unknown artist"
+    actual=subject.normalize_response(item,value)
+    assert actual["title"]=="Alive in the Catacombs"
+    assert actual["artist"] is None
+
+
 def test_workflow_is_manual_ubuntu_and_bounded():
     from pathlib import Path
     text=Path(".github/workflows/bol-metadata-backfill.yml").read_text()
