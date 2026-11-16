@@ -126,6 +126,12 @@ class DailyEanTests(unittest.TestCase):
         self.assertEqual(results[-1]["outcome"], "daily_budget_exhausted")
         self.assertEqual(len(queue.done), 100)
 
+    def test_sounds_has_bounded_five_hundred_per_day_budget(self):
+        state = initial_state("sounds")
+        self.assertEqual(reserve(state, 300, "2026-11-16"), 300)
+        self.assertEqual(reserve(state, 300, "2026-11-16"), 200)
+        self.assertEqual(reserve(state, 500, "2026-11-16"), 0)
+
     def test_exhausted_budget_does_not_write_or_overwrite_previous_result(self):
         progress = Progress()
         progress.state['budget'] = {'date': '2026-10-18', 'reserved': 100}
@@ -247,7 +253,8 @@ class DailyEanTests(unittest.TestCase):
             cron = config["on"]["schedule"][0]["cron"]
             self.assertNotIn(cron, crons)
             crons.add(cron)
-            self.assertIn("'100'", config["jobs"]["worker"]["with"]["limit"])
+            expected = "'500'" if shop == "sounds" else "'100'"
+            self.assertIn(expected, config["jobs"]["worker"]["with"]["limit"])
             self.assertTrue(config["jobs"]["worker"]["uses"].endswith("_daily-ean-worker.yml"))
         self.assertEqual(len(crons), 26)
         for shop in BLOCKED:

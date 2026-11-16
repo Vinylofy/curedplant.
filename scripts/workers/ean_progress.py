@@ -13,7 +13,12 @@ from zoneinfo import ZoneInfo
 
 BRANCH = "automation/ean-progress"
 DAILY_LIMIT = 100
+SHOP_DAILY_LIMITS = {"sounds": 500}
 MAX_SAVE_ATTEMPTS = 10
+
+
+def daily_limit(shop):
+    return SHOP_DAILY_LIMITS.get(shop, DAILY_LIMIT)
 
 
 def day_key(now=None):
@@ -29,7 +34,7 @@ def validate_state(state, shop):
     if state.get("version") != 1 or state.get("shop") != shop:
         raise ValueError("Wrong EAN checkpoint version or shop; refusing to reset progress")
     budget, cursor = state["budget"], state["cursor"]
-    if not isinstance(budget["reserved"], int) or not 0 <= budget["reserved"] <= DAILY_LIMIT:
+    if not isinstance(budget["reserved"], int) or not 0 <= budget["reserved"] <= daily_limit(shop):
         raise ValueError("Invalid daily EAN budget")
     if not isinstance(cursor.get("page"), int) or cursor["page"] < 1 or cursor.get("seed", -1) < 0:
         raise ValueError("Invalid EAN catalogue cursor")
@@ -37,12 +42,13 @@ def validate_state(state, shop):
 
 
 def reserve(state, requested, today):
-    if not 1 <= requested <= DAILY_LIMIT:
-        raise ValueError("EAN limit must be 1..100")
+    limit = daily_limit(state["shop"])
+    if not 1 <= requested <= limit:
+        raise ValueError(f"EAN limit for {state['shop']} must be 1..{limit}")
     budget = state["budget"]
     if budget["date"] != today:
         budget.update(date=today, reserved=0)
-    allocated = min(requested, DAILY_LIMIT - budget["reserved"])
+    allocated = min(requested, limit - budget["reserved"])
     budget["reserved"] += allocated
     return allocated
 

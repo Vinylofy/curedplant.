@@ -11,7 +11,7 @@ import re
 
 import requests
 
-from scripts.workers.ean_progress import GitHubProgress, day_key, initial_state, reserve, validate_state
+from scripts.workers.ean_progress import GitHubProgress, daily_limit, day_key, initial_state, reserve, validate_state
 from scripts.workers.ean_queue import EanQueue
 from scripts.workers.ean_sources import EanSource, GREEN, PILOT
 
@@ -35,13 +35,16 @@ def execute(shop, limit, write, *, progress=None, queue=None, source_factory=Ean
                "reserved": 0, "selected": 0, "attempted": 0, "details_started": 0, "valid_eans": 0,
                "missing_ean": 0, "unavailable": 0, "excluded_non_vinyl": 0,
                "technical_errors": 0, "claim_skips": 0, "discovery_pages": 0,
-               "requeued_for_repair": 0, "refunded_reservations": 0,
+               "requeued_for_repair": 0, "repaired_deferred_identities": 0,
+               "refunded_reservations": 0,
                "price_writes": 0, "records": [], "errors": []}
     if source_pilot:
         summary['source_pilot'] = True
     source, state, reservation_saved = None, None, False
     try:
         state = initial_state(shop) if source_pilot else copy.deepcopy(validate_state(progress.load(), shop))
+        if write and shop == "sounds":
+            summary["repaired_deferred_identities"] = queue.repair_sounds_deferred_identities(limit=500)
         allocated = reserve(state, limit, today) if write else limit
         summary["reserved"] = allocated if write else 0
         if allocated == 0:
@@ -175,8 +178,8 @@ def main():
     parser.add_argument("--write", action="store_true")
     parser.add_argument("--source-pilot", action="store_true", help="Music On Vinyl read-only source verification, including already-known products")
     args = parser.parse_args()
-    if not 1 <= args.limit <= 100:
-        parser.error("daily EAN limit must be 1..100")
+    if not 1 <= args.limit <= daily_limit(args.worker):
+        parser.error(f"daily EAN limit for {args.worker} must be 1..{daily_limit(args.worker)}")
     if args.source_pilot and (args.write or args.worker != 'musiconvinyl'):
         parser.error('--source-pilot is only supported for Music On Vinyl without --write')
     result = execute(args.worker, args.limit, args.write, source_pilot=args.source_pilot)
