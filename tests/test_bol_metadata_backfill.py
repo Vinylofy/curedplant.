@@ -49,3 +49,9 @@ def test_dict_cursor_total_is_read_by_column_name():
     from pathlib import Path
     text=Path("scripts/importers/bol_metadata_backfill.py").read_text()
     assert '.fetchone()["count"]' in text
+
+
+def test_nullable_artist_parameters_are_explicitly_typed_for_postgres():
+    from pathlib import Path
+    text=Path("scripts/importers/bol_metadata_backfill.py").read_text()
+    assert "when %s::text is null" in text
