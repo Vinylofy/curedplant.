@@ -70,6 +70,30 @@ def extract_title(html: str) -> str | None:
     return re.sub(r"\s+", " ", m.group(1)).strip()
 
 
+def extract_artist_title(value: str | None) -> tuple[str | None, str | None]:
+    """Split Sounds' stable detail-title identity without guessing.
+
+    Current detail titles are emitted as
+    ``Artist | Album | 1 LP | 0123456789012 | Sounds``.  The former generic
+    EAN lane retained that entire string as the title, so its canonical writer
+    could not see an artist and deferred otherwise valid EANs.
+    """
+    parts = [re.sub(r"\s+", " ", part).strip() for part in str(value or "").split("|")]
+    parts = [part for part in parts if part]
+    if parts and parts[-1].casefold() == "sounds":
+        parts.pop()
+    if parts and re.fullmatch(r"\d{8,14}", parts[-1]):
+        parts.pop()
+    if parts and re.fullmatch(r"(?:\d+\s*)?(?:LP|vinyl|7\s*(?:inch|\"))", parts[-1], re.I):
+        parts.pop()
+    if len(parts) != 2:
+        return None, None
+    artist, title = parts
+    if not artist or not title or artist.casefold().startswith("error 403"):
+        return None, None
+    return artist, title
+
+
 
 def extract_ean(html: str) -> str | None:
     patterns = [

@@ -427,7 +427,14 @@ class EanSource:
                 if shop == "imusic":
                     result.update(artist=parsed.artist, title=parsed.title or parsed.title_raw,
                                   source_title_raw=parsed.title_raw)
-            elif shop in {"sounds", "variaworld"}:
+            elif shop == "sounds":
+                native = module("usf.jobs.detail_sounds")
+                source_title = native.extract_title(html) or title
+                artist, album_title = native.extract_artist_title(source_title)
+                raw = native.extract_ean(html)
+                result.update(artist=artist, title=album_title or source_title,
+                              source_title_raw=source_title)
+            elif shop == "variaworld":
                 native = module(f"usf.jobs.detail_{shop}")
                 raw, result["title"] = native.extract_ean(html), native.extract_title(html) or title
             elif shop == "platenzaak":
