@@ -131,7 +131,9 @@ def load_targets(conn, limit: int, cursor: str | None):
         and coalesce(p.metadata_status,'') not in ('manual','verified') {cursor_sql}
       group by p.id
       order by p.id limit %s""", params).fetchall()
-    remaining = conn.execute(f"select count(*)::int from products p where {predicate} and p.ean is not null").fetchone()[0]
+    remaining = conn.execute(
+        f"select count(*)::int as count from products p where {predicate} and p.ean is not null"
+    ).fetchone()["count"]
     return rows, remaining
 
 

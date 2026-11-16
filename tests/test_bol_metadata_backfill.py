@@ -35,3 +35,9 @@ def test_workflow_is_manual_ubuntu_and_bounded():
     assert "workflow_dispatch:" in text and "schedule:" not in text
     assert "runs-on: ubuntu-latest" in text
     assert "LIMIT <= 1500" in text
+
+
+def test_dict_cursor_total_is_read_by_column_name():
+    from pathlib import Path
+    text=Path("scripts/importers/bol_metadata_backfill.py").read_text()
+    assert '.fetchone()["count"]' in text
