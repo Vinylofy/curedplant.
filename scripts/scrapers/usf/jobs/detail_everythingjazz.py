@@ -159,7 +159,11 @@ def parse_detail(
     if not isinstance(listing_payload, dict):
         listing_payload = {}
 
-    product_type = clean(payload.get("type"))
+    # Shopify's product.js response can omit `type`, while the collection
+    # products feed already supplied and validated `product_type` for the same
+    # product URL. Keep an explicit detail type authoritative, but fall back to
+    # that stored listing evidence when the detail field is empty.
+    product_type = clean(payload.get("type")) or clean(listing_payload.get("product_type"))
     title = clean(payload.get("title")) or clean(listing_payload.get("title"))
     vendor = clean(payload.get("vendor")) or clean(listing_payload.get("artist"))
     detail_issue: str | None = None
