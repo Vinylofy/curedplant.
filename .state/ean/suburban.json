@@ -2,9 +2,10 @@
   "version": 1,
   "shop": "suburban",
   "cursor": {
-    "page": 160,
+    "page": 1,
     "seed": 0,
-    "signature": "465384225c31c76363d939174c9fe64e4ae7c434e611253e8399b2701a8fbf3b"
+    "exhausted": true,
+    "exhausted_on": "2026-11-17"
   },
   "budget": {
     "date": "2026-11-17",
