@@ -6,7 +6,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from scripts.workers.database_archive_full import PROFILES
+from scripts.workers.database_archive_full import PROFILES, retention_days
 
 
 def archived_rows(destination: Path, table: str) -> int:
@@ -48,13 +48,15 @@ def main():
     report = {"measured_at": datetime.now(timezone.utc).isoformat(), "deleted": 0,
               "tables": {}}
     with psycopg.connect(os.environ["DATABASE_URL"], autocommit=False) as conn:
-        for table, profile in PROFILES.items():
-            cutoff = datetime.now(timezone.utc) - timedelta(days=profile["min_age"])
+        measured_at = datetime.now(timezone.utc)
+        for table in PROFILES:
+            days = retention_days(table, measured_at)
+            cutoff = measured_at - timedelta(days=days)
             total, historical = database_counts(conn, table, cutoff)
             conn.rollback()
             archived = archived_rows(args.destination, table)
             report["tables"][table] = {
-                "retention_days": profile["min_age"], "database_rows": total,
+                "retention_days": days, "database_rows": total,
                 "historical_rows": historical, "archived_rows": archived,
                 "remaining_to_archive": max(0, historical - archived),
             }

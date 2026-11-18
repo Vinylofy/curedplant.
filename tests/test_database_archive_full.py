@@ -2,14 +2,28 @@ import hashlib
 import json
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 
 from scripts.workers.database_archive_full import (
-    paths, read_checkpoint, source_key, write_checkpoint,
+    paths, read_checkpoint, retention_days, source_key, write_checkpoint,
 )
 
 
 class FullArchiveTests(unittest.TestCase):
+    def test_price_retention_switches_to_34_days_on_19_november(self):
+        before = datetime(2026, 11, 18, 23, 59, 59, tzinfo=timezone.utc)
+        effective = datetime(2026, 11, 19, 0, 0, 0, tzinfo=timezone.utc)
+        self.assertEqual(retention_days("price_history", before), 90)
+        self.assertEqual(retention_days("price_history", effective), 34)
+        self.assertEqual(retention_days("raw_shop_scrapes", effective), 30)
+
+    def test_retention_rejects_unknown_table_and_naive_time(self):
+        with self.assertRaisesRegex(ValueError, "unknown"):
+            retention_days("other")
+        with self.assertRaisesRegex(ValueError, "timezone-aware"):
+            retention_days("price_history", datetime(2026, 11, 19))
+
     def test_source_paths_are_stable_and_separate(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

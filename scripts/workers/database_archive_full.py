@@ -10,9 +10,23 @@ from pathlib import Path
 
 PROFILES = {
     "raw_shop_scrapes": {"timestamp": "scraped_at", "min_age": 30, "shop_cast": "text"},
-    "price_history": {"timestamp": "captured_at", "min_age": 90, "shop_cast": "uuid"},
+    "price_history": {"timestamp": "captured_at", "min_age": 34, "shop_cast": "uuid"},
 }
 ZERO_UUID = "00000000-0000-0000-0000-000000000000"
+PRICE_HISTORY_RETENTION_EFFECTIVE_AT = datetime(2026, 11, 19, tzinfo=timezone.utc)
+LEGACY_PRICE_HISTORY_RETENTION_DAYS = 90
+
+
+def retention_days(table: str, now: datetime | None = None) -> int:
+    """Return the guarded retention floor, with the price change activating tomorrow."""
+    if table not in PROFILES:
+        raise ValueError("unknown archive table")
+    measured_at = now or datetime.now(timezone.utc)
+    if measured_at.tzinfo is None:
+        raise ValueError("retention time must be timezone-aware")
+    if table == "price_history" and measured_at < PRICE_HISTORY_RETENTION_EFFECTIVE_AT:
+        return LEGACY_PRICE_HISTORY_RETENTION_DAYS
+    return PROFILES[table]["min_age"]
 
 
 def source_key(table: str, shop_id: str) -> str:
@@ -191,8 +205,9 @@ def main():
         parser.error("existing E: destination is required")
 
     import psycopg
-    age = args.min_age_days or PROFILES[args.table]["min_age"]
-    if age < PROFILES[args.table]["min_age"]:
+    floor = retention_days(args.table)
+    age = args.min_age_days or floor
+    if age < floor:
         parser.error("minimum age is below the guarded retention floor")
     cutoff = datetime.now(timezone.utc) - timedelta(days=age)
     with psycopg.connect(os.environ["DATABASE_URL"], autocommit=False) as conn:

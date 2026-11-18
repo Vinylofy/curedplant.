@@ -1,12 +1,18 @@
 import json
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 
 from scripts.workers.database_archive_status import archived_rows
+from scripts.workers.database_archive_full import retention_days
 
 
 class ArchiveStatusTests(unittest.TestCase):
+    def test_status_retention_helper_reports_new_price_window(self):
+        measured_at = datetime(2026, 11, 19, tzinfo=timezone.utc)
+        self.assertEqual(retention_days("price_history", measured_at), 34)
+
     def test_sums_manifest_counts(self):
         with tempfile.TemporaryDirectory() as directory:
             destination = Path(directory)

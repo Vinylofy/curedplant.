@@ -79,8 +79,8 @@ jobs:
         if: github.event_name == 'schedule' || (inputs.operation == 'archive-full' && (inputs.dataset == 'both' || inputs.dataset == 'raw_shop_scrapes'))
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          ROW_LIMIT: ${{ github.event_name == 'schedule' && '1000' || inputs.limit }}
-          BATCH_LIMIT: ${{ github.event_name == 'schedule' && '200' || inputs.batches }}
+          ROW_LIMIT: ${{ github.event_name == 'schedule' && '2000' || inputs.limit }}
+          BATCH_LIMIT: ${{ github.event_name == 'schedule' && '500' || inputs.batches }}
         run: |
           $ErrorActionPreference = 'Stop'
           $python = Join-Path $env:LOCALAPPDATA 'Vinylofy\bol-feed-venv\Scripts\python.exe'
@@ -91,8 +91,8 @@ jobs:
         if: github.event_name == 'schedule' || (inputs.operation == 'archive-full' && (inputs.dataset == 'both' || inputs.dataset == 'price_history'))
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          ROW_LIMIT: ${{ github.event_name == 'schedule' && '1000' || inputs.limit }}
-          BATCH_LIMIT: ${{ github.event_name == 'schedule' && '200' || inputs.batches }}
+          ROW_LIMIT: ${{ github.event_name == 'schedule' && '2000' || inputs.limit }}
+          BATCH_LIMIT: ${{ github.event_name == 'schedule' && '500' || inputs.batches }}
         run: |
           $ErrorActionPreference = 'Stop'
           $python = Join-Path $env:LOCALAPPDATA 'Vinylofy\bol-feed-venv\Scripts\python.exe'
@@ -164,7 +164,7 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           CONFIRM_CLEANUP: ${{ github.event_name == 'schedule' && 'SINGLE_E_COPY_RISK_ACCEPTED' || inputs.confirm_cleanup }}
-          CLEANUP_FILES: ${{ github.event_name == 'schedule' && '100' || inputs.batches }}
+          CLEANUP_FILES: ${{ github.event_name == 'schedule' && '500' || inputs.batches }}
         run: |
           $ErrorActionPreference = 'Stop'
           $python = Join-Path $env:LOCALAPPDATA 'Vinylofy\bol-feed-venv\Scripts\python.exe'
@@ -176,7 +176,7 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           CONFIRM_CLEANUP: ${{ github.event_name == 'schedule' && 'SINGLE_E_COPY_RISK_ACCEPTED' || inputs.confirm_cleanup }}
-          CLEANUP_FILES: ${{ github.event_name == 'schedule' && '100' || inputs.batches }}
+          CLEANUP_FILES: ${{ github.event_name == 'schedule' && '500' || inputs.batches }}
         run: |
           $ErrorActionPreference = 'Stop'
           $python = Join-Path $env:LOCALAPPDATA 'Vinylofy\bol-feed-venv\Scripts\python.exe'
