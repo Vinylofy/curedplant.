@@ -262,7 +262,7 @@ class DailyEanTests(unittest.TestCase):
             expected = f"'{daily_limit(shop)}'"
             self.assertIn(expected, config["jobs"]["worker"]["with"]["limit"])
             self.assertTrue(config["jobs"]["worker"]["uses"].endswith("_daily-ean-worker.yml"))
-        self.assertEqual(len(crons), 26)
+        self.assertEqual(len(crons), len(GREEN))
         for shop in BLOCKED:
             config = yaml.load((root / f"ean-detail-{shop}.yml").read_text(), Loader=yaml.BaseLoader)
             self.assertNotIn("schedule", config["on"])

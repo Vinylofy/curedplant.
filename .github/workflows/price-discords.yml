@@ -1,0 +1,37 @@
+name: "Curedplant | Price | Discords"
+run-name: "Price | Discords | ${{ github.event_name == 'schedule' && 'scheduled write' || (inputs.write && 'write=true' || 'write=false') }} | limit=${{ github.event_name == 'schedule' && '0' || inputs.limit }}"
+
+on:
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "0 = full new-LP collection; positive = page pilot"
+        required: true
+        default: "1"
+        type: string
+      write:
+        description: "Write only exact-EAN matched prices"
+        required: true
+        default: false
+        type: boolean
+      approved_dry_run_id:
+        description: "Optional source run ID: false=recheck, true=write reviewed prices; max 6 hours"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  worker:
+    uses: ./.github/workflows/_catalog-price-worker.yml
+    with:
+      approved_dry_run_id: ${{ inputs.approved_dry_run_id || '' }}
+      worker: discords
+      limit: ${{ github.event_name == 'schedule' && '0' || inputs.limit }}
+      write: ${{ github.event_name == 'schedule' || inputs.write }}
+    secrets: inherit

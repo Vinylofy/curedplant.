@@ -23,7 +23,7 @@ BLOCKED = {"northendhaarlem", "soundsvenlo"}
 LEGACY = {"atthemovies", "bestkeptrecords", "blackvinyl", "getbackmusic", "rockinoutrecords",
           "topnotch", "vinyleers", "vinylfreaks", "viprecords", "suburban", "recordsonvinyl", "platomania"}
 REVIEWED = {"cdhal", "colouredvinyl", "dgmoutlet", "everythingjazz", "fiftiesstore",
-            "myrecordstore", "shop3345", "soundshaarlem"}
+            "myrecordstore", "shop3345", "soundshaarlem", "discords"}
 GREEN = tuple(sorted(LEGACY | REVIEWED | {"bobsvinyl", "platenzaak", "sounds", "variaworld", "imusic", "jpc"}))
 PILOT = {"musiconvinyl"}  # Manual only until the live no-write pilot is verified.
 
@@ -157,6 +157,16 @@ class EanSource:
             rows = [link_row(link) for p in products if (link := source.parse_product(p, page=page, seen_at=now)[0])]
             if products and not rows:
                 return [], next_cursor
+        elif shop == "discords":
+            source = module("discords")
+            products = self.get(source.collection_url(page, source.PAGE_SIZE)).json().get("products", [])
+            for product in products:
+                parsed = source.listing_record(product, page=page, seen_at=now)
+                if parsed:
+                    rows.append({"source_url": parsed["product_url"],
+                                 "source_product_id": parsed["product_id"], "payload": parsed})
+            if products and not rows:
+                return [], next_cursor
         elif shop == "shop3345":
             products = self.get(f"https://3345.nl/products.json?limit=100&page={page}&currency=EUR").json()["products"]
             for p in products:
@@ -280,7 +290,7 @@ class EanSource:
                   "is_secondhand": str(payload.get("is_secondhand", "false")).lower() in {"true", "yes", "ja", "1"}}
         if shop == "fiftiesstore":
             result["ean_parser_version"] = 2
-        if shop in {"everythingjazz", "atthemovies", "recordsonvinyl"}:
+        if shop in {"everythingjazz", "atthemovies", "recordsonvinyl", "discords"}:
             detail_url = url.rstrip("/") + ".js"
             if shop == "recordsonvinyl":
                 detail_url = module(shop).shopify_product_js_url(url)
@@ -307,6 +317,12 @@ class EanSource:
                 parsed = native.parse_detail(link=row, payload=data, detail_url=response.url)
                 raw = parsed["ean_raw"]
                 result["title"] = parsed["title_raw"]
+            elif shop == "discords":
+                parsed = module("discords").detail_record(data, {"product_url": url, **payload})
+                raw = parsed.get("ean")
+                result.update(title=parsed.get("title") or title, artist=parsed.get("artist"),
+                              image_url=parsed.get("image_url"), ean_parser_version=1,
+                              issue=parsed.get("detail_issue") or None)
             else:
                 codes = {strict_normalize_gtin(v.get("barcode")) for v in variants} - {None}
                 raw = next(iter(codes)) if len(codes) == 1 else None

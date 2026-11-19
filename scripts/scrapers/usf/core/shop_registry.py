@@ -14,6 +14,13 @@ class ShopDefinition:
 
 
 STABLE_SHOPS: dict[str, ShopDefinition] = {
+    "discords": ShopDefinition(
+        key="discords",
+        scraper_module="scripts.scrapers.discords",
+        importer_module="scripts.importers.import_discords",
+        output_dir="data/raw/discords",
+        notes="Public Shopify new-LP collection with product-JSON EAN enrichment.",
+    ),
     "velvetdelft": ShopDefinition(key="velvetdelft", scraper_module="scripts.scrapers.velvetdelft", importer_module="scripts.importers.import_velvetdelft", output_dir="output/velvetdelft", enabled=False, notes="Explicit EAN/price workflows with authorized USF writes; excluded from generic bulk orchestration."),
     "blackvinyl": ShopDefinition(
         key="blackvinyl",

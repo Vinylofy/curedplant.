@@ -7,7 +7,7 @@ from scripts.workers.run_ean_detail import command_for as detail_command
 class WorkerDispatchTests(unittest.TestCase):
     def test_catalog_workers_have_commands(self):
         for worker in (
-            "bobsvinyl", "everythingjazz", "fiftiesstore", "musiconvinyl",
+            "bobsvinyl", "discords", "everythingjazz", "fiftiesstore", "musiconvinyl",
             "myrecordstore", "northendhaarlem", "platenzaak", "platomania",
             "recordsonvinyl", "sounds", "soundshaarlem", "soundsvenlo", "variaworld",
         ):

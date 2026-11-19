@@ -21,6 +21,7 @@ def command_for(worker: str, limit: int, source_version: str = "current", write:
     common = [sys.executable, "-u", "-m"]
     commands: dict[str, list[str]] = {
         "bobsvinyl": common + ["scripts.scrapers.usf.jobs.refresh_bobsvinyl_listing_prices", "--start-page", "1", "--max-pages", str(limit)],
+        "discords": common + ["scripts.scrapers.usf.jobs.refresh_discords_listing_prices", "--max-pages", str(limit)],
         "everythingjazz": common + ["scripts.scrapers.usf.jobs.refresh_everythingjazz_listing_prices", "--start-page", "1", "--max-pages", str(limit)],
         "fiftiesstore": common + ["scripts.scrapers.usf.jobs.refresh_fiftiesstore_listing_prices", "--max-products", str(limit), "--vinyl-only", "--skip-delist-missing"],
         "musiconvinyl": common + ["scripts.scrapers.usf.jobs.refresh_musiconvinyl_prices_only", "--max-pages", str(limit), "--listing-limit", "250"],

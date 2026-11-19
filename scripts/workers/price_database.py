@@ -24,7 +24,7 @@ def shop_domain(worker, rows):
     return get_shop_importer(worker).config.shop_domain
 
 
-def _variaworld_stored_ean_matches(cur, records):
+def _stored_ean_matches(cur, worker, records):
     """Resolve listing URLs only from EAN evidence written by the EAN worker.
 
     The price worker never fetches a detail page. Ambiguous source EANs and
@@ -36,11 +36,11 @@ def _variaworld_stored_ean_matches(cur, records):
     cur.execute("""
         select source_url,array_agg(distinct ean_raw) as eans
         from public.raw_shop_scrapes
-        where shop_id='variaworld' and source_url=any(%s)
+        where shop_id=%s and source_url=any(%s)
           and payload->>'source'='curedplant_daily_ean'
           and nullif(ean_raw,'') is not null
         group by source_url
-    """, (urls,))
+    """, (worker, urls))
     source_codes = {}
     for row in cur.fetchall():
         codes = {strict_normalize_gtin(value) for value in row["eans"]} - {None}
@@ -57,12 +57,18 @@ def _variaworld_stored_ean_matches(cur, records):
             if len(products.get(code, [])) == 1}
 
 
+def _variaworld_stored_ean_matches(cur, records):
+    """Backward-compatible alias for the Variaworld contract tests."""
+    return _stored_ean_matches(cur, "variaworld", records)
+
+
 def update_existing(worker, records, started_at, *, allow_no_matches=False, preserve_unknown=True):
-    """Update existing offers; Variaworld may add an exact stored-EAN offer.
+    """Update existing offers; selected shops may add an exact stored-EAN offer.
 
     This function never fetches product details and never changes products,
-    EANs, covers or detail queues. A new Variaworld offer is possible only when
-    the separate EAN worker stored unambiguous evidence for that exact URL.
+    EANs, covers or detail queues. A new offer is possible only for a reviewed
+    worker when the separate EAN worker stored unambiguous evidence for that
+    exact URL.
     """
     domain = shop_domain(worker, records)
     expected = {url_key(r["source_url"]): r for r in records}
@@ -74,6 +80,10 @@ def update_existing(worker, records, started_at, *, allow_no_matches=False, pres
         with conn.cursor(row_factory=dict_row) as cur:
             cur.execute("select id from public.shops where domain=%s", (domain,))
             shops = cur.fetchall()
+            if not shops and worker == "discords":
+                cur.execute("""insert into public.shops (name,domain,country,is_active)
+                    values ('Discords',%s,'NL',true) returning id""", (domain,))
+                shops = cur.fetchall()
             if len(shops) != 1:
                 raise RuntimeError(f"Expected one registered shop for {domain}; found {len(shops)}")
             shop_id = shops[0]["id"]
@@ -83,8 +93,8 @@ def update_existing(worker, records, started_at, *, allow_no_matches=False, pres
             registered = cur.fetchall()
             fallbacks = {}
             new_matches = {}
-            if worker == "variaworld":
-                stored = _variaworld_stored_ean_matches(cur, records)
+            if worker in {"variaworld", "discords"}:
+                stored = _stored_ean_matches(cur, worker, records)
                 registered_ids = {str(row["product_id"]) for row in registered}
                 registered_urls = {url_key(row["product_url"]): str(row["product_id"]) for row in registered}
                 by_product = {}

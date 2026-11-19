@@ -1,0 +1,29 @@
+name: "Curedplant | EAN/detail | Discords"
+
+on:
+  schedule:
+    - cron: "14 2 * * *"
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Max new product details (1-100); daily total never exceeds 100"
+        required: true
+        default: "100"
+        type: string
+      write:
+        description: "Save EAN metadata and progress; never write prices"
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  worker:
+    uses: ./.github/workflows/_daily-ean-worker.yml
+    with:
+      worker: discords
+      limit: ${{ github.event_name == 'schedule' && '100' || inputs.limit }}
+      write: ${{ github.event_name == 'schedule' || inputs.write }}
+    secrets: inherit
