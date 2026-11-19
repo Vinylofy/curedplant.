@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import json
 import os
 import re
 import sys
@@ -173,6 +174,29 @@ def parse_details_from_content(content) -> Dict[str, str]:
         "ean": "",
     }
 
+    for script in content.select('script[type="application/ld+json"]'):
+        try:
+            payload = json.loads(script.string or script.get_text() or "")
+        except (TypeError, ValueError, json.JSONDecodeError):
+            continue
+        candidates = payload if isinstance(payload, list) else [payload]
+        for candidate in candidates:
+            if not isinstance(candidate, dict) or candidate.get("@type") != "Product":
+                continue
+            brand = candidate.get("brand")
+            subject = candidate.get("subjectOf")
+            details["label"] = normalize_text(
+                brand.get("name") if isinstance(brand, dict) else brand
+            )
+            details["releasedatum"] = normalize_text(
+                subject.get("datePublished") if isinstance(subject, dict) else ""
+            )
+            details["item_nr"] = normalize_text(candidate.get("sku"))
+            details["ean"] = normalize_text(
+                candidate.get("gtin13") or candidate.get("gtin") or candidate.get("mpn")
+            )
+            break
+
     for node in content.select("div.article-details__text"):
         classes = node.get("class", [])
         if "article-details__delivery-text" in classes:
@@ -193,26 +217,62 @@ def parse_details_from_content(content) -> Dict[str, str]:
         elif text.startswith("EAN:"):
             details["ean"] = normalize_text(text.split(":", 1)[1])
 
+    for row in content.select("tr"):
+        cells = row.find_all(["th", "td"], recursive=False)
+        if len(cells) < 2:
+            continue
+        label = normalize_text(cells[0].get_text(" ", strip=True)).casefold().rstrip(":")
+        value = normalize_text(cells[1].get_text(" ", strip=True))
+        if label == "label" and value:
+            details["label"] = value
+        elif label == "releasedatum" and value:
+            details["releasedatum"] = value
+        elif label in {"item-nr", "item nr"} and value:
+            item_match = re.search(r"^([^·]+)", value)
+            ean_match = re.search(r"\bEAN\s+([0-9][0-9\s-]{7,})", value, re.I)
+            if item_match:
+                details["item_nr"] = normalize_text(item_match.group(1))
+            if ean_match:
+                details["ean"] = re.sub(r"\D", "", ean_match.group(1))
+
     return details
 
 
+def listing_cards(content) -> List:
+    old_cards = content.select("article.article")
+    return old_cards or content.select("div.product-card")
+
+
 def parse_article(article, category_name: str, listing_url: str, include_extra: bool) -> Dict[str, str] | None:
-    content = article.select_one("div.article__content")
-    if content is None:
-        return None
-
-    artist = normalize_text((content.select_one("h1.product-card__artist") or {}).get_text(" ", strip=True) if content.select_one("h1.product-card__artist") else "")
-    title = normalize_text((content.select_one("h2.product-card__title") or {}).get_text(" ", strip=True) if content.select_one("h2.product-card__title") else "")
-
+    content = article.select_one("div.article__content") or article
     article_link = content.select_one('a[href^="/article/"]') or article.select_one('a[href^="/article/"]')
+    data: dict = {}
+    if article_link and article_link.get("data-select-item"):
+        try:
+            candidate = json.loads(article_link.get("data-select-item", ""))
+            if isinstance(candidate, dict):
+                data = candidate
+        except (TypeError, ValueError, json.JSONDecodeError):
+            pass
+
+    old_artist = content.select_one("h1.product-card__artist")
+    old_title = content.select_one("h2.product-card__title")
+    artist_link = content.select_one('a[href^="/artiest/"]')
+    artist = normalize_text(data.get("artist") or (old_artist.get_text(" ", strip=True) if old_artist else "") or (artist_link.get_text(" ", strip=True) if artist_link else ""))
+    title = normalize_text(data.get("title") or (old_title.get_text(" ", strip=True) if old_title else "") or (article_link.get_text(" ", strip=True) if article_link else ""))
+
     href = article_link.get("href", "") if article_link else ""
     absolute_url = urljoin(BASE_DOMAIN, href)
 
-    medium = normalize_text(article.select_one("div.article__medium").get_text(" ", strip=True) if article.select_one("div.article__medium") else "")
-    price = nl_price(article.select_one("div.article__price").get_text(" ", strip=True) if article.select_one("div.article__price") else "")
-    type_text = get_direct_type_text(content)
+    old_medium = article.select_one("div.article__medium")
+    new_price = article.select_one('[data-testid="article-price"]')
+    old_price = article.select_one("div.article__price")
+    medium = normalize_text(data.get("format") or (old_medium.get_text(" ", strip=True) if old_medium else ""))
+    price = nl_price(data.get("price") or (new_price.get_text(" ", strip=True) if new_price else "") or (old_price.get_text(" ", strip=True) if old_price else ""))
+    type_text = get_direct_type_text(content) or medium
 
-    delivery = normalize_text(article.select_one("div.article__delivery-time").get_text(" ", strip=True) if article.select_one("div.article__delivery-time") else "")
+    delivery_node = article.select_one("div.article__delivery-time") or article.select_one('[data-testid="card-stock"]')
+    delivery = normalize_text(delivery_node.get_text(" ", strip=True) if delivery_node else "")
     in_stock = "JA" if "Op voorraad" in delivery else "NEE"
 
     if not absolute_url or not title:
@@ -281,7 +341,7 @@ def scrape_seed(
             print(f"[FOUT] {category_name} | pagina {page} kon niet worden geladen: {exc}")
             break
 
-        articles = soup.select("article.article")
+        articles = listing_cards(soup)
         parsed_rows: List[Dict[str, str]] = []
         page_urls: List[str] = []
 

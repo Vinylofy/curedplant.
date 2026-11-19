@@ -14,6 +14,7 @@ from scripts.scrapers.legacy.platomania_legacy import (
     make_session,
     page_url,
     parse_article,
+    listing_cards,
 )
 from scripts.scrapers.usf.core.link_registry import upsert_discovered_links
 from scripts.scrapers.usf.core.models import DiscoveredLink
@@ -190,7 +191,7 @@ def discover_links(
 
             parsed_rows: list[dict[str, str]] = []
 
-            for article in soup.select("article.article"):
+            for article in listing_cards(soup):
                 row = parse_article(
                     article,
                     category_name=category_name,

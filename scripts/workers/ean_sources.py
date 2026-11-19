@@ -216,7 +216,7 @@ class EanSource:
             seeds = len(source.SEED_URLS)
             url = source.page_url(source.SEED_URLS[seed], page)
             soup = BeautifulSoup(self.get(url).text, "html.parser")
-            rows = [link_row(row) for article in soup.select("article.article")
+            rows = [link_row(row) for article in source.listing_cards(soup)
                     if (row := source.parse_article(article, source.category_name_from_url(source.SEED_URLS[seed]), url, False))]
         elif shop == "recordsonvinyl":
             url = f"https://recordsonvinyl.nl/collections/all?page={page}"
