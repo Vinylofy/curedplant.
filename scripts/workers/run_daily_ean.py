@@ -57,6 +57,8 @@ def execute(shop, limit, write, *, progress=None, queue=None, source_factory=Ean
             reservation_saved = True
         if write and shop == "fiftiesstore":
             summary["requeued_for_repair"] = queue.requeue_fifties_layout_misses()
+        if write and shop == "platomania":
+            summary["requeued_for_repair"] = queue.requeue_platomania_layout_misses()
         # Haarlem's historic queue contains mostly removed Shopify handles.
         # Refresh one bounded current page before prioritizing recently seen
         # links, rather than letting that old queue starve live products.

@@ -171,6 +171,20 @@ class QueuePostgresTests(unittest.TestCase):
             self.assertEqual(conn.execute('select source_url from public.shop_product_links where last_detail_scraped_at is null').fetchall(), [('https://test.invalid/0',)])
             self.assertEqual(conn.execute("select payload->'curedplant_daily_ean'->>'detail_sha256' from public.shop_product_links where source_url='https://test.invalid/0'").fetchone()[0], 'source-proof')
 
+    def test_platomania_requeue_is_scoped_to_redesign_misses_and_idempotent(self):
+        from psycopg.types.json import Jsonb
+        for i, (shop, day, version) in enumerate([
+            ('platomania','2026-11-19',None), ('platomania','2026-11-19',2),
+            ('platomania','2026-11-18',None), ('fiftiesstore','2026-11-19',None)]):
+            result = {'day': day, 'detail_sha256': 'source-proof', 'ean': None}
+            if version: result['ean_parser_version'] = version
+            with psycopg.connect(DSN) as conn:
+                conn.execute("insert into public.shop_product_links (shop_id,source_url,last_detail_scraped_at,ean_enrichment_status,payload) values (%s,%s,now(),'not_found',%s)", (shop,f'https://test.invalid/plato-{i}',Jsonb({'curedplant_daily_ean':result})))
+        self.assertEqual(self.queue.requeue_platomania_layout_misses(), 1)
+        self.assertEqual(self.queue.requeue_platomania_layout_misses(), 0)
+        with psycopg.connect(DSN) as conn:
+            self.assertEqual(conn.execute("select source_url from public.shop_product_links where last_detail_scraped_at is null and source_url like '%/plato-%'").fetchall(), [('https://test.invalid/plato-0',)])
+
     def test_haarlem_prioritizes_recently_seen_links(self):
         self.queue.register('soundshaarlem', [
             {'source_url':'https://soundshaarlem.nl/products/old','payload':{}},

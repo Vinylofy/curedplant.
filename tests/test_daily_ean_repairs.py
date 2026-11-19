@@ -107,6 +107,18 @@ class SourceRepairTests(unittest.TestCase):
         s.get.return_value = response('<div class="product-info-main"><h1>Poster Girl LP</h1><table><tr><td>EAN</td><td>5060854800732</td></tr></table></div>')
         self.assertEqual(s.detail(row)['ean'], GTIN)
 
+    def test_platomania_product_schema_supplies_ean_with_parser_version(self):
+        html = '''<script type="application/ld+json">{
+          "@context":"https://schema.org/", "@type":"Product",
+          "gtin13":"5060854800732", "name":"Focus 12", "sku":"123"
+        }</script>'''
+        result = self.source('platomania', html).detail({
+            'source_url': 'https://www.platomania.nl/article/123/focus_12/focus',
+            'payload': {'artist': 'Focus', 'title': 'Focus 12'},
+        })
+        self.assertEqual(result['ean'], GTIN)
+        self.assertEqual(result['ean_parser_version'], 2)
+
     def test_imusic_self_titled_album_uses_primary_artist_heading(self):
         html = '''<meta property="og:title" content="Love (LP) [Rocktober 2026 Red Vinyl edition] (2026)">
         <h1><div class="artist h2"><a href="/artist/Love">Love</a></div>Love</h1>

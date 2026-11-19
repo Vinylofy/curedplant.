@@ -450,6 +450,7 @@ class EanSource:
                 parsed = module("legacy.platomania_legacy").parse_details_from_content(soup)
                 raw = parsed.get("ean")
                 result["details"] = parsed
+                result["ean_parser_version"] = 2
             elif shop == "blackvinyl":
                 value = module(shop).detail_ean_from_html(html)
                 codes = {strict_normalize_gtin(value[0]) if value else None,

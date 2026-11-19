@@ -80,6 +80,30 @@ class EanQueue:
             """)
             return cur.rowcount
 
+    def requeue_platomania_layout_misses(self):
+        """Retry only false misses produced during the 19 November redesign.
+
+        The raw observation remains available as provenance. Parser-v2 results
+        cannot requeue themselves, so this repair is bounded and idempotent.
+        """
+        with db_connection() as conn, conn.cursor() as cur:
+            cur.execute("""
+                update public.shop_product_links
+                set last_detail_scraped_at=null, ean_enrichment_status='pending',
+                    ean_next_attempt_at=null, ean_last_result='platomania_layout_requeued',
+                    payload=payload || jsonb_build_object('ean_layout_repair',
+                        jsonb_build_object('parser_version',2,'requeued_at',now(),
+                                           'reason','platomania_layout_2026_11_19'))
+                where shop_id='platomania' and status='active'
+                  and ean_enrichment_status='not_found'
+                  and payload->'curedplant_daily_ean'->>'day'='2026-11-19'
+                  and payload->'curedplant_daily_ean'->>'ean_parser_version' is null
+                  and nullif(payload->'curedplant_daily_ean'->>'ean','') is null
+                  and nullif(payload->'curedplant_daily_ean'->>'error','') is null
+                  and nullif(payload->'curedplant_daily_ean'->>'detail_sha256','') is not null
+            """)
+            return cur.rowcount
+
     def fresh_catalog_rows(self, shop, rows):
         if not rows:
             return []
