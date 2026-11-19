@@ -2,8 +2,9 @@
   "version": 1,
   "shop": "discords",
   "cursor": {
-    "page": 1,
-    "seed": 0
+    "page": 2,
+    "seed": 0,
+    "signature": "86350b9861186ab0d00cf0603ba6d1f889d452cb97d487cbd61a6671ce903d30"
   },
   "budget": {
     "date": "2026-11-19",
