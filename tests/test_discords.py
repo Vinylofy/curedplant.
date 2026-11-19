@@ -5,6 +5,7 @@ import unittest
 from scripts.importers.import_discords import SHOP_DEFINITION, map_discords_row
 from scripts.importers.registry import get_shop_importer
 from scripts.scrapers import discords
+from scripts.workers.price_database import _ensure_discords_nl_shipping
 
 
 NOW = datetime(2026, 11, 19, tzinfo=timezone.utc)
@@ -27,6 +28,18 @@ def product(**overrides):
 
 
 class DiscordsTests(unittest.TestCase):
+    def test_nl_market_registration_uses_published_shipping_evidence(self):
+        class Cursor:
+            def execute(self, query, params):
+                self.query, self.params = query, params
+
+        cursor = Cursor()
+        _ensure_discords_nl_shipping(cursor, "shop-id")
+        self.assertEqual(cursor.params, ("shop-id",))
+        self.assertIn("'NL','confirmed'", cursor.query)
+        self.assertIn("https://discords.nl/policies/shipping-policy", cursor.query)
+        self.assertIn("on conflict (shop_id,country_code)", cursor.query)
+
     def test_listing_is_new_lp_only_and_keeps_listing_price(self):
         row = discords.listing_record(product(), page=1, seen_at=NOW)
         self.assertEqual((row["artist"], row["title"], row["price"], row["compare_at_price"]),

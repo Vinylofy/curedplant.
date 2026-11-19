@@ -62,6 +62,22 @@ def _variaworld_stored_ean_matches(cur, records):
     return _stored_ean_matches(cur, "variaworld", records)
 
 
+def _ensure_discords_nl_shipping(cur, shop_id):
+    """Register Discords for NL from its published shipping policy.
+
+    Vinylofy deliberately hides active offers when a shop has no confirmed
+    market destination. Discords explicitly publishes domestic NL delivery,
+    so keep that evidence alongside the shop registration.
+    """
+    cur.execute("""insert into public.shop_shipping_destinations
+        (shop_id,country_code,status,source_url,verified_at,note)
+        values (%s,'NL','confirmed','https://discords.nl/policies/shipping-policy',now(),
+                'Binnen NL: regulier pakket EUR 6,95; gratis vanaf EUR 70.')
+        on conflict (shop_id,country_code) do update set
+          status='confirmed',source_url=excluded.source_url,
+          verified_at=excluded.verified_at,note=excluded.note""", (shop_id,))
+
+
 def update_existing(worker, records, started_at, *, allow_no_matches=False, preserve_unknown=True):
     """Update existing offers; selected shops may add an exact stored-EAN offer.
 
@@ -87,6 +103,8 @@ def update_existing(worker, records, started_at, *, allow_no_matches=False, pres
             if len(shops) != 1:
                 raise RuntimeError(f"Expected one registered shop for {domain}; found {len(shops)}")
             shop_id = shops[0]["id"]
+            if worker == "discords":
+                _ensure_discords_nl_shipping(cur, shop_id)
             # One narrowly scoped shop snapshot. Stable lock order prevents
             # two price writers taking these rows in opposite orders.
             cur.execute("""select product_id,product_url from public.prices where shop_id=%s""", (shop_id,))
