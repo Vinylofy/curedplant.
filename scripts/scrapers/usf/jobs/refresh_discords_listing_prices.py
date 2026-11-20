@@ -13,6 +13,8 @@ from scripts.scrapers.usf.core.link_registry import upsert_discovered_links
 from scripts.scrapers.usf.core.listing_price_sync import ListingOffer, sync_listing_offers
 from scripts.scrapers.usf.core.models import DiscoveredLink
 
+SHOPIFY_PRODUCTS_JSON_MAX_PAGES = 250
+
 
 def collect(*, max_pages: int, page_size: int, delay: float):
     session, seen_at = make_session(), datetime.now(timezone.utc)
@@ -43,6 +45,12 @@ def collect(*, max_pages: int, page_size: int, delay: float):
             print("[DISCORDS-LISTING]", {"page": page, "raw": len(products), "vinyl": len(records), "total": len(links)}, flush=True)
             if len(products) < page_size:
                 stop = "partial_last_page"
+                break
+            # Shopify's public products.json endpoint caps a collection at
+            # 25,000 records (250 pages at limit=100); requesting page 251
+            # returns HTTP 400 even after a complete, valid feed read.
+            if page_size == PAGE_SIZE and page >= SHOPIFY_PRODUCTS_JSON_MAX_PAGES:
+                stop = "shopify_products_json_25000_record_cap"
                 break
             page += 1
             time.sleep(delay)

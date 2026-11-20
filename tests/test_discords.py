@@ -36,6 +36,20 @@ class DiscordsTests(unittest.TestCase):
         self.assertIn('default: "0"', workflow)
         self.assertIn("github.event_name == 'schedule' && '0'", workflow)
 
+    def test_discords_full_listing_stops_at_shopify_25000_record_cap(self):
+        from unittest.mock import Mock
+        from scripts.scrapers.usf.jobs import refresh_discords_listing_prices as listing
+
+        session = Mock()
+        rows = [product(id=index, handle=f"record-{index}") for index in range(100)]
+        with patch.object(listing, "make_session", return_value=session), \
+             patch.object(listing, "fetch_page", return_value=rows), \
+             patch.object(listing, "SHOPIFY_PRODUCTS_JSON_MAX_PAGES", 1), \
+             patch.object(listing.time, "sleep"):
+            links, offers, _, stop = listing.collect(max_pages=0, page_size=100, delay=0)
+        self.assertEqual((len(links), len(offers), stop),
+                         (100, 100, "shopify_products_json_25000_record_cap"))
+
     def test_nl_market_registration_uses_published_shipping_evidence(self):
         class Cursor:
             def execute(self, query, params):
