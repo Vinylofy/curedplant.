@@ -7,7 +7,7 @@ import json
 import os
 from pathlib import Path
 import re
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, parse_qsl, urlsplit
 
 
 def capture(record):
@@ -40,6 +40,11 @@ def url_key(value):
         article = parse_qs(parsed.query).get("at")
         if article and len(article) == 1 and article[0].isdigit():
             path += "?at=" + article[0]
+    if host == "groovespin.nl" and path.startswith("/album/"):
+        release = [value for key, value in parse_qsl(parsed.query) if key == "releaseId"]
+        if len(release) != 1 or not re.fullmatch(r"[1-9][0-9]*", release[0]):
+            return ""
+        path += "?releaseId=" + release[0]
     if host == "imusic.nl":
         match = re.match(r"/music/(\d{12,14})(?:/|$)", path)
         if match:

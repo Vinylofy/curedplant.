@@ -24,11 +24,26 @@ approved runner.
 
 ## Daily full price refresh
 
-Prices observed during an EAN batch cover that batch only. The public sitemap
-contained 109,362 unique album pages at the pilot, so this route cannot refresh
-the entire catalogue daily. A daily round needs a complete new-vinyl EUR feed
-or a partner API that supports full catalogue enumeration. The shop documents
-keyed UCP search and lookup, but full enumeration has not been demonstrated.
+The separate price workflow follows the storefront's listing pagination.
+It uses the old scraper's bulk collection approach and reads the current
+storefront's embedded catalogue data. A price is eligible only for an
+explicitly new vinyl listing containing a single product and release ID
+with an exact EUR price. Album-level starting prices and groups of variants
+are excluded. Database matching retains the release ID and only updates an
+existing offer with the same identity.
+
+Configure `GROOVESPIN_PRICE_LISTING_URL` with an approved listing URL on
+www.groovespin.nl. The workflow checks robots.txt and keeps listing filters
+fixed while following next-page links. A manual dry run reports coverage.
+The scheduled write requires a complete traversal and one eligible offer
+per listing group. The run neither infers availability from absence nor
+deactivates missing offers.
+
+The proposed filtered URL hits the shop's `/*?*formats` robots exclusion.
+On a saved public unfiltered page, 48 groups yielded zero exact new-vinyl
+prices. Full daily release-level coverage needs a permitted listing or feed
+with explicit per-release pricing. The shop's keyed UCP search and lookup
+do not yet establish full catalogue enumeration.
 
 ## Registration
 
