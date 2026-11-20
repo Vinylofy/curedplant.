@@ -1,0 +1,13 @@
+{
+  "country": "CZ",
+  "locality": "Liberec",
+  "operator": "GRAMODESKY.CZ s.r.o.",
+  "country_source": "https://www.groovespin.nl/impressum",
+  "shipping_source": "https://www.groovespin.nl/album/chet-faker-built-on-glass-2014-4",
+  "shipping_terms": "https://www.groovespin.nl/algemene-voorwaarden",
+  "verified_at": "2026-11-20",
+  "destinations": {
+    "NL": {"pickup_eur": "6.76"},
+    "BE": {"pickup_eur": "6.76"}
+  }
+}
