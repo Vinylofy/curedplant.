@@ -1,37 +1,127 @@
 name: "Curedplant | Price | Discords"
-run-name: "Price | Discords | ${{ github.event_name == 'schedule' && 'scheduled write' || (inputs.write && 'write=true' || 'write=false') }} | limit=${{ github.event_name == 'schedule' && '0' || inputs.limit }}"
+run-name: "Price | Discords | ${{ github.event_name == 'schedule' && 'scheduled resumable write' || (inputs.write && 'write=true' || 'write=false') }} | limit=${{ github.event_name == 'schedule' && '20,000 source products' || inputs.limit }}"
 
 on:
   schedule:
+    # Start one run each day; successful batches automatically continue until
+    # the source cap/end is reached, then the saved cursor returns to page 1.
     - cron: "17 4 * * *"
   workflow_dispatch:
     inputs:
       limit:
-        description: "0 = full new-LP collection; positive = page pilot"
+        description: "0 = full collection; for resume use 1..200 pages (100 products/page)"
         required: true
         default: "0"
         type: string
       write:
-        description: "Write only exact-EAN matched prices"
+        description: "Write only validated prices to existing products"
+        required: true
+        default: false
+        type: boolean
+      resume:
+        description: "Continue from the last verified page through the catalogue end (write=true, limit 1..200)"
         required: true
         default: false
         type: boolean
       approved_dry_run_id:
-        description: "Optional source run ID: false=recheck, true=write reviewed prices; max 6 hours"
+        description: "Optional recent source run ID to revalidate without another catalogue fetch"
         required: false
         default: ""
         type: string
 
 permissions:
-  contents: read
-  actions: read
+  contents: write
+  actions: write
+
+concurrency:
+  group: curedplant-discords-price
+  cancel-in-progress: false
 
 jobs:
   worker:
-    uses: ./.github/workflows/_catalog-price-worker.yml
-    with:
-      approved_dry_run_id: ${{ inputs.approved_dry_run_id || '' }}
-      worker: discords
-      limit: ${{ github.event_name == 'schedule' && '0' || inputs.limit }}
-      write: ${{ github.event_name == 'schedule' || inputs.write }}
-    secrets: inherit
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      GH_TOKEN: ${{ github.token }}
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Verify approved source evidence provenance
+        if: inputs.approved_dry_run_id != ''
+        uses: actions/github-script@v8
+        env:
+          SOURCE_RUN: ${{ inputs.approved_dry_run_id }}
+        with:
+          script: |
+            const id = Number(process.env.SOURCE_RUN);
+            if (!Number.isSafeInteger(id) || id <= 0) throw new Error('Source run ID must be a positive integer');
+            const {data: run} = await github.rest.actions.getWorkflowRun({...context.repo, run_id: id});
+            if (run.head_repository.full_name !== `${context.repo.owner}/${context.repo.repo}` ||
+                run.head_branch !== 'main' || run.event !== 'workflow_dispatch' ||
+                !['success','failure'].includes(run.conclusion) ||
+                run.path !== '.github/workflows/price-discords.yml' ||
+                Date.now() - Date.parse(run.created_at) > 6 * 3600000) {
+              throw new Error('Source run must be a recent manual Discords price run from main');
+            }
+      - name: Download approved read-only price evidence
+        if: inputs.approved_dry_run_id != ''
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.approved_dry_run_id }}
+          name: price-evidence-discords-${{ inputs.approved_dry_run_id }}
+          path: output/approved-price-source
+      - name: Install scraper dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Run bounded Discords price worker
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          LIMIT: ${{ github.event_name == 'schedule' && '200' || inputs.limit }}
+          WRITE: ${{ github.event_name == 'schedule' || inputs.write }}
+          RESUME: ${{ github.event_name == 'schedule' || inputs.resume }}
+          APPROVED_SOURCE_RUN: ${{ inputs.approved_dry_run_id }}
+        run: |
+          set -euo pipefail
+          if [ "$WRITE" = "true" ] && [ -z "${DATABASE_URL:-}" ]; then
+            echo "DATABASE_URL is required when write=true"
+            exit 1
+          fi
+          args=(--worker discords --limit "$LIMIT")
+          if [ "$WRITE" = "true" ]; then args+=(--write); fi
+          if [ "$RESUME" = "true" ]; then args+=(--resume-discords); fi
+          if [ -n "$APPROVED_SOURCE_RUN" ]; then
+            args+=(--approved-source-run "$APPROVED_SOURCE_RUN" --approved-source-dir output/approved-price-source)
+          fi
+          python -u -m scripts.workers.run_catalog_price "${args[@]}"
+      - name: Upload price source and database verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: price-evidence-discords-${{ github.run_id }}
+          path: output/price-verification/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Dispatch the next 20,000-product batch until the catalogue ends
+        if: success() && (github.event_name == 'schedule' || inputs.resume)
+        run: |
+          if python - <<'PY'
+          import json
+          from pathlib import Path
+          summary = json.loads(Path("output/price-verification/discords/summary.json").read_text())
+          cursor = (summary.get("progress") or {}).get("next_page", 1)
+          if summary.get("status") != "green":
+              raise SystemExit("Current batch is not green; leaving the cursor for a retry.")
+          raise SystemExit(0 if cursor > 1 else 1)
+          PY
+          then
+            gh api --method POST "repos/$GITHUB_REPOSITORY/actions/workflows/price-discords.yml/dispatches" --input - <<'JSON'
+          {"ref":"main","inputs":{"limit":"200","write":"true","resume":"true"}}
+          JSON
+            echo "A verified batch remains; the next 20,000-product run was queued."
+          else
+            echo "Discords catalogue end reached; cursor is at page 1 and the chain is complete."
+          fi

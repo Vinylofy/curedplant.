@@ -16,15 +16,18 @@ from scripts.scrapers.usf.core.models import DiscoveredLink
 SHOPIFY_PRODUCTS_JSON_MAX_PAGES = 250
 
 
-def collect(*, max_pages: int, page_size: int, delay: float):
+def collect(*, max_pages: int, page_size: int, delay: float, start_page: int = 1,
+            progress_file: str | None = None):
     session, seen_at = make_session(), datetime.now(timezone.utc)
     links: dict[str, DiscoveredLink] = {}
     offers: dict[str, ListingOffer] = {}
     signatures: set[tuple[str, ...]] = set()
-    page, stop = 1, "not_started"
+    page, last_page, stop, pages_processed = start_page, start_page, "not_started", 0
     try:
-        while max_pages == 0 or page <= max_pages:
+        while max_pages == 0 or pages_processed < max_pages:
+            last_page = page
             products = fetch_page(session, page, page_size)
+            pages_processed += 1
             if not products:
                 stop = "empty_page"
                 break
@@ -58,20 +61,42 @@ def collect(*, max_pages: int, page_size: int, delay: float):
             stop = "max_pages_limit"
     finally:
         session.close()
+    if progress_file:
+        from pathlib import Path
+        import json
+        progress = {"start_page": start_page, "pages_processed": pages_processed,
+                    "last_page": last_page, "next_page": page if stop == "max_pages_limit" else 1,
+                    "stop": stop}
+        Path(progress_file).write_text(json.dumps(progress, indent=2) + "\n", encoding="utf-8")
     return list(links.values()), list(offers.values()), seen_at, stop
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--max-pages", type=int, default=1)
+    parser.add_argument("--start-page", type=int, default=1)
     parser.add_argument("--page-size", type=int, default=PAGE_SIZE)
     parser.add_argument("--delay", type=float, default=0.5)
+    parser.add_argument("--progress-file")
     parser.add_argument("--write", action="store_true")
     args = parser.parse_args()
-    if args.max_pages < 0 or not 1 <= args.page_size <= PAGE_SIZE or args.delay < 0:
+    if args.max_pages < 0 or not 1 <= args.start_page <= SHOPIFY_PRODUCTS_JSON_MAX_PAGES or not 1 <= args.page_size <= PAGE_SIZE or args.delay < 0:
         parser.error("invalid bounded listing arguments")
-    links, offers, _, stop = collect(max_pages=args.max_pages, page_size=args.page_size, delay=args.delay)
+    links, offers, _, stop = collect(max_pages=args.max_pages, page_size=args.page_size, delay=args.delay,
+                                      start_page=args.start_page, progress_file=args.progress_file)
     print("[DISCORDS-LISTING-SUMMARY]", {"links": len(links), "offers": len(offers), "stop": stop, "write": args.write}, flush=True)
+    if stop == "empty_or_repeated_page":
+        raise SystemExit("[ERROR] Discords pagination repeated a page; refusing this partial price batch")
+    if args.progress_file:
+        from pathlib import Path
+        import json
+        progress = json.loads(Path(args.progress_file).read_text(encoding="utf-8"))
+    else:
+        progress = {}
+    terminal_empty_probe = bool(args.progress_file and stop == "empty_page"
+                                and progress.get("pages_processed") == 1 and args.start_page > 1)
+    if not links and terminal_empty_probe:
+        return 0
     if not links or len(offers) / len(links) < .9:
         raise SystemExit("[ERROR] Discords listing coverage failed safe guards")
     if not args.write:

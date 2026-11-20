@@ -14,14 +14,16 @@ import sys
 IMUSIC_GENRES = "30:Country,44:Electronic,51:Folk,60:Gospel-Christian,66:Metal,73:Industrial,74:Instrumental,76:Jazz,94:Musical,98:New-Age,104:Pop,112:Reggae,115:Rock,128:Soundtrack,132:Spoken-Word,151:World-International,157:Easy-Listening,784:Klassiek,808:Kerstmis,2111:Schlager,2460:Hip-Hop-Rap,3018:K-pop,16415:Singer-songwriter,16619:Soul-RnB,16637:Indie,17888:Punk,33988:Downtempo,34057:Nu-Metal,34657:Eurodance,16:Blues"
 
 
-def command_for(worker: str, limit: int, source_version: str = "current", write: bool = False) -> list[str]:
+def command_for(worker: str, limit: int, source_version: str = "current", write: bool = False,
+                start_page: int = 1, progress_file: str | None = None) -> list[str]:
     if source_version == "windows-baseline":
         from scripts.workers.run_windows_baseline import command_for as baseline_command
         return baseline_command(worker, "price", limit)
     common = [sys.executable, "-u", "-m"]
     commands: dict[str, list[str]] = {
         "bobsvinyl": common + ["scripts.scrapers.usf.jobs.refresh_bobsvinyl_listing_prices", "--start-page", "1", "--max-pages", str(limit)],
-        "discords": common + ["scripts.scrapers.usf.jobs.refresh_discords_listing_prices", "--max-pages", str(limit)],
+        "discords": common + ["scripts.scrapers.usf.jobs.refresh_discords_listing_prices", "--max-pages", str(limit),
+                               "--start-page", str(start_page)] + (["--progress-file", progress_file] if progress_file else []),
         "everythingjazz": common + ["scripts.scrapers.usf.jobs.refresh_everythingjazz_listing_prices", "--start-page", "1", "--max-pages", str(limit)],
         "fiftiesstore": common + ["scripts.scrapers.usf.jobs.refresh_fiftiesstore_listing_prices", "--max-products", str(limit), "--vinyl-only", "--skip-delist-missing"],
         "musiconvinyl": common + ["scripts.scrapers.usf.jobs.refresh_musiconvinyl_prices_only", "--max-pages", str(limit), "--listing-limit", "250"],
@@ -64,6 +66,7 @@ def main() -> int:
     parser.add_argument("--approved-source-dir")
     parser.add_argument("--approved-source-run")
     parser.add_argument("--source-version", choices=("current", "windows-baseline"), default="current")
+    parser.add_argument("--resume-discords", action="store_true", help="resume the next bounded Discords listing page and checkpoint only after verified writes")
     args = parser.parse_args()
     if bool(args.approved_source_dir) != bool(args.approved_source_run):
         parser.error("Approved source directory and run ID are both required")
@@ -71,6 +74,8 @@ def main() -> int:
         parser.error("Source evidence reuse is only allowed for the current source")
     if args.limit < 0:
         parser.error("--limit must be >= 0; 0 follows native pagination stop conditions")
+    if args.resume_discords and (args.worker != "discords" or not 1 <= args.limit <= 200 or not args.write or args.approved_source_run):
+        parser.error("--resume-discords requires Discords, 1..200 pages (max 20,000 source products), write=true, and a fresh source scan")
     if args.source_version == "windows-baseline":
         if args.write:
             parser.error("Windows baseline is read-only; write=true is not allowed")
@@ -78,6 +83,15 @@ def main() -> int:
 
     from scripts.workers.price_evidence import assess
     from scripts.workers.price_database import update_existing
+    progress_store = None
+    start_page = 1
+    progress_file = None
+    if args.resume_discords:
+        from scripts.workers.discords_price_progress import GitHubProgress, validate
+        progress_store = GitHubProgress()
+        checkpoint = validate(progress_store.load())
+        start_page = checkpoint["next_page"]
+        progress_file = str((Path("output/price-verification") / args.worker / "source-progress.json").resolve())
     started = datetime.now(timezone.utc)
     directory = Path("output/price-verification") / args.worker
     directory.mkdir(parents=True, exist_ok=True)
@@ -93,7 +107,8 @@ def main() -> int:
         env = dict(os.environ, PYTHONUTF8="1", PYTHONIOENCODING="utf-8", DATABASE_URL="", CUREDPLANT_PRICE_EVIDENCE=str(evidence.resolve()),
                    PGOPTIONS="-c default_transaction_read_only=on")
         # Native collection never receives a DB credential or a write flag.
-        command = command_for(args.worker, args.limit, args.source_version, write=True)
+        command = command_for(args.worker, args.limit, args.source_version, write=True,
+                              start_page=start_page, progress_file=progress_file)
         if args.worker == "myrecordstore" and args.limit == 0:
             from scripts.workers.myrecordstore_targets import registered_offers
             targets = directory / "existing-offers.json"
@@ -103,6 +118,16 @@ def main() -> int:
         source_returncode = subprocess.run(command, check=False, env=env).returncode
         records = [json.loads(line) for line in evidence.read_text().splitlines() if line.strip()]
     rows, summary = assess(records)
+    terminal_empty_probe = False
+    source_progress = None
+    if progress_store and Path(progress_file).exists():
+        source_progress = json.loads(Path(progress_file).read_text(encoding="utf-8"))
+        terminal_empty_probe = (source_returncode == 0 and not records
+                                and source_progress.get("stop") == "empty_page"
+                                and source_progress.get("pages_processed") == 1
+                                and source_progress.get("start_page", 1) > 1)
+        if terminal_empty_probe:
+            summary.update(status="green", error_count=0, errors=[], catalog_complete=True)
     summary.update(worker=args.worker, write=args.write, limit=args.limit,
                    started_at=started.isoformat(), source_returncode=source_returncode,
                    approved_source_run=args.approved_source_run,
@@ -113,12 +138,24 @@ def main() -> int:
     if args.write and summary["status"] == "green":
         try:
             summary["database_writes"] = None  # A failed post-commit check must not falsely claim zero writes.
-            stats = update_existing(args.worker, rows, started)
-            summary["database"] = stats
-            summary["database_writes"] = stats["updated"]
+            if terminal_empty_probe:
+                summary["database"] = {"updated": 0, "note": "confirmed end of Discords catalogue"}
+                summary["database_writes"] = 0
+            else:
+                stats = update_existing(args.worker, rows, started)
+                summary["database"] = stats
+                summary["database_writes"] = stats["updated"]
             if args.worker == "northendhaarlem":
                 from scripts.workers.album_draft_prices import update_northend_drafts
                 summary["album_pilot_drafts"] = update_northend_drafts(rows, started)
+            if progress_store:
+                if source_progress is None:
+                    source_progress = json.loads(Path(progress_file).read_text(encoding="utf-8"))
+                checkpoint.update(next_page=source_progress["next_page"],
+                                  last_run_id=os.environ.get("GITHUB_RUN_ID"),
+                                  last_completed_at=datetime.now(timezone.utc).isoformat())
+                progress_store.save(checkpoint)
+                summary["progress"] = source_progress
         except Exception as exc:
             summary["status"] = "red"
             summary["errors"].append({"reason": "database_verification_failed", "error": str(exc)})
