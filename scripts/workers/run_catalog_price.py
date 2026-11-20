@@ -143,7 +143,8 @@ def main() -> int:
                 summary["database"] = {"updated": 0, "note": "confirmed end of Discords catalogue"}
                 summary["database_writes"] = 0
             else:
-                stats = update_existing(args.worker, rows, started)
+                stats = update_existing(args.worker, rows, started,
+                                        allow_no_matches=(args.worker == "discords"))
                 summary["database"] = stats
                 summary["database_writes"] = stats["updated"]
             if args.worker == "northendhaarlem":
