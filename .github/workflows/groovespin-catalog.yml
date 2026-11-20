@@ -46,10 +46,10 @@ jobs:
       - run: python -m unittest discover -s tests -p 'test_groovespin*.py' -v
 
   catalog:
-    if: github.event_name != 'pull_request' && vars.GROOVESPIN_APPROVED_RUNNER != ''
+    if: github.event_name != 'pull_request'
     permissions:
       contents: write
-    runs-on: [self-hosted, Linux, "${{ vars.GROOVESPIN_APPROVED_RUNNER }}"]
+    runs-on: [self-hosted, Windows, "${{ vars.BOL_FEED_RUNNER || 'X64' }}"]
     timeout-minutes: 90
     env:
       GH_TOKEN: ${{ github.token }}
@@ -67,10 +67,12 @@ jobs:
           LIMIT: ${{ github.event_name == 'schedule' && '250' || inputs.limit || '20' }}
           WRITE: ${{ inputs.write || github.event_name == 'schedule' }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        shell: powershell
         run: |
-          args=(--limit "$LIMIT")
-          if [[ "$WRITE" == true ]]; then args+=(--write); fi
-          python -m scripts.workers.groovespin_catalog "${args[@]}"
+          $catalogArgs = @('--limit', $env:LIMIT)
+          if ($env:WRITE -eq 'true') { $catalogArgs += '--write' }
+          python -m scripts.workers.groovespin_catalog @catalogArgs
+          exit $LASTEXITCODE
       - uses: actions/upload-artifact@v4
         if: always()
         with:

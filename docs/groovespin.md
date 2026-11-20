@@ -16,11 +16,9 @@ at least two seconds apart. HTTP 401, 403 or 429 stops the batch and future
 write batches for the day.
 
 GitHub-hosted Ubuntu returned HTTP 403 on the public sitemap. Pull requests
-therefore run offline tests on hosted Ubuntu. The live workflow requires
-`GROOVESPIN_APPROVED_RUNNER` to identify a self-hosted Ubuntu runner with
-approved shop access. Manual runs default to a read-only 20-album pilot. Only
-enable scheduled production collection after a successful pilot from the
-approved runner.
+therefore run offline tests on hosted Ubuntu. The live EAN job uses the
+existing Curedplant Windows runner selector (`BOL_FEED_RUNNER`, default
+`X64`). Manual runs default to a read-only 20-album pilot.
 
 ## Daily full price refresh
 
