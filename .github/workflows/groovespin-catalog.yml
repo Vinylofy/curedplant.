@@ -45,12 +45,9 @@ jobs:
       - name: Collect release prices and EANs
         env:
           LIMIT: ${{ github.event_name == 'schedule' && '250' || inputs.limit || '20' }}
-          WRITE: ${{ inputs.write || (github.event_name == 'schedule' && vars.GROOVESPIN_CATALOG_ACTIVE == 'true') }}
+          WRITE: ${{ inputs.write || github.event_name == 'schedule' }}
           DATABASE_URL: ${{ github.event_name != 'pull_request' && secrets.DATABASE_URL || '' }}
         run: |
-          if [[ "$GITHUB_EVENT_NAME" == schedule && "$WRITE" != true ]]; then
-            exit 0
-          fi
           args=(--limit "$LIMIT")
           if [[ "$WRITE" == true ]]; then args+=(--write); fi
           python -m scripts.workers.groovespin_catalog "${args[@]}"

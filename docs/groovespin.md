@@ -8,8 +8,8 @@ EAN, an artist and a title. It retains the release link and reported stock
 status. Offers that disappear from a crawl are left to the existing offer
 lifecycle.
 
-Scheduled collection runs four times per day once the repository variable
-`GROOVESPIN_CATALOG_ACTIVE` is `true`. Each run reserves up to 250 album pages
+Scheduled collection runs four times per day on the default branch. Each run
+reserves up to 250 album pages
 against a shared 1,000-page daily ceiling in Europe/Amsterdam. The cursor
 advances after processing and resumes at the next numeric album ID. The
 worker circles back after reaching the end. There is a minimum two-second

@@ -166,6 +166,22 @@ def write_shop_details(dsn, details):
                 """, (shop[0], destination, details["shipping_source"], details["verified_at"],
                       f"Advertised EUR from {fee['pickup_eur']} pickup point / {fee['delivery_eur']} home delivery. "
                       "Exact charges vary at checkout. Shop based in Liberec, Czechia."))
+        markets = connection.execute("""
+            select country_code from shop_shipping_destinations
+            where shop_id=%s and status='confirmed' and country_code in ('NL','BE')
+            """, (shop[0],)).fetchall()
+        if {row[0] for row in markets} != {"NL", "BE"}:
+            raise RuntimeError("An explicit market exclusion needs review before shop activation")
+        active_offers = connection.execute(
+            "select count(*) from prices where shop_id=%s and is_active", (shop[0],)
+        ).fetchone()[0]
+        if not active_offers:
+            raise RuntimeError("GrooveSpin has no active offers after import")
+        connection.execute(
+            "update shops set is_active=true, updated_at=now() where id=%s and not is_active",
+            (shop[0],),
+        )
+    return active_offers
 
 
 def main():
@@ -227,7 +243,8 @@ def main():
     summary = json.loads(summary_path.read_text())
     if progress:
         if summary["accepted_records"]:
-            write_shop_details(dsn, details)
+            active_offers = write_shop_details(dsn, details)
+            print(f"GrooveSpin registered for NL and BE with {active_offers} active offers.")
         cursor["last_album_id"] = batch[-1][0]
         progress.save(state)
     print(f"Album pages: {len(batch)} of {len(albums)}. Last album ID: {batch[-1][0]}.")
