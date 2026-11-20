@@ -2,10 +2,9 @@
   "version": 1,
   "shop": "cdhal",
   "cursor": {
-    "page": 1,
+    "page": 2,
     "seed": 0,
-    "exhausted": true,
-    "exhausted_on": "2026-11-13"
+    "signature": "96214ad1048c34beb695fa45eedfec040523d176cb2e22a5849c15417b06b715"
   },
   "budget": {
     "date": "2026-11-20",
