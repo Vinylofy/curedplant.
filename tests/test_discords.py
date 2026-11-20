@@ -1,6 +1,7 @@
 import copy
 from datetime import datetime, timezone
 import unittest
+from unittest.mock import Mock, patch
 
 from scripts.importers.import_discords import SHOP_DEFINITION, map_discords_row
 from scripts.importers.registry import get_shop_importer
@@ -39,6 +40,21 @@ class DiscordsTests(unittest.TestCase):
         self.assertIn("'NL','confirmed'", cursor.query)
         self.assertIn("https://discords.nl/policies/shipping-policy", cursor.query)
         self.assertIn("on conflict (shop_id,country_code)", cursor.query)
+
+    def test_daily_source_uses_shopify_specific_quarter_second_pacing(self):
+        from scripts.workers.ean_sources import EanSource
+
+        source = EanSource.__new__(EanSource)
+        source.shop, source.sleeper, source.last_request = "discords", Mock(), 10.0
+        source.events = []
+        response = Mock(status_code=200, content=b"{}")
+        response.raise_for_status.return_value = None
+        source.session = Mock()
+        source.session.get.return_value = response
+        with patch("scripts.workers.ean_sources.time.monotonic", return_value=10.1):
+            source.get("https://discords.nl/products/example.js")
+        source.sleeper.assert_called_once()
+        self.assertAlmostEqual(source.sleeper.call_args.args[0], 0.15)
 
     def test_listing_is_new_lp_only_and_keeps_listing_price(self):
         row = discords.listing_record(product(), page=1, seen_at=NOW)

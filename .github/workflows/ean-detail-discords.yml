@@ -6,9 +6,9 @@ on:
   workflow_dispatch:
     inputs:
       limit:
-        description: "Max new product details (1-100); daily total never exceeds 100"
+        description: "Max new product details (1-1000); daily total never exceeds 1000"
         required: true
-        default: "100"
+        default: "1000"
         type: string
       write:
         description: "Save EAN metadata and progress; never write prices"
@@ -24,6 +24,6 @@ jobs:
     uses: ./.github/workflows/_daily-ean-worker.yml
     with:
       worker: discords
-      limit: ${{ github.event_name == 'schedule' && '100' || inputs.limit }}
+      limit: ${{ github.event_name == 'schedule' && '1000' || inputs.limit }}
       write: ${{ github.event_name == 'schedule' || inputs.write }}
     secrets: inherit

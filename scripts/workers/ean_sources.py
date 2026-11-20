@@ -75,7 +75,8 @@ class EanSource:
     def get(self, url):
         if self.last_request is not None:
             delay = (30.0 if self.shop == 'musiconvinyl' and '/products.json?' in url
-                     else 3.0 if self.shop == 'musiconvinyl' else 2.0 if self.shop == "cdhal" else 1.0)
+                     else 3.0 if self.shop == 'musiconvinyl' else 2.0 if self.shop == "cdhal"
+                     else 0.25 if self.shop == "discords" else 1.0)
             remaining = delay - (time.monotonic() - self.last_request)
             if remaining > 0:
                 self.sleeper(remaining)
