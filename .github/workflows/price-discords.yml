@@ -9,7 +9,7 @@ on:
       limit:
         description: "0 = full new-LP collection; positive = page pilot"
         required: true
-        default: "1"
+        default: "0"
         type: string
       write:
         description: "Write only exact-EAN matched prices"

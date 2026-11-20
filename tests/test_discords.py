@@ -1,5 +1,6 @@
 import copy
 from datetime import datetime, timezone
+from pathlib import Path
 import unittest
 from unittest.mock import Mock, patch
 
@@ -29,6 +30,12 @@ def product(**overrides):
 
 
 class DiscordsTests(unittest.TestCase):
+    def test_price_workflow_defaults_to_full_collection(self):
+        workflow = (Path(__file__).parents[1] / ".github/workflows/price-discords.yml").read_text()
+        self.assertIn('description: "0 = full new-LP collection', workflow)
+        self.assertIn('default: "0"', workflow)
+        self.assertIn("github.event_name == 'schedule' && '0'", workflow)
+
     def test_nl_market_registration_uses_published_shipping_evidence(self):
         class Cursor:
             def execute(self, query, params):
