@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 import os
+from uuid import UUID
 import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
@@ -129,7 +130,7 @@ def update_existing(worker, records, started_at, *, allow_no_matches=False, pres
                              if product_id in registered_ids}
                 new_matches = {product_id: record for product_id, record in unique.items()
                                if product_id not in registered_ids}
-            target_ids = [r["product_id"] for r in registered
+            target_ids = [UUID(str(r["product_id"])) for r in registered
                           if url_key(r["product_url"]) in expected or str(r["product_id"]) in fallbacks]
             cur.execute("""select product_id, shop_id, product_url, price, currency,
                                   availability, last_seen_at, is_active
@@ -176,7 +177,7 @@ def update_existing(worker, records, started_at, *, allow_no_matches=False, pres
                                 "changed": changed})
                 stats["updated"] += 1
                 stats["changed"] += int(changed)
-                written.append((target["product_id"], value, availability, product_url))
+                written.append((UUID(str(target["product_id"])), value, availability, product_url))
                 if len(stats["samples"]) < 12:
                     stats["samples"].append({"url": record["source_url"], "before": str(target["price"]), "after": str(value), "currency": record["currency"]})
             for product_id, record in new_matches.items():
@@ -189,7 +190,7 @@ def update_existing(worker, records, started_at, *, allow_no_matches=False, pres
                 stats["matched"] += 1
                 stats["updated"] += 1
                 stats["inserted"] += 1
-                written.append((product_id, value, availability, record["source_url"]))
+                written.append((UUID(str(product_id)), value, availability, record["source_url"]))
                 if len(stats["samples"]) < 12:
                     stats["samples"].append({"url": record["source_url"], "before": None,
                                              "after": str(value), "currency": record["currency"]})
