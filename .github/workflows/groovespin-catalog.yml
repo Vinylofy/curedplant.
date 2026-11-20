@@ -54,28 +54,60 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       PYTHONUNBUFFERED: "1"
+    defaults:
+      run:
+        shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0}
+        working-directory: ${{ runner.temp }}
     steps:
-      - uses: actions/checkout@v5
+      - name: Download exact source to a Windows-safe path
+        uses: actions/github-script@v8
         with:
-          persist-credentials: false
-      - uses: actions/setup-python@v6
+          script: |
+            const fs = require('node:fs/promises');
+            const path = require('node:path');
+            const destination = path.join(process.env.RUNNER_TEMP,
+              `groovespin-${process.env.GITHUB_RUN_ID}-${process.env.GITHUB_RUN_ATTEMPT}`);
+            await fs.mkdir(destination);
+            const {data} = await github.rest.repos.downloadZipballArchive({...context.repo, ref: context.sha});
+            await fs.writeFile(path.join(destination, 'source.zip'), Buffer.from(data));
+            core.exportVariable('GROOVESPIN_JOB_DIR', destination);
+      - name: Extract immutable source
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Expand-Archive -LiteralPath (Join-Path $env:GROOVESPIN_JOB_DIR 'source.zip') -DestinationPath $env:GROOVESPIN_JOB_DIR
+          $sources = @(Get-ChildItem -LiteralPath $env:GROOVESPIN_JOB_DIR -Directory)
+          if ($sources.Count -ne 1) { throw 'Unexpected source archive layout' }
+          Add-Content -LiteralPath $env:GITHUB_ENV -Encoding UTF8 -Value "GROOVESPIN_SOURCE_DIR=$($sources[0].FullName)"
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
         with:
-          python-version: "3.12"
-      - run: python -m pip install -r requirements.txt
+          version: '0.12.15'
+          working-directory: ${{ runner.temp }}
+          enable-cache: false
+        env:
+          UV_CACHE_DIR: ${{ runner.temp }}/shop-uv-cache
+      - name: Prepare Python
+        run: |
+          $venv = Join-Path $env:GROOVESPIN_JOB_DIR 'venv'
+          uv venv --no-project --managed-python --python 3.12 --link-mode copy $venv
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $python = Join-Path $venv 'Scripts\python.exe'
+          uv pip install --python $python -r (Join-Path $env:GROOVESPIN_SOURCE_DIR 'requirements.txt')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Add-Content -LiteralPath $env:GITHUB_ENV -Encoding UTF8 -Value "GROOVESPIN_PYTHON=$python"
       - name: Collect release prices and EANs
         env:
           LIMIT: ${{ github.event_name == 'schedule' && '250' || inputs.limit || '20' }}
           WRITE: ${{ inputs.write || github.event_name == 'schedule' }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        shell: powershell
         run: |
+          Set-Location -LiteralPath $env:GROOVESPIN_SOURCE_DIR
           $catalogArgs = @('--limit', $env:LIMIT)
           if ($env:WRITE -eq 'true') { $catalogArgs += '--write' }
-          python -m scripts.workers.groovespin_catalog @catalogArgs
+          & $env:GROOVESPIN_PYTHON -m scripts.workers.groovespin_catalog @catalogArgs
           exit $LASTEXITCODE
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && env.GROOVESPIN_SOURCE_DIR != ''
         with:
           name: groovespin-${{ github.run_id }}-${{ github.run_attempt }}
-          path: output/groovespin/
+          path: ${{ env.GROOVESPIN_SOURCE_DIR }}/output/groovespin/
           retention-days: 14
