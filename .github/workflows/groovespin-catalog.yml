@@ -86,13 +86,17 @@ jobs:
         env:
           UV_CACHE_DIR: ${{ runner.temp }}/shop-uv-cache
       - name: Prepare Python
+        timeout-minutes: 5
         working-directory: ${{ runner.temp }}
         run: |
-          $venv = Join-Path $env:GROOVESPIN_JOB_DIR 'venv'
-          uv venv --no-project --managed-python --python 3.12 --link-mode copy $venv
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $env:UV_PYTHON_INSTALL_DIR = Join-Path $env:LOCALAPPDATA 'Vinylofy\shop-price-python'
+          $venv = Join-Path $env:LOCALAPPDATA 'Vinylofy\groovespin-ean-venv'
           $python = Join-Path $venv 'Scripts\python.exe'
-          uv pip install --python $python -r (Join-Path $env:GROOVESPIN_SOURCE_DIR 'requirements.txt')
+          if (-not (Test-Path -LiteralPath $python)) {
+            uv venv --no-project --managed-python --python 3.12 --link-mode copy $venv
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          uv pip install --python $python 'requests>=2.31,<3' 'beautifulsoup4>=4.12,<5' 'psycopg[binary]>=3.2,<4' 'python-dotenv>=1,<2' tzdata
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Add-Content -LiteralPath $env:GITHUB_ENV -Encoding UTF8 -Value "GROOVESPIN_PYTHON=$python"
       - name: Collect release prices and EANs
