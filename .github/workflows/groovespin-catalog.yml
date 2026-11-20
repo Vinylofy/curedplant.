@@ -1,6 +1,12 @@
 name: "Curedplant | GrooveSpin | Prices and EAN"
 
 on:
+  pull_request:
+    paths:
+      - .github/workflows/groovespin-catalog.yml
+      - scripts/workers/groovespin_catalog.py
+      - scripts/importers/import_groovespin.py
+      - config/groovespin-shop.json
   schedule:
     - cron: "17 3,9,15,21 * * *"
   workflow_dispatch:
@@ -38,9 +44,9 @@ jobs:
       - run: python -m pip install -r requirements.txt
       - name: Collect release prices and EANs
         env:
-          LIMIT: ${{ github.event_name == 'schedule' && '250' || inputs.limit }}
+          LIMIT: ${{ github.event_name == 'schedule' && '250' || inputs.limit || '20' }}
           WRITE: ${{ inputs.write || (github.event_name == 'schedule' && vars.GROOVESPIN_CATALOG_ACTIVE == 'true') }}
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL: ${{ github.event_name != 'pull_request' && secrets.DATABASE_URL || '' }}
         run: |
           if [[ "$GITHUB_EVENT_NAME" == schedule && "$WRITE" != true ]]; then
             exit 0
