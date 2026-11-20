@@ -3,7 +3,8 @@
   "shop": "groovespin",
   "cursor": {
     "page": 1,
-    "seed": 0
+    "seed": 0,
+    "last_album_id": 17
   },
   "budget": {
     "date": "2026-11-20",
