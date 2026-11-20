@@ -240,9 +240,9 @@ class DailyEanTests(unittest.TestCase):
         self.assertEqual(day_key(datetime(2026, 12, 17, 23, 1, tzinfo=timezone.utc)), "2026-12-18")
 
     def test_discords_has_reviewed_fast_shop_budget(self):
-        self.assertEqual(daily_limit("discords"), 1000)
+        self.assertEqual(daily_limit("discords"), 20000)
         state = initial_state("discords")
-        self.assertEqual(reserve(state, 1000, "2026-11-20"), 1000)
+        self.assertEqual(reserve(state, 20000, "2026-11-20"), 20000)
         self.assertEqual(reserve(state, 1, "2026-11-20"), 0)
 
     def test_corrupt_progress_is_not_reset(self):

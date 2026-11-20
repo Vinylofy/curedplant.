@@ -51,8 +51,8 @@ def execute(shop, limit, write, *, progress=None, queue=None, source_factory=Ean
             summary["outcome"] = "daily_budget_exhausted"
             return summary
         if write:
-            # Reserve before any source requests. A repeated manual run cannot
-            # exceed 100 slots on the same Europe/Amsterdam calendar day.
+            # Reserve before any source requests. Repeated manual runs cannot
+            # exceed this shop's budget for the Europe/Amsterdam calendar day.
             progress.save(state)
             reservation_saved = True
         if write and shop == "fiftiesstore":

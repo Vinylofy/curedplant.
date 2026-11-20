@@ -13,7 +13,7 @@ from zoneinfo import ZoneInfo
 
 BRANCH = "automation/ean-progress"
 DAILY_LIMIT = 100
-SHOP_DAILY_LIMITS = {"discords": 1000, "sounds": 500, "variaworld": 1000}
+SHOP_DAILY_LIMITS = {"discords": 20000, "sounds": 500, "variaworld": 1000}
 MAX_SAVE_ATTEMPTS = 10
 
 

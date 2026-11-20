@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       limit:
-        description: "Max new product details (1-1000); daily total never exceeds 1000"
+        description: "Max new product details (1-20000); daily total never exceeds 20000"
         required: true
         default: "1000"
         type: string
@@ -24,6 +24,6 @@ jobs:
     uses: ./.github/workflows/_daily-ean-worker.yml
     with:
       worker: discords
-      limit: ${{ github.event_name == 'schedule' && '1000' || inputs.limit }}
+      limit: ${{ github.event_name == 'schedule' && '20000' || inputs.limit }}
       write: ${{ github.event_name == 'schedule' || inputs.write }}
     secrets: inherit
