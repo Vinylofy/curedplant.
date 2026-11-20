@@ -1,27 +1,39 @@
 # GrooveSpin
 
-The Ubuntu workflow reads the public Dutch album sitemap, then uses structured
-offers on each album page for prices and identifiers. Each accepted offer
-belongs to an explicit new vinyl release. The CSV retains prices even when an
-EAN is missing. The existing Curedplant importer publishes rows with a valid
-EAN, an artist and a title. It retains the release link and reported stock
-status. Offers that disappear from a crawl are left to the existing offer
-lifecycle.
+The worker reads the public Dutch album sitemap for discovery and structured
+offers on each album page for EAN enrichment. Only explicitly new vinyl offers
+are written. A release provides its own EAN, price and availability. The CSV
+retains prices when the EAN is missing. The existing Curedplant importer
+accepts records with a valid identifier, an artist and a title.
 
-Scheduled collection runs four times per day on the default branch. Each run
-reserves up to 250 album pages
-against a shared 1,000-page daily ceiling in Europe/Amsterdam. The cursor
-advances after processing and resumes at the next numeric album ID. The
-worker circles back after reaching the end. There is a minimum two-second
-request interval. HTTP 401, 403 or 429 stops the batch and subsequent write
-batches for that local day.
+## EAN enrichment
 
-A manual run defaults to a dry run of 20 albums. Set `write` to true for a
-database-backed run with the existing `DATABASE_URL` secret. After a batch
-imports offers, the worker records NL and BE delivery in the shop details.
-Advertised starting rates and their sources are in
-`config/groovespin-shop.json`. Checkout determines the actual fee.
+Four runs can reserve 250 album pages each against a 1,000-page ceiling per
+Europe/Amsterdam calendar day. A page may yield zero or multiple EANs, so the
+workflow reports valid unique GTINs separately. The cursor advances after
+processing and resumes at the next numeric album ID. Requests are sequential,
+at least two seconds apart. HTTP 401, 403 or 429 stops the batch and future
+write batches for the day.
 
-At the initial probe there were 109,362 unique album pages, including albums
-with no new vinyl offer. At full utilization this is roughly 110 days per
-pass. Faster whole-catalogue price refresh requires a bulk source from the shop.
+GitHub-hosted Ubuntu returned HTTP 403 on the public sitemap. Pull requests
+therefore run offline tests on hosted Ubuntu. The live workflow requires
+`GROOVESPIN_APPROVED_RUNNER` to identify a self-hosted Ubuntu runner with
+approved shop access. Manual runs default to a read-only 20-album pilot. Only
+enable scheduled production collection after a successful pilot from the
+approved runner.
+
+## Daily full price refresh
+
+Prices observed during an EAN batch cover that batch only. The public sitemap
+contained 109,362 unique album pages at the pilot, so this route cannot refresh
+the entire catalogue daily. A daily round needs a complete new-vinyl EUR feed
+or a partner API that supports full catalogue enumeration. The shop documents
+keyed UCP search and lookup, but full enumeration has not been demonstrated.
+
+## Registration
+
+After a successful write batch, the existing importer sets the shop country
+to CZ. The worker verifies active offers and both destinations before enabling
+an existing inactive shop. It records the published pickup-point rate, from
+EUR 6.76 for NL and BE, with the source and observation date. Final shipping
+charges vary at checkout. See `config/groovespin-shop.json` for sources.

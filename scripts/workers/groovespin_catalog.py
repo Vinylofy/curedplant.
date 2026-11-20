@@ -164,7 +164,7 @@ def write_shop_details(dsn, details):
                 and (shop_shipping_destinations.verified_at is null
                      or shop_shipping_destinations.verified_at <= excluded.verified_at)
                 """, (shop[0], destination, details["shipping_source"], details["verified_at"],
-                      f"Advertised EUR from {fee['pickup_eur']} pickup point / {fee['delivery_eur']} home delivery. "
+                      f"Advertised pickup-point shipping from EUR {fee['pickup_eur']}. "
                       "Exact charges vary at checkout. Shop based in Liberec, Czechia."))
         markets = connection.execute("""
             select country_code from shop_shipping_destinations
@@ -213,6 +213,7 @@ def main():
     details = json.loads(Path("config/groovespin-shop.json").read_text())
     last = cursor.get("last_album_id", 0)
     observed = datetime.now(timezone.utc).isoformat()
+    eans = set()
     with requests.Session() as session, csv_path.open("w", encoding="utf-8", newline="") as stream:
         writer = csv.DictWriter(stream, fieldnames=FIELDS)
         writer.writeheader()
@@ -227,7 +228,10 @@ def main():
                     raise RuntimeError("Batch crossed the daily quota boundary; rerun on the new day")
                 body = source.get(url, missing_ok=True)
                 if body is not None:
-                    writer.writerows(parse_offers(body, url, observed))
+                    for row in parse_offers(body, url, observed):
+                        writer.writerow(row)
+                        if row["ean"]:
+                            eans.add(row["ean"])
         except Blocked:
             if progress:
                 cursor["blocked_on"] = today
@@ -247,7 +251,7 @@ def main():
             print(f"GrooveSpin registered for NL and BE with {active_offers} active offers.")
         cursor["last_album_id"] = batch[-1][0]
         progress.save(state)
-    print(f"Album pages: {len(batch)} of {len(albums)}. Last album ID: {batch[-1][0]}.")
+    print(f"Album pages: {len(batch)} of {len(albums)}. Last album ID: {batch[-1][0]}. Valid unique GTINs: {len(eans)}.")
     if not args.write and not summary["accepted_records"]:
         raise RuntimeError("Pilot yielded no importable offers")
 

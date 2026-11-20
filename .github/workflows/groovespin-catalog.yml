@@ -21,15 +21,31 @@ on:
         default: "20"
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: curedplant-groovespin-catalog
   cancel-in-progress: false
 
 jobs:
-  catalog:
+  checks:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt
+      - run: python -m unittest discover -s tests -p test_groovespin_catalog.py -v
+
+  catalog:
+    if: github.event_name != 'pull_request' && vars.GROOVESPIN_APPROVED_RUNNER != ''
+    permissions:
+      contents: write
+    runs-on: [self-hosted, Linux, "${{ vars.GROOVESPIN_APPROVED_RUNNER }}"]
     timeout-minutes: 90
     env:
       GH_TOKEN: ${{ github.token }}
@@ -46,7 +62,7 @@ jobs:
         env:
           LIMIT: ${{ github.event_name == 'schedule' && '250' || inputs.limit || '20' }}
           WRITE: ${{ inputs.write || github.event_name == 'schedule' }}
-          DATABASE_URL: ${{ github.event_name != 'pull_request' && secrets.DATABASE_URL || '' }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           args=(--limit "$LIMIT")
           if [[ "$WRITE" == true ]]; then args+=(--write); fi
