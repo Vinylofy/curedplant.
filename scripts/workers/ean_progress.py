@@ -71,8 +71,24 @@ class GitHubProgress:
         command = ["gh", "api", "--method", method, path]
         if payload is not None:
             command += ["--input", "-"]
-        result = subprocess.run(command, input=json.dumps(payload) if payload is not None else None,
-                                capture_output=True, text=True, check=False)
+        try:
+            result = subprocess.run(command, input=json.dumps(payload) if payload is not None else None,
+                                    capture_output=True, text=True, check=False)
+        except FileNotFoundError:
+            # The existing Windows runner has Python but no GitHub CLI.
+            import requests
+
+            token = os.environ.get("GH_TOKEN")
+            if not token:
+                raise RuntimeError("GH_TOKEN is required for the checkpoint API") from None
+            response = requests.request(
+                method, f"https://api.github.com/{path}", json=payload, timeout=30,
+                headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"},
+                allow_redirects=False,
+            )
+            if not 200 <= response.status_code < 300:
+                raise RuntimeError(f"GitHub checkpoint request failed: HTTP {response.status_code}")
+            return response.json()
         if result.returncode:
             raise RuntimeError(result.stderr.strip() or result.stdout.strip() or "GitHub checkpoint request failed")
         return json.loads(result.stdout)
