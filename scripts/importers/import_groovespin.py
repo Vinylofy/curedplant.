@@ -61,7 +61,7 @@ def map_groovespin_row(row: dict, line_number: int) -> tuple[CanonicalRecord | N
         product_url=product_url,
         price=price,
         currency=CONFIG.currency,
-        availability="in_stock",
+        availability=normalize_text(row.get("availability")) or "in_stock",
         captured_at=captured_at,
         product_handle=product_handle,
         detail_status="ok",
@@ -84,7 +84,7 @@ SHOP_DEFINITION = ShopImporterDefinition(
     row_mapper=map_groovespin_row,
     description="Import Groovespin final CSV into Supabase/Postgres",
     required_columns=("title", "url", "ean"),
-    optional_columns=("artist", "timestamp", "master_id", "year", "price_eur", "price_raw"),
+    optional_columns=("artist", "timestamp", "master_id", "year", "price_eur", "price_raw", "availability"),
     tags=("vinyl", "listing-plus-ean", "tilde-delimited"),
 )
 

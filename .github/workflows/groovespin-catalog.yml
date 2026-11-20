@@ -1,0 +1,56 @@
+name: "Curedplant | GrooveSpin | Prices and EAN"
+
+on:
+  schedule:
+    - cron: "17 3,9,15,21 * * *"
+  workflow_dispatch:
+    inputs:
+      write:
+        description: "Import offers and advance the catalogue cursor"
+        type: boolean
+        default: false
+      limit:
+        description: "Maximum album pages (pilot 1–20, write 1–250)"
+        type: string
+        default: "20"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: curedplant-groovespin-catalog
+  cancel-in-progress: false
+
+jobs:
+  catalog:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements.txt
+      - name: Collect release prices and EANs
+        env:
+          LIMIT: ${{ github.event_name == 'schedule' && '250' || inputs.limit }}
+          WRITE: ${{ inputs.write || (github.event_name == 'schedule' && vars.GROOVESPIN_CATALOG_ACTIVE == 'true') }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == schedule && "$WRITE" != true ]]; then
+            exit 0
+          fi
+          args=(--limit "$LIMIT")
+          if [[ "$WRITE" == true ]]; then args+=(--write); fi
+          python -m scripts.workers.groovespin_catalog "${args[@]}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: groovespin-${{ github.run_id }}-${{ github.run_attempt }}
+          path: output/groovespin/
+          retention-days: 14
