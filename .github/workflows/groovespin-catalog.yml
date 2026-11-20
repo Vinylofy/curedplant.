@@ -57,7 +57,6 @@ jobs:
     defaults:
       run:
         shell: powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0}
-        working-directory: ${{ runner.temp }}
     steps:
       - name: Download exact source to a Windows-safe path
         uses: actions/github-script@v8
@@ -72,6 +71,7 @@ jobs:
             await fs.writeFile(path.join(destination, 'source.zip'), Buffer.from(data));
             core.exportVariable('GROOVESPIN_JOB_DIR', destination);
       - name: Extract immutable source
+        working-directory: ${{ runner.temp }}
         run: |
           $ErrorActionPreference = 'Stop'
           Expand-Archive -LiteralPath (Join-Path $env:GROOVESPIN_JOB_DIR 'source.zip') -DestinationPath $env:GROOVESPIN_JOB_DIR
@@ -86,6 +86,7 @@ jobs:
         env:
           UV_CACHE_DIR: ${{ runner.temp }}/shop-uv-cache
       - name: Prepare Python
+        working-directory: ${{ runner.temp }}
         run: |
           $venv = Join-Path $env:GROOVESPIN_JOB_DIR 'venv'
           uv venv --no-project --managed-python --python 3.12 --link-mode copy $venv
@@ -95,6 +96,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Add-Content -LiteralPath $env:GITHUB_ENV -Encoding UTF8 -Value "GROOVESPIN_PYTHON=$python"
       - name: Collect release prices and EANs
+        working-directory: ${{ runner.temp }}
         env:
           LIMIT: ${{ github.event_name == 'schedule' && '250' || inputs.limit || '20' }}
           WRITE: ${{ inputs.write || github.event_name == 'schedule' }}
