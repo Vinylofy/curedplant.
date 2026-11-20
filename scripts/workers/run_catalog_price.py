@@ -23,7 +23,8 @@ def command_for(worker: str, limit: int, source_version: str = "current", write:
     commands: dict[str, list[str]] = {
         "bobsvinyl": common + ["scripts.scrapers.usf.jobs.refresh_bobsvinyl_listing_prices", "--start-page", "1", "--max-pages", str(limit)],
         "discords": common + ["scripts.scrapers.usf.jobs.refresh_discords_listing_prices", "--max-pages", str(limit),
-                               "--start-page", str(start_page)] + (["--progress-file", progress_file] if progress_file else []),
+                               "--start-page", str(start_page), "--delay", "2.0"]
+                               + (["--progress-file", progress_file] if progress_file else []),
         "everythingjazz": common + ["scripts.scrapers.usf.jobs.refresh_everythingjazz_listing_prices", "--start-page", "1", "--max-pages", str(limit)],
         "fiftiesstore": common + ["scripts.scrapers.usf.jobs.refresh_fiftiesstore_listing_prices", "--max-products", str(limit), "--vinyl-only", "--skip-delist-missing"],
         "musiconvinyl": common + ["scripts.scrapers.usf.jobs.refresh_musiconvinyl_prices_only", "--max-pages", str(limit), "--listing-limit", "250"],
