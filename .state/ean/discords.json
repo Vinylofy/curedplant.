@@ -7,8 +7,8 @@
     "signature": "a68bd8a5b5b4bd79756b357bad13ab4eeb2196a017bcdef9c34a1919c1fae042"
   },
   "budget": {
-    "date": "2026-11-20",
-    "reserved": 4095
+    "date": "2026-11-21",
+    "reserved": 20000
   },
   "last_result": {
     "day": "2026-11-20",
