@@ -2,10 +2,9 @@
   "version": 1,
   "shop": "vinyleers",
   "cursor": {
-    "page": 1,
+    "page": 2,
     "seed": 0,
-    "exhausted": true,
-    "exhausted_on": "2026-11-14"
+    "signature": "c227d5d836b645c932287bdd1414659b1101f3547b631c8d100000d1216e9786"
   },
   "budget": {
     "date": "2026-11-21",
