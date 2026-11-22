@@ -2,9 +2,10 @@
   "version": 1,
   "shop": "topnotch",
   "cursor": {
-    "page": 14,
+    "page": 1,
     "seed": 0,
-    "signature": "5e39647df3b286829b024529e56ce43c23af6297c26102611bee1dfdafa3f7a5"
+    "exhausted": true,
+    "exhausted_on": "2026-11-22"
   },
   "budget": {
     "date": "2026-11-22",
