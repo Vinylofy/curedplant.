@@ -2,9 +2,10 @@
   "version": 1,
   "shop": "vinylfreaks",
   "cursor": {
-    "page": 70,
+    "page": 1,
     "seed": 0,
-    "signature": "b5954f162ec7d19dc4f34150b5c1f018fc8ff5145b61ff7e98b335749446032d"
+    "exhausted": true,
+    "exhausted_on": "2026-11-23"
   },
   "budget": {
     "date": "2026-11-23",
