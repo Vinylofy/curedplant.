@@ -16,17 +16,18 @@ jobs:
       - name: Inspect one listing product card
         run: |
           python - <<'PY'
-          import requests
+          import requests, re
           from bs4 import BeautifulSoup
           url = 'https://imusic.nl/page/search?_form=searchForm&advanced=1&genreId=76&mediaGroupId=6&onlyLocalStock=1&sort=relevance'
           response = requests.get(url, timeout=25, headers={'User-Agent': 'Mozilla/5.0 (compatible; Vinylofy-iMusic-GenreDiscovery/1.0; +https://vinylofy.nl)'})
           response.raise_for_status()
           soup = BeautifulSoup(response.text, 'html.parser')
-          anchor = soup.select_one('a[href*="/music/"]')
+          anchor = soup.find('a', href=re.compile(r'/music/\d{12,14}(?:/|$)'))
           if anchor is None: raise ValueError('No product anchor in listing')
           for parent in list(anchor.parents)[:8]:
               if not getattr(parent, 'name', None): continue
               print('PARENT', parent.name, parent.get('class'), 'links', len(parent.select('a[href*="/music/"]')))
-              if len(parent.select('a[href*="/music/"]')) >= 3:
-                  print('STRUCTURE', str(parent)[:15000]); break
+              if '€' in parent.get_text(' ', strip=True) and len(parent.select('a[href*="/music/"]')) <= 8:
+                  for node in parent.select('input'): node.decompose()
+                  print('STRUCTURE', str(parent)[:12000]); break
           PY
