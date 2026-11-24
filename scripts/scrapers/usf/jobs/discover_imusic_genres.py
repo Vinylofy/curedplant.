@@ -289,9 +289,10 @@ def parse_listing_links(
         context_text = ""
         if card:
             card_eans = {ean_from_href(a.get("href")) for a in card.find_all("a", href=True)} - {None}
-            product_ids = {clean(node.get("value")) for node in card.select('input[name="itemId"]')}
+            product_ids = {value.lstrip("0") or "0" for node in card.select('input[name="itemId"]')
+                           if (value := clean(node.get("value"))).isdigit()}
             price_nodes = card.select("button.teaser-cta span.teaser-cta__price")
-            if card_eans == {ean} and product_ids == {ean} and len(price_nodes) == 1:
+            if card_eans == {ean} and product_ids == {ean.lstrip("0") or "0"} and len(price_nodes) == 1:
                 raw_price = clean(price_nodes[0].get_text(" ", strip=True))
                 matches = EURO_PRICE_RE.fullmatch(raw_price)
                 if matches and parse_price(matches.group(1)) is not None:

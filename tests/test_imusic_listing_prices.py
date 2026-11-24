@@ -9,7 +9,7 @@ class IMusicListingPricesTests(unittest.TestCase):
 
     def test_shipping_footer_never_replaces_price(self):
         html = '''<article class="search-teaser"><a href="/music/0889853577415/example">Album</a>
-        <form><input name="itemId" value="0889853577415"><button class="teaser-cta">
+        <form><input name="itemId" value="889853577415"><button class="teaser-cta">
         <span class="teaser-cta__price">€ 24,49</span></button></form></article>
         <footer>Gratis verzending vanaf € 100,00</footer>'''
         self.assertEqual(self.parse(html)[0].payload["listing_price_raw"], "24,49")
