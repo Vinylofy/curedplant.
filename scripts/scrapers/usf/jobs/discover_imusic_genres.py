@@ -284,7 +284,7 @@ def parse_listing_links(
         # A page can contain footer, shipping and newsletter amounts after the
         # last product. Only an identified product's own commerce button may
         # supply a price; preserve links without a price for EAN discovery.
-        card = anchor.find_parent("article", class_="item-teaser")
+        card = anchor.find_parent("article", class_="search-teaser")
         price_hint = None
         context_text = ""
         if card:

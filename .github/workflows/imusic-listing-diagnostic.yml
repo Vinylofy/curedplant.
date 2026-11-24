@@ -28,6 +28,7 @@ jobs:
               if not getattr(parent, 'name', None): continue
               print('PARENT', parent.name, parent.get('class'), 'links', len(parent.select('a[href*="/music/"]')))
               if '€' in parent.get_text(' ', strip=True) and len(parent.select('a[href*="/music/"]')) <= 8:
+                  print('ITEM_IDS', [node.get('value') for node in parent.select('input[name="itemId"]')])
                   for node in parent.select('input'): node.decompose()
                   print('STRUCTURE', str(parent)[:12000]); break
           PY
