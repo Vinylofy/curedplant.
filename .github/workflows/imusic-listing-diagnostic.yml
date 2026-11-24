@@ -1,0 +1,32 @@
+name: "iMusic | Listing structure diagnostic"
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: python -m pip install requests beautifulsoup4
+      - name: Inspect one listing product card
+        run: |
+          python - <<'PY'
+          import requests
+          from bs4 import BeautifulSoup
+          url = 'https://imusic.nl/page/search?_form=searchForm&advanced=1&genreId=76&mediaGroupId=6&onlyLocalStock=1&sort=relevance'
+          response = requests.get(url, timeout=25, headers={'User-Agent': 'Mozilla/5.0 (compatible; Vinylofy-iMusic-GenreDiscovery/1.0; +https://vinylofy.nl)'})
+          response.raise_for_status()
+          soup = BeautifulSoup(response.text, 'html.parser')
+          anchor = soup.select_one('a[href*="/music/"]')
+          if anchor is None: raise ValueError('No product anchor in listing')
+          for parent in list(anchor.parents)[:8]:
+              if not getattr(parent, 'name', None): continue
+              print('PARENT', parent.name, parent.get('class'), 'links', len(parent.select('a[href*="/music/"]')))
+              if len(parent.select('a[href*="/music/"]')) >= 3:
+                  print('STRUCTURE', str(parent)[:15000]); break
+          PY
