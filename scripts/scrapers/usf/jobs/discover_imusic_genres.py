@@ -281,9 +281,22 @@ def parse_listing_links(
             continue
 
         listing_product_url = urljoin(BASE_URL, href)
-        context_text = context_text_until_next_product(anchor, ean)
-
-        price_hint = extract_price_hint(context_text)
+        # A page can contain footer, shipping and newsletter amounts after the
+        # last product. Only an identified product's own commerce button may
+        # supply a price; preserve links without a price for EAN discovery.
+        card = anchor.find_parent("article", class_="item-teaser")
+        price_hint = None
+        context_text = ""
+        if card:
+            card_eans = {ean_from_href(a.get("href")) for a in card.find_all("a", href=True)} - {None}
+            product_ids = {clean(node.get("value")) for node in card.select('input[name="itemId"]')}
+            price_nodes = card.select("button.teaser-cta span.teaser-cta__price")
+            if card_eans == {ean} and product_ids == {ean} and len(price_nodes) == 1:
+                raw_price = clean(price_nodes[0].get_text(" ", strip=True))
+                matches = EURO_PRICE_RE.fullmatch(raw_price)
+                if matches and parse_price(matches.group(1)) is not None:
+                    price_hint = matches.group(1)
+                context_text = clean(card.get_text(" | ", strip=True))
         availability_hint = extract_availability_hint(context_text)
         title_hint = extract_title_hint(anchor, context_text)
 
@@ -313,6 +326,16 @@ def parse_listing_links(
         # voorkomt dubbele links voor /music/<EAN> en /music/<EAN>/<slug>.
         queue_url = f"{BASE_URL}/music/{ean}"
 
+        previous = links_by_ean.get(ean)
+        if previous and previous.payload.get("listing_price_raw"):
+            if price_hint and previous.payload["listing_price_raw"] != price_hint:
+                # Keep conflicting observations for the verifier rather than
+                # silently replacing one amount with another.
+                previous.payload.pop("listing_price_raw", None)
+                previous.payload["listing_price_conflict"] = True
+            continue
+        if previous and previous.payload.get("listing_price_conflict"):
+            continue
         links_by_ean[ean] = DiscoveredLink(
             shop_id=SHOP_ID,
             source_url=queue_url,
