@@ -2,10 +2,9 @@
   "version": 1,
   "shop": "dgmoutlet",
   "cursor": {
-    "page": 1,
+    "page": 2,
     "seed": 0,
-    "exhausted": true,
-    "exhausted_on": "2026-11-20"
+    "signature": "060363570495864ca421334019053341c13ed4ed7ba8cac50bfe793d5769aa18"
   },
   "budget": {
     "date": "2026-11-27",
