@@ -1,0 +1,34 @@
+name: "Maintenance | Price history"
+on:
+  workflow_dispatch:
+    inputs:
+      write:
+        description: "Write changes"
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: maintenance-price-history
+  cancel-in-progress: false
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      WRITE: ${{ inputs.write }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: python -m pip install 'psycopg[binary]' python-dotenv
+      - name: Run task
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$DATABASE_URL" || { echo 'DATABASE_URL ontbreekt'; exit 1; }
+          args=(--current-window-hours 48)
+          if [[ "$WRITE" == true ]]; then args+=(--write); fi
+          python -u scripts/maintenance/snapshot_current_prices_to_history.py "${args[@]}"
