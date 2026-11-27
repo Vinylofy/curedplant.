@@ -26,4 +26,7 @@ jobs:
               rows = conn.execute("select indexname, indexdef from pg_indexes where schemaname='public' and tablename in ('price_history','prices') order by tablename,indexname").fetchall()
               for row in rows: print(*row)
               for row in conn.execute('explain ' + sql, (48,['in_stock','unknown'],'2026-11-27','2026-11-27')): print(row[0])
+              conn.execute('set enable_nestloop = off')
+              print('PLAN WITH NESTED LOOPS DISABLED')
+              for row in conn.execute('explain ' + sql, (48,['in_stock','unknown'],'2026-11-27','2026-11-27')): print(row[0])
           PY
