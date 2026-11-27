@@ -1,0 +1,43 @@
+name: "Maintenance | snapshot migration pilot"
+
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: "Maintenance task to check"
+        type: choice
+        required: true
+        options:
+          - top-deals
+          - shop-catalog
+          - metadata-audit
+          - price-history
+
+permissions:
+  contents: read
+
+jobs:
+  dry-run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      TASK: ${{ inputs.task }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: python -m pip install 'psycopg[binary]' python-dotenv
+      - name: Run read-only pilot
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$DATABASE_URL" || { echo 'DATABASE_URL ontbreekt'; exit 1; }
+          case "$TASK" in
+            top-deals) python -u scripts/maintenance/refresh_top_deals_snapshot.py ;;
+            shop-catalog) python -u scripts/maintenance/snapshot_shop_catalog_daily.py > "$RUNNER_TEMP/shop-report.json" ;;
+            metadata-audit) python -u scripts/maintenance/product_metadata_quality.py --limit 5000 --output "$RUNNER_TEMP/metadata-quality.csv" ;;
+            price-history) python -u scripts/maintenance/snapshot_current_prices_to_history.py ;;
+            *) echo 'Onbekende taak'; exit 1 ;;
+          esac
