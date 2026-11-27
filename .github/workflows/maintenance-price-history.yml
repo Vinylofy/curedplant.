@@ -30,5 +30,8 @@ jobs:
           set -euo pipefail
           test -n "$DATABASE_URL" || { echo 'DATABASE_URL ontbreekt'; exit 1; }
           args=(--current-window-hours 48)
-          if [[ "$WRITE" == true ]]; then args+=(--write); fi
+          if [[ "$WRITE" == true ]]; then
+            echo 'Price-history writes are disabled until bounded batches are implemented and tested.'
+            exit 1
+          fi
           python -u scripts/maintenance/snapshot_current_prices_to_history.py "${args[@]}"
