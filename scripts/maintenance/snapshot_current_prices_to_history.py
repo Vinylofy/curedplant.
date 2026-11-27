@@ -160,6 +160,9 @@ def main() -> int:
             cur.execute("set statement_timeout = 120000")
             cur.execute("set lock_timeout = 5000")
             cur.execute("set idle_in_transaction_session_timeout = 120000")
+            # The planner otherwise repeatedly scans a shop/day history range
+            # for each current product, which is prohibitively expensive.
+            cur.execute("set enable_nestloop = off")
 
             cur.execute(
                 eligible_sql,
