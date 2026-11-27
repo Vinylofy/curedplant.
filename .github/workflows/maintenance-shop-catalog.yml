@@ -1,5 +1,7 @@
 name: "Maintenance | Shop catalog"
 on:
+  schedule:
+    - cron: "40 7 * * *"
   workflow_dispatch:
     inputs:
       write:
@@ -17,7 +19,7 @@ jobs:
     timeout-minutes: 30
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
-      WRITE: ${{ inputs.write }}
+      WRITE: ${{ github.event_name == 'schedule' || inputs.write }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
