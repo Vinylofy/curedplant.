@@ -154,12 +154,12 @@ def main() -> int:
 
     with psycopg.connect(
         database_url,
-        options="-c statement_timeout=0 -c lock_timeout=0 -c idle_in_transaction_session_timeout=0",
+        options="-c statement_timeout=120000 -c lock_timeout=5000 -c idle_in_transaction_session_timeout=120000",
     ) as conn:
         with conn.cursor() as cur:
-            cur.execute("set statement_timeout = 0")
-            cur.execute("set lock_timeout = 0")
-            cur.execute("set idle_in_transaction_session_timeout = 0")
+            cur.execute("set statement_timeout = 120000")
+            cur.execute("set lock_timeout = 5000")
+            cur.execute("set idle_in_transaction_session_timeout = 120000")
 
             cur.execute(
                 eligible_sql,
